@@ -31,3 +31,5 @@ Not WordPress-only: email **vector indexing** and Stella API are documented unde
 | Folder | Contents |
 |--------|----------|
 | [cursor-rules/](cursor-rules/) | One `.md` per `.mdc` in the theme (prefixed note + body) |
+
+**Policy:** [cursor-rules/documentation-source-of-truth.md](cursor-rules/documentation-source-of-truth.md) — `stella-docs` is the only long-form documentation; update it when code behaviour changes.
