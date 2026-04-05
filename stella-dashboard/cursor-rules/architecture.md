@@ -1,6 +1,8 @@
 # Cursor rule export: `architecture.mdc`
 
-_Source of agent rule in theme repo: `.cursor/rules/architecture.mdc`._
+_Source in theme repo: `.cursor/rules/architecture.mdc` (now a **short pointer** to this repo)._
+
+**Canonical full architecture:** [`../architecture.md`](../architecture.md) (same content as historically lived in `.mdc`).
 
 ---
 
