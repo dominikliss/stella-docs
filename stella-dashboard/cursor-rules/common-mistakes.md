@@ -50,3 +50,12 @@ _Source of agent rule in theme repo: `.cursor/rules/common-mistakes.mdc`._
 | Using GraphQL / Apollo references | GraphQL was removed — use REST API via `@wordpress/core-data` |
 | Putting business logic in React components | Keep it in PHP services (`inc/services/`) or REST route callbacks |
 | Creating new REST endpoints without auth | Always add `'permission_callback' => 'dls_require_login'` or feature-specific callback |
+
+## Documentation mistakes
+
+| Mistake | Fix |
+|---|---|
+| Adding long guides under theme `docs/*.md` | Put them in **`docs/stella-docs/`** (`stella-dashboard/`, `stella-server/`, `integration/`) — see **`documentation-source-of-truth.mdc`** |
+| Changing behaviour / REST / options / cron without touching docs | Update the matching markdown in **`docs/stella-docs/`**; commit submodule + bump gitlink in theme |
+| Editing `.mdc` substantively but not the export | Update **`docs/stella-docs/stella-dashboard/cursor-rules/<same-name>.md`** |
+| Duplicating full architecture in `.mdc` | Keep **`architecture.md`** in submodule as narrative; **`architecture.mdc`** stays a short pointer |

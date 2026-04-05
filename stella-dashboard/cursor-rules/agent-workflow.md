@@ -98,3 +98,14 @@ If you need something that doesn't exist (a new component, a new SCSS class, a n
 ## 9. One concern at a time
 
 When making changes, don't refactor unrelated code. Stay focused on the task. If you notice something broken nearby, mention it but don't fix it unless asked.
+
+## 10. Documentation — `stella-docs` submodule (SSoT)
+
+**Full policy:** `documentation-source-of-truth.mdc` (always applied).
+
+Before finishing any task that **changes behaviour**, APIs, options, cron, DB schema, mail/embed/Stella integration, or ACF semantics:
+
+1. Identify which file(s) under **`docs/stella-docs/`** need edits (`stella-dashboard/`, `stella-server/`, `integration/`, or `open-gaps.md`).
+2. Update them **in the same task**; then **commit the submodule** and **bump the gitlink** in the theme repo (`git add docs/stella-docs`).
+
+Skipping doc updates when the user-facing or operator-facing story changed is **not** complete. Trivial-only refactors (rename local variable, same HTTP contract) may omit docs—when in doubt, update.
