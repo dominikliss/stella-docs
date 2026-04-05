@@ -2,6 +2,9 @@
 
 Last updated: 2026-04-05
 
+**Pipeline detail:** [integration/email-indexing.md](integration/email-indexing.md)  
+**Cross-system overview:** [integration/ddashboard-and-stella-server.md](integration/ddashboard-and-stella-server.md)
+
 ---
 
 ## Email Indexing Pipeline
