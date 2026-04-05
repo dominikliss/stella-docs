@@ -39,4 +39,4 @@ This repository is consumed as a **Git submodule** at `docs/stella-docs` inside 
 
 ## Theme development rule
 
-Agents and humans changing ddashboard or Stella integration code should update the matching markdown under **`stella-dashboard/`**, **`stella-server/`**, or **`integration/`** in the **same change series**. See the theme’s `.cursor/rules/documentation-source-of-truth.mdc`
+Agents and humans changing ddashboard or Stella integration code should update the matching markdown under **`stella-dashboard/`**, **`stella-server/`**, or **`integration/`** in the **same change series**. See the theme’s `.cursor/rules/documentation-source-of-truth.mdc`.
