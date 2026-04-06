@@ -149,7 +149,7 @@ Projects, task lists, tasks, assignees, comments, time entries — full CRUD.
 
 ### 4. Nachrichten (IMAP Email Inbox) — `/nachrichten`
 
-A custom email inbox that syncs multiple IMAP accounts into a MySQL database and displays them in a master-detail conversation UI.
+A custom email inbox that syncs multiple IMAP accounts into a MySQL database. The `/nachrichten` UI uses the standard **dark** app chrome (`PageLayout`, `content-section` grid): inbox card with thread rows, collapsible filters, **conversation detail in a fixed right-hand `SidebarForm` (wide)** with thread bubbles, client assign, and a mailto-based reply draft; plus Schnellzugriff tiles and a complementary column.
 
 **IMAP sync**
 - WP-Cron runs every 5 minutes (`dls_mail_imap_sync_cron`) — syncs all active mailboxes (limit 50 emails per run, filterable)
@@ -274,7 +274,7 @@ All routes are single-page React apps rendered into a WordPress page shell — n
 | `/projects` | Project management board |
 | `/marketing` | YouTube + AI marketing chat |
 | `/nachrichten` | IMAP email inbox |
-| `/verwaltung` | Integration settings (sub-routes: `buchhaltung`, `projekte`, `marketing`, `ai-anbindungen`, `ai-assistent`, `nachrichten`) |
+| `/verwaltung` | Integration settings (sub-routes: `buchhaltung`, `projekte`, `marketing`, `ai-anbindungen`, `ai-profiles`, `nachrichten`) |
 
 ---
 

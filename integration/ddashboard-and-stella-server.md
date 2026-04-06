@@ -29,7 +29,7 @@ Neither system replaces the other: WordPress owns relational data and user sessi
   - **Email indexing:** `StellaEmailIndexClient` → `POST {base}/emails/upsert`
   - **Tests / health:** routes under `inc/routes/stella-api-test.php` (if configured)
 - **Base URL and auth** for the index API are WordPress options (see `OptionService` / Verwaltung → AI-Anbindungen pattern):
-  - `dls_stella_email_index_url` — base URL (trailing slash stripped in client)
+  - `dls_stella_email_index_url` — **full HTTP root of stella-api** from WordPress’s perspective, including any path prefix (trailing slash stripped in `StellaEmailIndexClient`). Example when Caddy serves the API under `/stella` on port 8080: `http://<stella-host>:8080/stella` → WordPress calls `…/stella/emails/upsert` and `…/stella/emails/document/email_24128` (same URL you would use with `curl …/stella/emails/document/email_24128`).
   - `dls_stella_email_index_key` — optional; sent as **`X-Stella-Key`** when non-empty
   - `dls_email_embed_enabled`, `dls_email_embed_batch_size` — queue behaviour
 

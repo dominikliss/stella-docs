@@ -71,7 +71,7 @@ inc/
   constants.php              # App-wide constants: DLS_ALLOWED_IPS, DLS_OWNER_EMAILS, DLS_OWNER_DOMAINS, DLS_ANALYSIS_TIMEOUT
   subscription-billing.php   # Clears legacy subscription cron; billing is manual via REST only
   mail-sync-cron.php         # WP-Cron: `dls_mail_imap_sync_cron` every 5 min → sync active mailboxes
-  install-mail-tables.php    # dbDelta: dls_mailbox, dls_email, spam lists, folder_client, dls_email_attachment; migrations v1–v8
+  install-mail-tables.php    # dbDelta: dls_mailbox, dls_email, spam lists, folder_client, dls_email_attachment, embed queue; migrations v1–v23
   install-pm-tables.php      # dbDelta: dls_pm_project, dls_pm_task_list, dls_pm_task, dls_pm_task_assignee, dls_pm_comment, dls_pm_time_entry; migrations v1–v2
   install-ai-chat-tables.php # dbDelta: dls_ai_chat_session, dls_ai_chat_message
   install-writing-style-history.php # dbDelta: dls_writing_style_run + analysis_type (v2); append-only email AI analysis history
@@ -175,7 +175,7 @@ src/
     formik-date-picker.js    # Formik + react-datepicker wrapper; stores Y-m-d (or "" when empty); locale=de
     chat-bubble.js           # Generic chat bubble — align="start" (counterpart) or "end" (own/outbound)
     project-management.js    # PM board (projects / task lists / tasks / comments; uses useDlsQuery + useRestAction + DataTable)
-    messages-page.js         # /nachrichten inbox — threads, spam, blocklist/whitelist (uses useDlsQuery + useRestAction)
+    messages-page.js         # /nachrichten — PageLayout + dark inbox card, filters, thread detail, spam lists (useDlsQuery + useRestAction)
     email-conversation-thread.js # Thread view (sorted messages, date separators)
     email-message-block.js   # Single email bubble (from, date, body, attachments)
     email-detail-sidebar.js  # Sidebar: client link, spam actions
@@ -197,14 +197,14 @@ src/
     tracking-time-settings.js # TrackingTime config (split from management-page.js)
     youtube-settings.js      # YouTube OAuth + config (split from management-page.js)
     ai-provider-settings.js  # Anthropic/Ollama config (split from management-page.js)
-    email-analysis-panel.js  # Writing style + classification analysis UI (split from management-page.js)
-    admin-settings-page.js   # Mounts AdminSettingsPage: tabs buchhaltung/projekte/marketing/ai-anbindungen/ai-assistent/nachrichten; AI-Anbindungen + AI-Analyse eigene Seiten
+    ai-profiles-page.js      # AI profiles: Ollama corpus runs, grounding, promote (Verwaltung → AI-Profile)
+    admin-settings-page.js   # Mounts AdminSettingsPage: tabs buchhaltung/projekte/marketing/ai-anbindungen/ai-profiles/nachrichten; AI-Anbindungen + AI-Profile eigene Seiten
     marketing.js             # Marketing module (/marketing/start, /marketing/youtube)
     ai-chat-panel.js         # Claude chat UI (agentKey prop)
     master-detail-layout.js  # MasterDetailLayout — two-column master/detail generic wrapper
     scroll-panel.js          # ScrollPanel — scrollable flex child with optional header/footer slots
     list-search-field.js     # Debounced list search field
-    table-pagination.js      # TablePagination — server-paginated numeric pager (DEFAULT_TABLE_PAGE_SIZE=200)
+    table-pagination.js      # TablePagination — prev/next chevrons + page numbers between (DEFAULT_TABLE_PAGE_SIZE=200)
     searchable-select.js     # SearchableSelect + SearchableSelectStandalone
     icons.js                 # All shared SVG icons (IconDownload, IconEdit, IconTrash, IconAttachment, …)
     toggle.js                # Custom toggle switch
@@ -276,16 +276,17 @@ assets/scss/                 # SCSS source (ScssPhp, compiled on theme load when
 
 ## Virtual app routes (no WP page)
 - File: `inc/app-routes.php` — `dls_get_app_routes()` + `add_rewrite_rule` for `/projects`, `/marketing`, `/nachrichten`, `/verwaltung`, `/werkzeuge`.
-- `/verwaltung` has sub-routes: `buchhaltung`, `projekte`, `marketing`, `ai-anbindungen`, `ai-assistent`, `nachrichten` (tab selection via `data-subroute`).
+- `/verwaltung` has sub-routes: `buchhaltung`, `projekte`, `marketing`, `ai-anbindungen`, `ai-profiles`, `nachrichten` (tab selection via `data-subroute`). After changing sub-route slugs, flush permalinks (Settings → Permalinks → Save).
 - `/marketing` has sub-routes: `start` (default; `/marketing/` redirects), `youtube` — PHP `.sub-header` tabs + `.site-meta` h1 + `data-subroute` on `.dls-marketing` (same shell as Buchhaltung + Verwaltung tabs).
 - `/werkzeuge` has sub-routes: `email-migration` (default; `/werkzeuge/` opens it) — PHP `.sub-header` + `.site-meta` h1 + `tools-page.js` on `.dls-werkzeuge` (`data-subroute`). Nav link in `header.php`.
-- `AdminSettingsPage` in `admin-settings-page.js`: switches between `MailAdminMailboxes` (nachrichten), `AiConnectorsPage` / `AiAnalysisActionsPage` (AI tabs), and `ManagementPage` (buchhaltung/projekte/marketing).
+- `AdminSettingsPage` in `admin-settings-page.js`: switches between `MailAdminMailboxes` (nachrichten), `AiConnectorsPage` / `AiProfilesPage` (AI tabs), and `ManagementPage` (buchhaltung/projekte/marketing).
 - Add new screens: add to `dls_get_app_routes()`, add `add_rewrite_rule`, add to `admin-settings-page.js` tab list if it's a Verwaltung tab, mount React component. Flush permalinks after adding.
 - **Do not** create a WP page with the same slug.
 
 ## Nachrichten (IMAP)
 
 - **Tables** (`inc/install-mail-tables.php`, option `dls_mail_db_version`): `dls_mailbox`, `dls_email` (`spam_status` 0 / 1 / 2), `dls_email_spam_blocklist`, `dls_email_spam_whitelist`, `dls_mailbox_folder_client`, `dls_email_attachment` (attachment bytes under `wp-content/private/dls-mail-attachments/`).
+- **Klassifizierung in `dls_email` (Speicher):** `email_category` / `email_action` (Layer-1, regelbasiert) und `email_l2_intent`, `email_l2_action`, `email_l2_urgency`, `email_l2_confidence`, `email_l2_rationale` (Layer-2) werden **auf Englisch** persistiert — Dringlichkeit `immediate` \| `soon` \| `normal` \| `later`, Konfidenz `high` \| `medium` \| `low`. **Migration v23** wandelt frühere deutsche Werte (`sofort`, `hoch`, …) um. **REST** `PATCH` akzeptiert weiterhin deutsche JSON-Alias-Felder (`dringlichkeit`, `konfidenz`, …); `EmailCrudService` normalisiert vor dem Schreiben. **UI:** deutsche Beschriftungen in `email-meta-table.js` via `src/helpers/email-classification-labels.js` (Tooltip = roher Token).
 - **Services:** `MailboxDbService` (facade), `EmailCrudService`, `EmailSpamService`, `EmailCategoryDbService`, `MailSyncService`, `MailChunkSyncService`, `ClientEmailMatchService`, `MailThreadIdService`, `MailHtmlSplitQuoteService`, `MailAttachmentStorageService`, `MailCrypto`, `DlsImapFactory` — under `inc/services/`.
 - **WP-Cron:** `inc/mail-sync-cron.php` — hook `dls_mail_imap_sync_cron` every **5 minutes** (`dls_every_five_minutes` custom schedule); syncs all active mailboxes (limit 50 each, filterable via `dls_mail_cron_sync_limit`).
 - **Import vs. prune:** Folder import only **fetches the newest N** messages per run (`limit` / cron limit). **Orphan prune** is separate: after sync, `MailSyncService::prune_emails_removed_from_imap_folder()` compares DB `imap_uid` rows for that folder to the **full current UID set** from IMAP (`getUid()->data()`). Messages still on the server but outside the N-batch are **not** deleted. Rows with NULL `imap_uid` are not UID-pruned. Chunk sync runs the same prune when a background job completes (`MailChunkSyncService::prune_imap_orphans_for_completed_chunk_job`). Sync `debug` may include `imap_pruned`. **UIDVALIDITY** changes remain the standard IMAP caveat.
@@ -302,39 +303,27 @@ assets/scss/                 # SCSS source (ScssPhp, compiled on theme load when
   - Verwaltung UI: "Zuordnungen löschen" button per mailbox with confirmation modal (`mail-admin-tab.js`).
 - **`date_sent` fallback chain:** `getDate()` → raw `Date:` header scan → iCalendar body parsing (DTSTAMP / CREATED / LAST-MODIFIED / DTSTART in text body, HTML, attachments, or raw MIME body) for calendar/event mails missing a `Date:` header.
 - **Quote splitting:** List endpoint strips quoted reply history from `body_html` via `MailHtmlSplitQuoteService::split_latest_and_quoted()`; full body available from `GET /dls/v1/emails/{id}` (`body_has_quote_history` flag on list items).
-- **UI:** `messages-page.js` (inbox / conversation view), `mail-admin-tab.js` (orchestrator → `mailbox-imap-status.js`, `mailbox-category-manager.js`, `mailbox-folder-detail.js`, `mailbox-sync-controls.js`), `list-search-field.js` (debounced search). Layout: `MasterDetailLayout` + `ScrollPanel` + `ConversationListItem` + `EmailConversationThread` + `EmailMessageBlock` + `EmailDetailSidebar` + `EmailHtmlIframe` + `MessageAttachmentList`. Filter bar SCSS: `assets/scss/components/messages.scss` (imports `inbox.scss`, `mail-admin-panel.scss`, `chunk-sync.scss`) + `filter-bar.scss`; layout SCSS: `assets/scss/components/conversation-layout.scss`.
+- **UI:** `messages-page.js` (`PageLayout` + `content-section` / `content-col-*`, dark inbox card, collapsible filters, `messages-focus-inbox-row.js`; thread detail in wide `SidebarForm` via `messages-conversation-sidebar.js`: `ScrollPanel` + `EmailConversationThread`, Kunde, mailto reply draft), `mail-admin-tab.js` (orchestrator → `mailbox-imap-status.js`, `mailbox-category-manager.js`, `mailbox-folder-detail.js`, `mailbox-sync-controls.js`), `list-search-field.js` (debounced search). Thread rendering still uses `EmailMessageBlock` + `EmailDetailSidebar` + `EmailHtmlIframe` + `MessageAttachmentList` inside the conversation component. SCSS: `messages-page.scss` (scoped under `.dls-messages-page`), `form.scss` (`sidebar-form--messages-conversation` / `--email-meta` z-index), `messages.scss` (imports `inbox.scss`, `mail-admin-panel.scss`, `chunk-sync.scss`) + `filter-bar.scss`; bubbles / thread: `conversation-layout.scss`.
 
-## E-Mail-AI-Analysen (Ollama, Verwaltung → AI-Analyse)
+## E-Mail-AI-Analysen (Ollama, Verwaltung → AI-Profile)
 
-Zwei asynchrone Langläufer in **einer** Karte **„E-Mail-AI-Analysen“** auf dem Tab **AI-Analyse** (`ai-analysis-actions-page.js` → `EmailAnalysisPanel`, `variant="embedded"`): **Schreibstil** vs **Klassifizierung** (Select **Analyse-Typ**, globale `field-row` / `field-container` / `select`-Styles). Es darf **nur eine** Analyse gleichzeitig laufen — der jeweils andere Start liefert **409** (`analysis_busy`). **Anbindungen** (Anthropic/Stella) liegen auf **AI-Anbindungen**; Metadaten in `dls_ai_connector`, `dls_ai_analysis_config`, `dls_ai_action` + REST `GET/PATCH /dls/v1/ai/layers/*`.
+**UI:** Tab **AI-Profile** (`/verwaltung/ai-profiles/`) — `ai-profiles-page.js`: Karten pro Profil, Detail mit Lauf-Historie, Start (Modell + Stichprobe), **Grounding übernehmen** (promote), Bearbeiten (Prompts, Filter-JSON, Grounding). Es darf **global nur ein** Corpus-Lauf gleichzeitig laufen — zweiter Start liefert **409** (`analysis_busy`), sofern nicht derselbe Profil-Lauf bereits läuft (dann **200** mit Status). **Anbindungen** (Ollama-URL) liegen auf **AI-Anbindungen** (`dls_ai_connector` + `AiRuntimeCredentials`). Die Layer-Metadaten (`dls_ai_analysis_config`, `dls_ai_action`) bleiben für andere Features; Schreibstil-/Klassifizierungs-Grounding wird primär in **`dls_ai_profile`** geführt und bei PATCH auf `reply_style_grounding` / `inbox_classification_grounding` aus den Aktionen mit synchronisiert (`AiActionDbService::sync_legacy_options_from_row` spiegelt auch in die Profil-Zeile).
 
-### Gemeinsame Historie (DB)
+### Tabellen & Install
 
-- **Tabelle:** `dls_writing_style_run` — Spalte **`analysis_type`**: `writing_style` \| `classification_suggestions` (Konstanten `WritingStyleHistoryService::ANALYSIS_*`). **`profile_text`** = vollständiger Text der letzten erfolgreichen Ausgabe (Markdown-Taxonomie oder Schreibstil-Profil).
-- **Install:** `inc/install-writing-style-history.php` — DB-Version inkl. `analysis_type` + Index.
-- **Service:** `WritingStyleHistoryService::log_success` / `log_error` — optionaler 5. Parameter `$analysis_type` (Default `writing_style`); Laufzeit kommt aus `dls_writing_style_started_unix` bzw. `dls_email_classification_started_unix`.
-- **REST:** `GET /dls/v1/ai/writing-style-history?limit=&offset=&analysis_type=` — **Default `analysis_type` = `writing_style`** (Abwärtskompatibilität). `GET /dls/v1/ai/writing-style-history/{id}` liefert die Zeile inkl. `analysis_type`.
+- **`dls_ai_profile`** / **`dls_ai_profile_run`:** `inc/install-ai-profile-tables.php` (Option `dls_ai_profile_db_version`). Ein Profil je `(name, source_type)` — Seeds: `writing_style`+`email`, `classification`+`email` (Prompts aus den früheren Learn-Skripten; User-Prompt mit `{{corpus}}`, `{{count}}`, `{{model}}`). Filter-JSON u. a. `direction`, `spam_status`, `sample_limit`, `min_body_chars`, `max_body_chars`; Klassifizierung: `require_substring` für Output-Check.
+- **Worker:** `inc/scripts/run-ai-profile.php --run-id=N` — Logik in `inc/ai-profile-run-execute.php` (Corpus → Platzhalter ersetzen → Ollama `/api/chat`, Timeout 14400s). Corpus-Builder: `AiEmailCorpusBuilder` + `AiCorpusBuilderRegistry` (`task` / `slack` → noch nicht implementiert).
+- **REST (neu):** `inc/routes/ai-profiles.php` — `GET/PATCH /dls/v1/ai/profiles`, `GET /dls/v1/ai/profiles/{id}`, `POST /dls/v1/ai/profiles/{id}/run`, `POST /dls/v1/ai/profiles/runs/{id}/promote`, `POST /dls/v1/ai/profiles/worker/stop`. Worker-State: Option `dls_ai_profile_worker_state`; Cron-Fallback: `dls_ai_profile_cron_worker`.
 
-### Schreibstil (`writing_style`)
+### Legacy-Historie & kompatible Endpunkte
 
-- **REST:** `inc/routes/ai-writing-style.php` — `GET /dls/v1/ai/writing-style-profile`, `POST /dls/v1/ai/learn-writing-style`, `POST /dls/v1/ai/stop-writing-style`, `POST /dls/v1/ai/writing-style-final-grounding` (`{ final_grounding }`).
-- **Corpus:** `dls_email` **ausgehend** (`direction = outbound`, kein Spam), Limit aus Option / Request.
-- **Optionen:** `dls_writing_style_status`, `dls_writing_style_profile`, `dls_writing_style_final_grounding`, Limits/Modell, PID, Cron/CLI — siehe Dateikopf der Route.
-- **Worker:** `inc/scripts/learn-writing-style.php` — CLI (`nohup php …`) oder Hook `dls_writing_style_cron_run`.
-- **Consumer:** `dls_get_active_writing_style_grounding()` — bevorzugt `final_grounding`, sonst `profile`.
+- **`dls_writing_style_run`:** bleibt bestehen; erfolgreiche/fehlgeschlagene Läufe des neuen Workers rufen weiter `WritingStyleHistoryService` auf, sodass `GET /dls/v1/ai/writing-style-history` gefüllt bleibt. Einmalige Migration alter Zeilen nach `dls_ai_profile_run` beim Install, wenn die neue Run-Tabelle leer ist.
+- **Schreibstil:** `inc/routes/ai-writing-style.php` — `GET/POST`-Endpunkte lesen bzw. starten über **`dls_ai_profile`** / `dls_ai_profile_begin_run_for_profile_id`; `dls_get_active_writing_style_grounding()` bevorzugt **`dls_ai_profile.grounding`**, dann Legacy.
+- **Klassifizierung:** `inc/routes/ai-email-classification-suggestions.php` — analog; `dls_get_active_email_classification_grounding()` bevorzugt Profil-Grounding; `GET email-classification-profile` mappt aus Runs + Profil.
 
-### Klassifizierung / Taxonomie (`classification_suggestions`)
+### Alte CLI-Skripte
 
-- **REST:** `inc/routes/ai-email-classification-suggestions.php` — `GET /dls/v1/ai/email-classification-profile` (u. a. `json` = Rohausgabe Markdown, `final_grounding` = bearbeiteter Text, `json_parsed` nur wenn der String gültiges JSON ist), `POST /dls/v1/ai/learn-email-classification`, `POST /dls/v1/ai/stop-email-classification`, `POST /dls/v1/ai/email-classification-final-grounding` (`{ final_grounding }`). **`functions.php`** lädt diese Datei neben `ai-writing-style.php`.
-- **Corpus:** `dls_email` **eingehend** (`direction = inbound`, kein Spam). Requirements-Check zählt ebenfalls nur inbound.
-- **Optionen:** `dls_email_classification_status`, `dls_email_classification_json` (Name historisch — Inhalt ist **Markdown**-Taxonomie), `dls_email_classification_final_grounding` (optional, user-edited; Vorrang vor `json`), `dls_email_classification_*` analog Schreibstil.
-- **Worker:** `inc/scripts/learn-email-classification-suggestions.php` — CLI oder `dls_email_classification_cron_run`. Prompt: zweistufige Taxonomie (regelbasierte Muster + PHP-Regelstruktur + modellbasierte Abschnitte); Erfolgs-Validierung: Ausgabe enthält **`### Regelbasierte Muster`**; optional äußerer Markdown-Codefence wird entfernt.
-
-### Frontend
-
-- **`refreshEmailAnalysisJobs`:** lädt **beide** Profile parallel; ein Intervall-Poll solange **irgendein** Job `running` ist; Toasts bei Übergang **running → done/error** pro Typ; Historie pro Typ: `analysis_type=writing_style` bzw. `classification_suggestions`.
-- Schreibstil: bearbeitbares finales Grounding speichern nur über **`/ai/writing-style-final-grounding`**, nicht nur lokalen State.
-- Klassifizierung: bearbeitbares finales Grounding über **`/ai/email-classification-final-grounding`**. **Consumer:** `dls_get_active_email_classification_grounding()` — bevorzugt `final_grounding`, sonst `dls_email_classification_json`.
+- `learn-writing-style.php` / `learn-email-classification-suggestions.php` werden von den REST-Startern nicht mehr verwendet; Referenz für Prompt-Texte. Optional manuell aufrufbar, solange die alten Status-Optionen nicht gesetzt sind.
 
 ## Project Management (PM)
 

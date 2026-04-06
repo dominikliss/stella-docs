@@ -6,15 +6,16 @@ _Source of agent rule in theme repo: `.cursor/rules/english-code-naming.mdc`._
 
 # English naming (code & files)
 
-All **developer-facing** names MUST be in **English**. This keeps the codebase consistent and searchable for mixed-language teams and tooling.
+All **developer-facing** names MUST be in **English**. This is an **always-on** convention: filenames, identifiers, and structural markup hooks used in code — not user-facing copy.
 
 ## Applies to
 
-- **File and folder names** — e.g. `admin-settings-page.js`, `mail-admin-tab.js`, not `verwaltung-page.js` / `mail-verwaltung-tab.js`.
-- **React components** — `function MailAdminTab` / `export default function AdminSettingsPage`, not German component identifiers.
-- **Hooks, helpers, modules** — `useToast`, `formatRestSaveError`, `mailPath`; no German function or variable names in source (except where mirroring external APIs).
+- **File and folder names** — e.g. `admin-settings-page.js`, `mail-admin-tab.js`, `messages-focus-inbox-row.js`; not `verwaltung-page.js`, `nachrichten-focus-inbox-row.js`, or German path segments.
+- **React components** — `function MailAdminTab` / `export default function AdminSettingsPage`, not German component or prop *names* (prop values shown to users may be German).
+- **Hooks, helpers, modules** — `useToast`, `formatRestSaveError`, `mailPath`; no German function, variable, parameter, or `const` names (except literals mirroring external APIs).
 - **PHP (theme code)** — class names, methods, `function dls_*` where the suffix describes behaviour in English; file names under `inc/` in English (`mail-admin-tab.php` pattern). Existing `dls_*` hooks/options that are already deployed may keep their slugs until a deliberate migration.
-- **SCSS partials** — English file names (`_admin-settings.scss`); BEM or block names in English unless tied 1:1 to a documented WP/class hook that must stay fixed.
+- **SCSS** — English partial file names (`_admin-settings.scss`); **variables, mixins, placeholders, function names** in English (e.g. `$black-3`, not `$fokus-rand`). **BEM / block classes** for new UI in English (`dls-messages-page__*`). Legacy classes tied to PHP templates may stay until a coordinated rename.
+- **HTML hooks in app code** — Prefer English `id` / `data-*` / `class` segments for new work (`dls-inbox-email-search`). Exception: stable mount points or WP body classes already in production (e.g. `.dls-nachrichten`) until an explicit migration.
 
 ## Does not replace product locale
 
@@ -30,7 +31,7 @@ Prefer **renaming to English** as part of the same change (update imports, PHP `
 | Avoid | Prefer |
 |-------|--------|
 | `VerwaltungPage`, `verwaltung-page.js` | `AdminSettingsPage`, `admin-settings-page.js` |
-| `NachrichtenInbox` (identifier) | `MessagesInbox` or `MailInbox` |
+| `NachrichtenInbox`, `nachrichten-focus-inbox-row.js` | `MessagesInbox`, `messages-focus-inbox-row.js` |
 | `const postfachListe = …` | `const mailboxList = …` |
 
 Use one clear English term per concept across PHP and JS (e.g. `mail`, `mailbox`, `message` — pick the domain term already dominant in the repo for that feature).

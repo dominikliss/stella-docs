@@ -62,6 +62,7 @@ _Source of agent rule in theme repo: `.cursor/rules/mail-nachrichten.mdc`._
 | GET `/mailboxes/{id}/email-folders` | Distinct IMAP folder paths from imported emails |
 | GET `/emails` | Paginated email list (filters: mailbox_id, client_id, direction, thread_id, spam_status, search) |
 | GET `/emails/{id}` | Full email row (body_html includes quoted history) |
+| GET `/emails/{id}/stella-chroma-raw` | Stella `GET /emails/document/email_{id}` → `{ id, document, metadata }` im JSON (Kopfdaten) |
 | PATCH `/emails/{id}` | Update client_id or spam_status |
 | GET `/emails/{id}/attachments` | List attachments |
 | GET `/emails/{id}/attachments/{attachment_id}` | Download attachment |
@@ -108,11 +109,13 @@ List endpoint strips quoted reply history from `body_html` via `MailHtmlSplitQuo
 
 | Component | Role |
 |---|---|
-| `messages-page.js` | Root: inbox thread list + filter bar + detail pane; mounts on `.dls-nachrichten` |
+| `messages-page.js` | Root: `/nachrichten` — `PageLayout` + grid, dark `.card` inbox, collapsible filters, `messages-focus-inbox-row.js`, conversation detail in `messages-conversation-sidebar.js` (`SidebarForm`), Schnellzugriff + complementary column; mounts on `.dls-nachrichten` |
+| `messages-focus-inbox-row.js` | Inbox row: avatar, name • thread ref, snippet, distinct `email_category` pills (German), time, Antworten, overflow links |
+| `messages-conversation-sidebar.js` | Wide `SidebarForm`: thread header (no `<header>`), `ScrollPanel` + `EmailConversationThread`, Kunde, mailto reply |
 | `mail-admin-tab.js` | Mailbox CRUD, IMAP test, chunk sync, folder-client mapping table, recompute metadata, clear client links |
-| `master-detail-layout.js` | Two-column master/detail (`.dls-master-detail`) |
+| `master-detail-layout.js` | Two-column master/detail (`.dls-master-detail`) — still used elsewhere; Nachrichten inbox no longer uses it |
 | `scroll-panel.js` | Scrollable flex child with optional header/footer |
-| `conversation-list-item.js` | Thread row (avatar, subject, client badge, attachment icon) |
+| `conversation-list-item.js` | Legacy thread row styling (dark master-detail); not used on `/nachrichten` (uses `messages-focus-inbox-row.js`) |
 | `email-conversation-thread.js` | Thread view: messages sorted asc by date, date separators |
 | `email-message-block.js` | Single message bubble (header, body, attachments) |
 | `email-detail-sidebar.js` | Sidebar: client assignment picker, spam/whitelist actions |
@@ -123,9 +126,9 @@ List endpoint strips quoted reply history from `body_html` via `MailHtmlSplitQuo
 | `message-thread.js` | Container for a list of `EmailMessageBlock`s |
 | `message-date-separator.js` | Date label row between messages |
 | `list-search-field.js` | Debounced search input (`.field-container` + `input[type="search"]` styles) |
-| `table-pagination.js` | Server-paginated numeric pager (`DEFAULT_TABLE_PAGE_SIZE = 200`) |
+| `table-pagination.js` | Server-paginated pager: prev/next chevrons flanking numeric page list + ellipsis, compact `from–to / total · current/total` meta (`DEFAULT_TABLE_PAGE_SIZE = 200`) |
 
-**SCSS:** `messages.scss` (badges, sync bar), `conversation-layout.scss` (layout), `filter-bar.scss` (inbox top bar).
+**SCSS:** `messages.scss` (badges, sync bar), `conversation-layout.scss` (thread bubbles, legacy list), `messages-page.scss` (dark `/nachrichten` shell under `.dls-messages-page`), `filter-bar.scss` (filter row), `inbox.scss` (blocklist tables).
 
 **JS helpers** (`src/helpers/`):
 - `mail-admin-shared.js` — `mailPath()`, `mailboxSchema` (Yup), `clientLabel()`

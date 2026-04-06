@@ -6,7 +6,7 @@ This document describes the **implemented** mail module in the ddashboard theme 
 
 | Path | UI |
 |------|-----|
-| `/nachrichten/` | Inbox / conversation list (`messages-page.js`) |
+| `/nachrichten/` | Inbox (`messages-page.js`) — `PageLayout` + grid: dark `.card` inbox, collapsible filters, thread detail, shortcuts + sidebar |
 | `/nachrichten/verwaltung/` | Mailbox admin (IMAP credentials, sync) |
 
 Registered in `inc/app-routes.php`. React mounts into `.dls-nachrichten`.
@@ -18,7 +18,7 @@ Option: `dls_mail_db_version` — current schema version constant: **`DLS_MAIL_D
 | Table | Purpose |
 |-------|---------|
 | `{prefix}dls_mailbox` | IMAP accounts, encrypted password, folder names, optional `imap_sync_extra_folders` (chunk sync of non-inbox folders) |
-| `{prefix}dls_email` | Messages per mailbox; unique `(mailbox_id, message_id, imap_folder)`; `spam_status` 0 = clean, 1 = likely spam, 2 = confirmed spam; `direction` inbound/outbound |
+| `{prefix}dls_email` | Messages per mailbox; unique `(mailbox_id, message_id, imap_folder)`; `spam_status` 0 = clean, 1 = likely spam, 2 = confirmed spam; `direction` inbound/outbound; `stella_indexed_at` = last **successful** Stella/Chroma upsert (kept while a new upsert is queued) |
 | `{prefix}dls_email_spam_blocklist` | Normalized sender addresses → forced spam (2) on sync |
 | `{prefix}dls_email_spam_whitelist` | Normalized sender addresses → no heuristic spam (0); emoji/subdomain rules skipped |
 | `{prefix}dls_mailbox_folder_client` | Optional IMAP folder → `client_id` mapping per mailbox |
@@ -43,7 +43,7 @@ Defined in `inc/routes/mailboxes.php` (and related).
 
 **Verwaltung UI:** Tabelle „IMAP-Ordner → Kunde“ unter `/nachrichten/verwaltung/` — Kundenwahl speichert per `POST`/`DELETE` auf `…/folder-clients` ohne separaten Speichern-Button.
 
-**Emails:** `GET /dls/v1/emails` (filters: `mailbox_id`, `direction`, `thread_id`, `spam_status`, `search`, pagination).
+**Emails:** `GET /dls/v1/emails` (filters: `mailbox_id`, `direction`, `thread_id`, `spam_status`, `search`, pagination). **`GET /dls/v1/emails/{id}/stella-chroma-raw`** — proxies to Stella **`GET /emails/document/email_{id}`**; Stella returns `{ id, document, metadata }` (Chroma `…/collections/{uuid}/get`); WordPress wraps as `{ ok, document_id, stella: { … } }`.
 
 **Metadata rebuild (batch):** `POST /dls/v1/emails/recompute-metadata` — JSON `mailbox_id` (optional; omit = all mailboxes), `threads` / `clients` (optional booleans, default `true`). Recomputes `thread_id` (see `MailThreadIdService`) and/or `client_id` from current matching rules. **Verwaltung:** button „Neu gruppieren“ per mailbox.
 
@@ -85,12 +85,16 @@ Confirming spam adds addresses to the blocklist and removes them from the whitel
 
 | File | Notes |
 |------|--------|
-| `src/components/messages-page.js` | Inbox, filters, detail sidebar, spam actions, block/allow lists |
+| `src/components/messages-page.js` | `PageLayout` inbox: filters, thread list grouped by `thread_id`, Schnellzugriff, spam lists; opens `messages-conversation-sidebar.js` for detail |
+| `src/components/messages-conversation-sidebar.js` | Fixed right `SidebarForm` (wide): identity + subject, `ScrollPanel` + `EmailConversationThread`, Kunde zuweisen, mailto reply draft |
+| `src/components/email-detail-sidebar.js` | Per-message „Kopfdaten“ (`SidebarForm`): `EmailMetaTable` … **Anhänge**, Roh-Header, **ChromaDB-Roh-JSON** (`GET /dls/v1/emails/{id}/stella-chroma-raw`), vollständiger Body |
+| `src/components/email-meta-table.js` | Shared Kopfdaten key/value table (full view + sidebar); **Klassifizierung** block: Ebene 1 (`email_category`, `email_action`) und Ebene 2 (`email_l2_*`), inkl. gespeicherter englischer Tokens unter der deutschen Bezeichnung |
+| `src/components/messages-focus-inbox-row.js` | Inbox row: avatar, snippet, distinct per-thread `email_category` pills (German labels), time, actions |
 | `src/components/list-search-field.js` | Debounced search; uses `.field-container` + form input styles |
 
 **List search:** `ListSearchField` — wrapper `field-container dls-list-search-field`; `input[type="search"]` styled in `form.scss`.
 
-**Filter bar:** `.dls-messages-inbox .filter-bar` uses `align-items: center` (see `assets/scss/components/messages.scss` + `filter-bar.scss`).
+**Layout / SCSS:** Dark UI shell in `assets/scss/components/messages-page.scss` (scoped under `.dls-messages-page`). Filter row uses `.filter-bar` + `filter-bar.scss`; blocklist tables in `inbox.scss`.
 
 ## Build / SCSS
 

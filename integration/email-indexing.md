@@ -41,9 +41,21 @@ Reply generation:
 | `inc/email-embed-cron.php` | WP-Cron job — `dls_email_embed_process_cron` every 2 min |
 | `inc/services/email-crud-service.php` | `maybe_enqueue_email_embed()` — enqueues on IMAP save |
 | `inc/services/email-embed-queue-service.php` | Queue processing, batch size setting |
-| `inc/services/stella-email-index-client.php` | HTTP client — `POST /emails/upsert`, `build_metadata()` |
+| `inc/services/stella-email-index-client.php` | HTTP client — `POST /emails/upsert`, `GET /emails/document/{id}`, `build_metadata()` |
 | `inc/routes/mail-email-embed.php` | REST: `POST /dls/v1/emails/{id}/embed-index` (manual re-index) |
+| `inc/routes/mail-emails.php` | `GET /dls/v1/emails/{id}` adds `stella_embed_queue` + `stella_indexed_at`; **`GET /dls/v1/emails/{id}/stella-chroma-raw`** → Stella **`GET /emails/document/email_{id}`** → response `{ id, document, metadata }` wrapped as `{ ok, document_id, stella }` |
 | `inc/routes/stella-api-test.php` | REST: health probe + query test endpoints |
+
+### `dls_stella_email_index_url` (must match proxy path)
+
+`StellaEmailIndexClient` does **not** inject `/stella` or a port — it only concatenates `{base}/emails/upsert` and `{base}/emails/document/{id}`. Set the option to the same base you would use before `/emails/…` in curl, e.g. **`http://<host>:8080/stella`** when Caddy maps `/stella` → stella-api (direct `uvicorn` on 8001 without proxy would be `http://127.0.0.1:8001` if the app is mounted at root there).
+
+### Column on `dls_email`: `stella_indexed_at`
+
+- `datetime NULL` — set in WordPress when Stella returns **HTTP success** for `POST /emails/upsert` (Chroma upsert).
+- **Not** cleared when the email is re-enqueued: a row in `dls_email_embed_queue` means a **new** upsert is pending; the timestamp stays as the last **confirmed** success until the next HTTP success overwrites it.
+- **Not** set when the worker skips the row (missing email, `spam_status > 0`): the queue row is dropped without a remote call.
+- **Does not** prove the document still exists in Chroma if someone deleted it out-of-band; the Nachrichten UI labels this as “Stand laut WordPress”.
 
 ### Queue Table: `dls_email_embed_queue`
 
@@ -75,6 +87,7 @@ Verify these match what Stella's `where` filters expect:
 | `date` | int | Unix timestamp |
 | `subject` | string | Email subject |
 | `email_id` | int | Raw MySQL ID for cross-referencing |
+| `category`, `action`, `l2_*` | string | English tokens as in `dls_email` (Layer-1/2); `l2_urgency` / `l2_confidence` use `immediate`…`later` and `high`…`low` after migration v23 |
 
 ### Enqueue Logic
 
@@ -114,13 +127,25 @@ Flow:
 3. `chroma.query(col_id, embedding, where or None, n_results)`
 4. Returns raw ChromaDB result
 
+### `GET /emails/document/{doc_id}`
+
+✅ Implemented in `app/routers/emails.py` + `chroma.get_by_id` in `app/services/chroma.py`
+
+Flow:
+1. `col_id = await chroma.get_or_create_collection("emails")`
+2. `result = await chroma.get_by_id(col_id, doc_id)` → Chroma v2 `POST …/collections/{col_id}/get` with `ids: [doc_id]`, `include: ["documents", "metadatas"]`
+3. If `not result.get("ids")` → **404**
+4. Returns `{ "id", "document", "metadata" }` (first element of each Chroma array)
+
+ddashboard: `GET /dls/v1/emails/{id}/stella-chroma-raw` wraps that body under `stella` plus `ok` and `document_id`.
+
 ---
 
 ## ChromaDB Collection
 
 - **Name:** `emails`
 - **Created:** lazily on first upsert via `get_or_create_collection()`
-- **Status:** not yet created (no emails indexed as of 2026-04-05)
+- **Direct debug:** `POST http://localhost:8000/api/v2/tenants/default_tenant/databases/default_database/collections/{uuid}/get` with `{"ids":["email_N"],"include":["documents","metadatas"]}`
 
 ---
 
