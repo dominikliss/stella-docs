@@ -20,7 +20,8 @@ _Source of agent rule in theme repo: `.cursor/rules/common-mistakes.mdc`._
 | Building custom confirm dialog | Use `DeleteModal` with `description` prop |
 | Hardcoding `invalidateResolution` query args | Import from `src/queries.js` (`TRANSACTION_LIST_QUERY`, etc.) |
 | Adding `window.location.reload()` after save | Invalidate the entity cache instead — `invalidateResolution('getEntityRecords', ...)` |
-| User-facing **„KI“** for artificial intelligence (`KI-Chat`, `E-Mail-KI-…`) | Use **„AI“** — `AI-Chat`, `E-Mail-AI-Analysen`, `AI-Anbindungen`, routes `ai-anbindungen` / `ai-assistent` |
+| User-facing **„KI“** for artificial intelligence (`KI-Chat`, `E-Mail-KI-…`) | Use **„AI“** — `AI-Chat`, `E-Mail-AI-Analysen`, `AI-Anbindungen`, routes `ai-anbindungen` / `ai-profiles` |
+| German **code** names (`nachrichten-focus-row.js`, `function NachrichtenInbox`) | English filenames and symbols — see **`english-code-naming.mdc`** (UI copy may stay German) |
 
 ## SCSS mistakes
 

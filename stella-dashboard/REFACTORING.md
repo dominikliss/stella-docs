@@ -13,7 +13,7 @@ This document tracks what was done in the March 2026 cleanup and what's left.
 
 ### Phase 2 — God File Splits
 - [x] helpers.js → barrel + 6 sub-modules (currency, dates, data-utils, acf-normalize, rest, contact)
-- [x] management-page.js (1896→95 lines) → 5 sub-components (ksef-settings, tracking-time-settings, youtube-settings, ai-provider-settings, email-analysis-panel)
+- [x] management-page.js (1896→95 lines) → sub-components (ksef-settings, tracking-time-settings, youtube-settings, ai-provider-settings); E-Mail-AI UI später als `ai-profiles-page.js` (Verwaltung → AI-Profile)
 - [x] mail-admin-tab.js (2012→946 lines) → 4 sub-components (mailbox-imap-status, mailbox-category-manager, mailbox-folder-detail, mailbox-sync-controls)
 - [x] mailbox-db-service.php (1575→380 lines) → 3 focused services (EmailCrudService, EmailSpamService, EmailCategoryDbService)
 - [x] file-service.php (1574→818 lines) → 2 focused services (InvoicePdfService, CommissionReportService)

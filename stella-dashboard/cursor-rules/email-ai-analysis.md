@@ -6,29 +6,30 @@ _Source of agent rule in theme repo: `.cursor/rules/email-ai-analysis.mdc`._
 
 # E-Mail-AI-Analysen (Theme)
 
-Vollständige Architektur: **`architecture.mdc`** → Abschnitt **„E-Mail-AI-Analysen (Ollama, Verwaltung → AI-Analyse)“**.
+Vollständige Architektur: **`architecture.md`** → Abschnitt **„E-Mail-AI-Analysen (Ollama, Verwaltung → AI-Profile)“**.
 
 ## Kurzreferenz
 
 | Thema | Schreibstil | Klassifizierung |
 |--------|-------------|------------|
-| `analysis_type` | `writing_style` | `classification_suggestions` |
+| Profil `name` | `writing_style` | `classification` |
+| `source_type` | `email` | `email` |
 | Corpus (`dls_email`) | `direction = outbound` | `direction = inbound` |
-| Optionen-Präfix | `dls_writing_style_*` | `dls_email_classification_*` |
-| Route-Datei | `inc/routes/ai-writing-style.php` | `inc/routes/ai-email-classification-suggestions.php` |
-| Worker | `inc/scripts/learn-writing-style.php` | `inc/scripts/learn-email-classification-suggestions.php` |
-| Letzte Ausgabe | `profile` + `final_grounding` | `json` (Roh-Markdown) + `final_grounding` Option `dls_email_classification_final_grounding`; aktiv: `dls_get_active_email_classification_grounding()` |
+| Primäre Tabelle | `dls_ai_profile` + `dls_ai_profile_run` | gleich |
+| REST (neu) | `GET/PATCH /dls/v1/ai/profiles`, `POST …/run`, promote, worker/stop | gleich |
+| Legacy kompatibel | `ai-writing-style.php` (Profil-gestützt) | `ai-email-classification-suggestions.php` |
+| Worker | `run-ai-profile.php` + `ai-profile-run-execute.php` | gleich |
+| Aktives Grounding | `dls_ai_profile.grounding` zuerst | gleich; `dls_get_active_email_classification_grounding()` |
 
-- **Historie:** eine Tabelle `dls_writing_style_run`, Spalte **`analysis_type`**; `WritingStyleHistoryService` mit 5. Parameter bei Log-Aufrufen aus Klassifizierungs-Worker/Route.
-- **Konflikt:** nur ein Job aktiv; 409 wenn die andere Analyse noch `running`.
-- **UI:** `ai-analysis-actions-page.js` / `email-analysis-panel.js` — `refreshEmailAnalysisJobs`, Select **Analyse-Typ**, getrennte Historie-Listen per `analysis_type`-Query.
-- **Prompt ändern:** nur im jeweiligen Worker-Skript; Klassifizierung: Erfolg wenn **`### Regelbasierte Muster`** in der Antwort vorkommt.
+- **Historie:** weiterhin `dls_writing_style_run` via `WritingStyleHistoryService` (Worker protokolliert parallel); zusätzlich `dls_ai_profile_run` als kanonische Run-Historie.
+- **Konflikt:** global nur ein aktiver Run; 409 `analysis_busy`, außer derselbe Profil-Lauf läuft schon (200).
+- **UI:** `ai-profiles-page.js` auf `/verwaltung/ai-profiles/`.
+- **Prompt ändern:** in DB (`dls_ai_profile.system_prompt` / `user_prompt`) oder Seed/Migration; User-Prompt-Platzhalter `{{corpus}}`, `{{count}}`, `{{model}}`. Klassifizierung: Worker prüft `require_substring` (Standard `### Regelbasierte Muster`).
+- **Maschinenlesbare Felder:** In `dls_email` (Layer-2) unverändert englische Tokens; Taxonomie-Markdown bleibt deutschsprachig wo vorgesehen.
 
-## Checkliste: neue Analyse-Art (3. Typ)
+## Checkliste: neues Profil / neuer Quelltyp
 
-1. Konstante in `WritingStyleHistoryService` + `sanitize_analysis_type()`.
-2. Eigene WP-Optionen + REST-Datei (oder erweiterte generische Route) + CLI-Skript unter `inc/scripts/`.
-3. `functions.php` — `require` der Route.
-4. Start-Handler: prüfen, ob **andere** Analyse-Jobs `running` sind (409).
-5. Historie: `log_success` / `log_error` mit korrektem `analysis_type`; UI-Query `analysis_type=…`.
-6. Nach DB-Spaltenänderung: `install-writing-style-history.php` Version / dbDelta.
+1. Optional `WritingStyleHistoryService`-Konstante nur wenn die Legacy-Historie einen neuen `analysis_type` braucht.
+2. `dls_ai_profile`-Zeile (name + source_type) + Filter-JSON; bei neuem `source_type` Builder in `AiCorpusBuilderRegistry` registrieren.
+3. `functions.php` — Route/Install nur wenn neue Endpoints oder Tabellen.
+4. `dls_ai_profile_begin_run_for_profile_id` / Mutex beibehalten (ein globaler Worker).
