@@ -17,6 +17,12 @@ Small **Node.js + Express** helper on the Stella server that runs **`imapsync`**
 
 ---
 
+## ddashboard proxy (WordPress)
+
+The theme exposes logged-in **`dls/v1/imap-sync/*`** routes that forward to this service (`dls_imap_sync_base_url` — no credentials stored in WordPress). **`GET /jobs`** is proxied so the Werkzeuge UI can list migrations and progress without calling Stella from the browser.
+
+---
+
 ## Dependencies
 
 - **`imapsync`** available on `PATH` inside the container (install in Dockerfile image).
