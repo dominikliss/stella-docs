@@ -87,10 +87,10 @@ So “Stella” as a **product name** can mean the **server** or the **assistant
 
 ## 4a. Stella `imap-sync` (mailbox copy)
 
-- **Purpose:** Operator-facing **server-to-server IMAP copy** (`imapsync`), with HTTP endpoints to start jobs, poll status, list jobs, fetch logs, and cancel a running job.
-- **Not wired to WordPress:** ddashboard does **not** call this API. Nachrichten sync remains **PHP IMAP → `dls_email`** (see theme mail docs).
-- **Contract:** [`../stella-server/imap-sync-service.md`](../stella-server/imap-sync-service.md) — `POST /start`, `GET /status/:id`, `GET /jobs`, `DELETE /jobs/:id`, etc.
-- **ddashboard UI:** Werkzeuge → E-Mail-Migration uses **`/dls/v1/imap-sync/*`** (PHP proxy), including **`GET /imap-sync/jobs`** for the live job list.
+- **Purpose:** Operator-facing **server-to-server IMAP copy** (`imapsync`), with HTTP endpoints to start jobs, poll status, list jobs, fetch logs, health probe, and cancel a running job. Passwords are written to **temp passfiles** (`--passfile1` / `--passfile2`), not passed on the CLI.
+- **WordPress:** Werkzeuge → E-Mail-Migration proxies **`/dls/v1/imap-sync/*`** to Stella (`inc/routes/imap-sync-proxy.php`). Nachrichten DB sync stays **PHP IMAP → `dls_email`** — separate pipeline.
+- **Contract:** [`../stella-server/imap-sync-service.md`](../stella-server/imap-sync-service.md) — `GET /health`, `POST /start`, `GET /status/:id`, `GET /status/:id/log`, `GET /jobs`, `DELETE /jobs/:id`, log cap, finished-job TTL.
+- **Proxy routes:** `GET /imap-sync/config` (includes health probe: `healthy`, `running_jobs`), `GET /imap-sync/health`, `POST /start` (forwards **400** validation messages), `GET /jobs`, `DELETE /jobs/{id}`, `GET /status/{id}/log`, `GET /status/{id}`.
 - **Security:** Passwords are sent in JSON to `POST /start`; restrict network access and use TLS on the public edge.
 
 ---

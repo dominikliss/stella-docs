@@ -8,7 +8,7 @@ Small **Node.js + Express** helper on the Stella server that runs **`imapsync`**
 - **Listen port (container):** `3001`
 - **Public entry:** Caddy on `:8080` under **`/imap-sync*`** → `imap-sync:3001`
 
-**Caddy / path note:** Express registers routes at the **app root** (`/start`, `/status/…`, `/jobs`, …). The reverse proxy must forward to the container so those paths hit the app (typically **strip** the `/imap-sync` prefix). Example public URLs: `http://<stella-host>:8080/imap-sync/start` → upstream `/start`.
+**Caddy / path note:** Express registers routes at the **app root** (`/health`, `/start`, `/status/…`, `/jobs`, …). The reverse proxy must forward to the container so those paths hit the app (typically **strip** the `/imap-sync` prefix). Example: `http://<stella-host>:8080/imap-sync/start` → upstream `/start`.
 
 **Related**
 
@@ -19,53 +19,68 @@ Small **Node.js + Express** helper on the Stella server that runs **`imapsync`**
 
 ## ddashboard proxy (WordPress)
 
-The theme exposes logged-in **`dls/v1/imap-sync/*`** routes that forward to this service (`dls_imap_sync_base_url` — no credentials stored in WordPress). **`GET /jobs`** is proxied so the Werkzeuge UI can list migrations and progress without calling Stella from the browser.
+The theme exposes logged-in **`dls/v1/imap-sync/*`** routes that forward to this service (`dls_imap_sync_base_url` — WordPress does not persist migration passwords). Proxied paths include **`/health`**, **`POST /start`**, **`GET /jobs`**, **`GET /status/{id}`**, **`GET /status/{id}/log`**, **`DELETE /jobs/{id}`**. The Werkzeuge UI uses **`GET /jobs`** for the live list and **`DELETE /jobs/{id}`** to cancel a running job.
 
 ---
 
-## Dependencies
+## Credentials and `imapsync` invocation
 
-- **`imapsync`** available on `PATH` inside the container (install in Dockerfile image).
-- Process spawned: `imapsync` with CLI flags derived from the JSON body (see below).
+- **`POST /start`** still accepts **`source.password`** and **`destination.password`** in JSON (HTTPS / trusted network only).
+- The service writes each password to a **temporary file** (`mkdtemp` under OS tmpdir, file mode **0o600**) and passes **`--passfile1`** / **`--passfile2`** to **`imapsync`** (passwords are **not** passed on the command line).
+- On process **`close`**, passfiles and temp dirs are **unlinked** via `cleanupPassfiles`.
+
+Fixed **`imapsync`** flags (in addition to host, user, passfiles, port, ssl/tls): **`--all`**, **`--subscribeall`**, **`--nofoldersizes`**, **`--nolog`**.
+
+---
+
+## Validation (`POST /start`)
+
+Request bodies are validated before spawn. **`400`** responses use JSON **`{ "error": "<message>" }`** (e.g. `source.host: required string`, `source.port: must be integer 1-65535`, `source.encryption: must be one of ssl, tls, none`). WordPress forwards these as **`400`** where possible so the UI can show the message.
+
+---
+
+## Job lifecycle and memory
+
+| Mechanism | Detail |
+|-----------|--------|
+| **Storage** | In-memory `jobs[id]` — **lost on container restart** |
+| **Log cap** | **`MAX_LOG_LINES` (500)** — oldest line dropped when appending (`pushLog`) |
+| **Finished job TTL** | **`JOB_TTL_MS` (4 hours)** — every **10 minutes**, non-`running` jobs older than TTL are **deleted** from `jobs` |
+| **Cancel** | **`DELETE /jobs/:id`** kills the child process; job **`status`** becomes **`cancelled`** |
 
 ---
 
 ## API
 
-All endpoints accept/return **JSON** (`Content-Type: application/json` where a body is used).
+All endpoints use **JSON** where a body or structured response applies.
 
-### `POST /start`
-
-Starts a new job: spawns `imapsync` with source and destination credentials.
-
-**Request body**
-
-| Field | Type | Required | Notes |
-|-------|------|----------|--------|
-| `source` | object | yes | IMAP “from” account |
-| `source.host` | string | yes | |
-| `source.user` | string | yes | |
-| `source.password` | string | yes | |
-| `source.port` | number | no | default `993` |
-| `source.encryption` | string | no | `"ssl"` (default), `"tls"`, or `"none"` |
-| `destination` | object | yes | IMAP “to” account — same shape as `source` |
-
-**`imapsync` flags** (fixed in addition to host/user/password/port):
-
-- `--all`, `--subscribeall`, `--nofoldersizes`, `--nolog`
-- Encryption: maps to `--ssl1` / `--tls1` / `--nossl1 --notls1` for source and `--ssl2` / … for destination.
+### `GET /health`
 
 **Response** `200`
 
 ```json
-{ "id": "<uuid>" }
+{ "status": "ok", "running_jobs": 0 }
 ```
 
-**Response** `400` — missing required fields
+`running_jobs` counts jobs with `status === "running"`.
 
-```json
-{ "error": "Missing required fields" }
-```
+---
+
+### `POST /start`
+
+**Request body** — `source` and `destination` objects:
+
+| Field | Type | Required | Notes |
+|-------|------|----------|--------|
+| `host` | string | yes | |
+| `user` | string | yes | |
+| `password` | string | yes | written to temp passfile only |
+| `port` | integer | no | default **993** if omitted; must be **1–65535** if sent |
+| `encryption` | string | no | **`ssl`** (default), **`tls`**, or **`none`** |
+
+**Response** `200`: `{ "id": "<uuid>" }`
+
+**Response** `400`: `{ "error": "<validation message>" }`
 
 ---
 
@@ -73,96 +88,75 @@ Starts a new job: spawns `imapsync` with source and destination credentials.
 
 Returns the job **without** the `log` array (summary only).
 
-**Response** `200` — job object (shape below, minus `log`)
-
-**Response** `404`
-
-```json
-{ "error": "Job not found" }
-```
+**Response** `404`: `{ "error": "Job not found" }`
 
 ---
 
 ### `GET /status/:id/log`
 
-Returns the full log lines for a job.
-
-**Response** `200`
-
 ```json
 { "id": "<uuid>", "log": ["…", "…"] }
 ```
-
-**Response** `404` — same as above
 
 ---
 
 ### `GET /jobs`
 
-Map of **all** jobs (id → summary), each entry **omits** `log`.
-
-**Response** `200`
-
-```json
-{
-  "<uuid>": { "status": "running", "started_at": "…", … },
-  "…": { … }
-}
-```
+Object map **id → summary** (each entry omits `log`).
 
 ---
 
 ### `DELETE /jobs/:id`
 
-Cancels a **running** job by killing the child process.
+Cancels a **running** job (`kill` on child). **`400`** if not running; **`404`** if unknown id.
 
-**Response** `200`
-
-```json
-{ "cancelled": true }
-```
-
-**Response** `404` — unknown id
-
-**Response** `400` — job exists but `status !== "running"`
+**Response** `200`: `{ "cancelled": true }`
 
 ---
 
-## Job object (in-memory)
+## Progress parsing (`imapsync` stdout)
 
-Jobs are stored in a process-local object (`jobs[id]`). They are **lost on container restart**; there is no database persistence in this script.
+Best-effort line parsing (adjust if **`imapsync`** output format changes):
 
-| Field | Type | Notes |
-|-------|------|--------|
-| `status` | string | `"running"` \| `"done"` \| `"error"` \| `"cancelled"` |
-| `started_at` | string (ISO) | |
-| `finished_at` | string (ISO) \| `null` | set when the process exits or job is cancelled |
-| `progress` | number | 0–100; from `messages_transferred / messages_total` while running; set to 100 on success exit |
-| `current_folder` | string \| `null` | parsed from `imapsync` stdout (`Folder […]`) |
-| `folders_done` | string[] | folders completed when moving to the next |
-| `messages_transferred` | number | from `(\d+)/(\d+)` on stdout |
-| `messages_total` | number | |
-| `messages_skipped` | number | from `N messages skipped` (case-insensitive) |
-| `messages_failed` | number | from `N messages failed` |
-| `log` | string[] | stdout/stderr lines (only in full job; omitted in `/status/:id` and `/jobs` summaries) |
-| `error` | string \| `null` | e.g. `imapsync exited with code <n>` when exit code ≠ 0 |
+| Signal | Regex / rule | Effect |
+|--------|----------------|--------|
+| Folder line | `^Folder\s+\d+/\d+\s+\[(.+?)\]` | Updates **`current_folder`**; previous folder appended to **`folders_done`** when it changes |
+| Messages in folder | `^Host1: folder \[.+?\] selected (\d+) messages` | Adds to **`messages_total`** (running sum across folders) |
+| Copied message | `^msg\s+.+?\s+\{\d+\}\s+copied to\s` | **`messages_transferred`** += 1; **`progress`** = round(transferred / total × 100) if total > 0 |
+| Skipped | `^msg\s+.+?skipped` (case-insensitive) | **`messages_skipped`** += 1 |
+| Failed count | `(\d+) messages? failed` (case-insensitive) | Sets **`messages_failed`** |
 
-**Stdout parsing** (best-effort): folder lines, progress fraction, skipped/failed counts — depends on `imapsync` output format; adjust regexes if the binary’s log format changes.
+On exit: **`progress`** = **100** if exit code **0**, else keep last computed value; **`status`** = **`done`** or **`error`**; **`error`** message if non-zero exit.
+
+---
+
+## Job object (summary fields)
+
+| Field | Notes |
+|-------|--------|
+| `status` | `running` \| `done` \| `error` \| `cancelled` |
+| `started_at` / `finished_at` | ISO strings |
+| `progress` | 0–100 |
+| `current_folder` | string \| null |
+| `folders_done` | string[] |
+| `messages_transferred` / `messages_total` / `messages_skipped` / `messages_failed` | numbers |
+| `error` | string \| null |
+| `log` | full job only; omitted in `/status/:id` and `/jobs` summaries |
 
 ---
 
 ## Security and operations
 
-1. **Credentials in transit:** `POST /start` carries **plain passwords**. Only call over **HTTPS** (or VPN) and restrict who can reach `:8080` / the imap-sync path.
-2. **No authentication in the snippet:** Put the service **behind** Caddy auth, IP allowlist, or VPN — same trust zone as other internal Stella tools.
-3. **Not integrated with ddashboard:** WordPress does not call this API today; it is an **operator / migration** tool on Stella.
-4. **Single-instance memory:** Listing jobs reflects **this process only**; scaling to multiple replicas would require shared storage and is out of scope for the current script.
+1. **Passwords in HTTP JSON** to `POST /start` — use **TLS** and **network restriction** (Caddy, VPN, IP allowlist).
+2. **Passfiles** live briefly on disk under the OS temp dir with **0o600**; cleaned on **`imapsync` exit**.
+3. **No auth in the snippet** — same as before: protect at the edge.
+4. **Single process** — job list is **one Node instance** only.
 
 ---
 
 ## Logs
 
-Use Docker logs for the compose service, e.g.:
+Container stdout/stderr plus per-job **`log`** array (capped). Example:
 
 ```bash
 docker logs <imap-sync-container-name> --tail 100
