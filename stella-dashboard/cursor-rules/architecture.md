@@ -279,7 +279,7 @@ assets/scss/                 # SCSS source (ScssPhp, compiled on theme load when
 - `/verwaltung` has sub-routes: `buchhaltung`, `projekte`, `marketing`, `ai-anbindungen`, `ai-profiles`, `nachrichten` (tab selection via `data-subroute`). After changing sub-route slugs, flush permalinks (Settings → Permalinks → Save).
 - `/marketing` has sub-routes: `start` (default; `/marketing/` redirects), `youtube` — PHP `.sub-header` tabs + `.site-meta` h1 + `data-subroute` on `.dls-marketing` (same shell as Buchhaltung + Verwaltung tabs).
 - `/werkzeuge` has sub-routes: `email-migration` (default; `/werkzeuge/` opens it) — PHP `.sub-header` + `.site-meta` h1 + `tools-page.js` on `.dls-werkzeuge` (`data-subroute`). Nav link in `header.php`.
-- **E-Mail-Migration** (`email-migration-tab.js`): **`POST /dls/v1/imap-sync/start`**, **`GET /dls/v1/imap-sync/jobs`** (poll), **`GET /dls/v1/imap-sync/status/{id}`**; proxy **`inc/routes/imap-sync-proxy.php`**, option **`dls_imap_sync_base_url`**. UI shows server jobs + real progress from Stella.
+- **E-Mail-Migration** (`email-migration-tab.js`): **`POST /dls/v1/imap-sync/start`** (direct start), **`GET /dls/v1/imap-sync/jobs`** (poll); proxy **`inc/routes/imap-sync-proxy.php`**, option **`dls_imap_sync_base_url`**. List = Stella jobs only.
 - `AdminSettingsPage` in `admin-settings-page.js`: switches between `MailAdminMailboxes` (nachrichten), `AiConnectorsPage` / `AiProfilesPage` (AI tabs), and `ManagementPage` (buchhaltung/projekte/marketing).
 - Add new screens: add to `dls_get_app_routes()`, add `add_rewrite_rule`, add to `admin-settings-page.js` tab list if it's a Verwaltung tab, mount React component. Flush permalinks after adding.
 - **Do not** create a WP page with the same slug.
