@@ -21,7 +21,7 @@ All services run via Docker Compose at `/opt/services/docker-compose.yml`.
 |---------|---------|------|-------|
 | `caddy` | Docker (caddy:alpine) | 8080 (public) | Reverse proxy — routes /ollama, /imap-sync, /stella |
 | `stella-api` | Docker (network_mode: host) | 8001 | FastAPI via uvicorn |
-| `imap-sync` | Docker (Node.js) | 3001 (internal) | IMAP sync service |
+| `imap-sync` | Docker (Node.js) | 3001 (internal) | **`imapsync` wrapper** (Express): start/status/jobs — see [`imap-sync-service.md`](imap-sync-service.md) |
 | `chromadb` | systemd | 8000 | Vector database (v1.5.5, v2 API) |
 | `ollama` | systemd | 11434 | LLM inference |
 
@@ -40,12 +40,14 @@ Config: `/opt/services/caddy/Caddyfile`
 ```
 :8080 {
     /ollama*     → 172.18.0.1:11434   (Ollama)
-    /imap-sync*  → imap-sync:3001     (IMAP sync service)
+    /imap-sync*  → imap-sync:3001     (Express → imapsync CLI — strip prefix so upstream sees /start, /status/…)
     /stella*     → 172.18.0.1:8001    (Stella API)
 }
 ```
 
 **Note:** `stella-api` uses `network_mode: host` so it reaches Ollama and ChromaDB via `127.0.0.1` directly. Caddy routes to it via the Docker bridge gateway `172.18.0.1`.
+
+**imap-sync:** Express listens on `/start`, `/status/:id`, `/jobs`, etc. Ensure Caddy forwards **`/imap-sync` → `/`** (or equivalent) so paths match the app. Details: [`imap-sync-service.md`](imap-sync-service.md).
 
 ---
 

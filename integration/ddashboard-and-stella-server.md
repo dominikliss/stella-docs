@@ -1,11 +1,12 @@
 # ddashboard and Stella server — how they fit together
 
-This document describes the **roles**, **network paths**, **data flows**, and **operational boundaries** between the **ddashboard** WordPress theme (Hetzner managed hosting) and the **Stella** stack (Hetzner dedicated server: FastAPI, Ollama, ChromaDB, Caddy, optional IMAP-sync service).
+This document describes the **roles**, **network paths**, **data flows**, and **operational boundaries** between the **ddashboard** WordPress theme (Hetzner managed hosting) and the **Stella** stack (Hetzner dedicated server: FastAPI, Ollama, ChromaDB, Caddy, optional **IMAP mailbox copy** service).
 
 **Related docs**
 
 - Server topology and ports: [`../stella-server/infrastructure.md`](../stella-server/infrastructure.md)
 - Stella HTTP API (FastAPI): [`../stella-server/stella-api.md`](../stella-server/stella-api.md)
+- Stella **imapsync** helper (Express on `:3001`): [`../stella-server/imap-sync-service.md`](../stella-server/imap-sync-service.md)
 - Email embed queue end-to-end: [`email-indexing.md`](email-indexing.md)
 - WordPress theme architecture (long): [`../stella-dashboard/architecture.md`](../stella-dashboard/architecture.md)
 
@@ -16,7 +17,7 @@ This document describes the **roles**, **network paths**, **data flows**, and **
 | System | Role |
 |--------|------|
 | **ddashboard** | Custom WordPress theme: CRM, accounting, IMAP mail storage in MySQL (`dls_*` tables), REST API `dls/v1`, React SPA, Anthropic-based AI chat and Ollama-based email analyses (jobs started from WP). **Source of truth** for email rows, clients, transactions, and configuration stored in WP options. |
-| **Stella** | Dedicated AI / services host: **Ollama** (LLM + embeddings), **ChromaDB** (vector store v2 API), **stella-api** (FastAPI) exposing `/emails/upsert`, `/emails/query`, etc., **Caddy** reverse proxy on `:8080`. Optionally separate **imap-sync** container (not the same as ddashboard’s IMAP sync). |
+| **Stella** | Dedicated AI / services host: **Ollama** (LLM + embeddings), **ChromaDB** (vector store v2 API), **stella-api** (FastAPI) exposing `/emails/upsert`, `/emails/query`, etc., **Caddy** reverse proxy on `:8080`. Optional **`imap-sync`** service: Express + **`imapsync`** CLI to copy mail between two IMAP accounts (migration tool — **not** ddashboard’s import into `dls_email`). |
 
 Neither system replaces the other: WordPress owns relational data and user sessions; Stella owns **vector search** and can run **heavy models** close to Ollama/Chroma.
 
@@ -84,6 +85,15 @@ So “Stella” as a **product name** can mean the **server** or the **assistant
 
 ---
 
+## 4a. Stella `imap-sync` (mailbox copy)
+
+- **Purpose:** Operator-facing **server-to-server IMAP copy** (`imapsync`), with HTTP endpoints to start jobs, poll status, list jobs, fetch logs, and cancel a running job.
+- **Not wired to WordPress:** ddashboard does **not** call this API. Nachrichten sync remains **PHP IMAP → `dls_email`** (see theme mail docs).
+- **Contract:** [`../stella-server/imap-sync-service.md`](../stella-server/imap-sync-service.md) — `POST /start`, `GET /status/:id`, `GET /jobs`, `DELETE /jobs/:id`, etc.
+- **Security:** Passwords are sent in JSON to `POST /start`; restrict network access and use TLS on the public edge.
+
+---
+
 ## 5. REST touchpoints (ddashboard)
 
 | Area | Files (theme) |
@@ -128,4 +138,5 @@ Paths are under WordPress REST prefix `/wp-json/dls/v1/...` (exact routes as reg
 | **ddashboard** | WordPress theme / product (internal business app) |
 | **Stella** | Dedicated server hosting AI services |
 | **stella-api** | FastAPI app on Stella (`/emails/*`, etc.) |
+| **imap-sync** | Express app on Stella (`:3001`); spawns **`imapsync`** — mailbox migration, not ddashboard DB import |
 | **gitlink** | Git submodule pointer — parent repo stores commit SHA of `stella-docs` |

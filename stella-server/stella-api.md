@@ -7,6 +7,8 @@ FastAPI application running on Stella server.
 - **Port:** 8001 (direct) / accessible via Caddy at `:8080/stella` — ddashboard option `dls_stella_email_index_url` must be that **public base** (e.g. `http://<server>:8080/stella`), not `http://<server>:8080` alone, so paths become `…/stella/emails/document/email_123`.
 - **Process:** `uvicorn main:app`
 
+**Sibling service (same host, different app):** IMAP mailbox migration via **`imapsync`** + Express on port **3001** — documented in [`imap-sync-service.md`](imap-sync-service.md) (not FastAPI, not used by ddashboard today).
+
 ---
 
 ## File Structure
