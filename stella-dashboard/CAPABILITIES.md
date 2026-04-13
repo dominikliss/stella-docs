@@ -19,7 +19,7 @@ ddashboard is a self-built internal business application for **Dominik Liss**, a
 | AI | Anthropic Claude API (claude-sonnet-4-6) |
 | Exchange rates | NBP (Polish National Bank) public API |
 | Time tracking | TrackingTime Pro API v4 |
-| E-invoicing | KSeF (Polish Ministry of Finance, production API v2) |
+| E-invoicing | KSeF (Polish Ministry of Finance, API v2 — test + production) |
 | Accounting export | SaldeoSMART API |
 | YouTube | YouTube Data API v3 + YouTube Analytics API |
 
@@ -62,10 +62,16 @@ The core financial module. Handles income and expenses for a sole proprietorship
 - Open invoices panel (invoices without a linked transaction)
 
 **KSeF integration (Polish e-invoices)**
-- Import Polish purchase invoices from the KSeF production API (Ministry of Finance)
-- 6-step async JWT authentication (RSA-OAEP-SHA256)
+- Import Polish purchase invoices from the KSeF API (Ministry of Finance)
+- Send outgoing invoices to KSeF as FA(3) XML (mandatory from 2026-02-01)
+- Supports domestic PL buyers (23% VAT), EU reverse-charge (np I), and third-country exports (np II)
+- Test mode toggle (api-test.ksef.mf.gov.pl) — default on, switch to production when ready
+- 6-step async JWT authentication (RSA-OAEP-SHA256), same token for import and send
 - Fixed 3-month import window (idempotent upsert)
 - Upsert logic: create writes all fields; re-import only updates financial/date fields — never overwrites user-edited notes
+- Send tracking: KSeF number, send status (pending/sent/error), error messages stored on invoice CPT
+- XML validation before send (structural checks against FA(3) schema requirements)
+- Duplicate prevention: refuses re-send if already sent (HTTP 409)
 - Automatic PLN conversion rate via NBP
 - Seller name rule: invoices from "Good Code" → note set to "Freelancer (Pawel)"
 
@@ -253,7 +259,7 @@ A contextual AI assistant built on the Anthropic Claude API, available throughou
 Admin settings page with tabs for each integration area.
 
 **Tabs** (`dls_verwaltung_subroutes()`)
-- **Buchhaltung**: KSeF connection (NIP, token), Saldeo API credentials
+- **Buchhaltung**: KSeF connection (NIP, token, test mode, seller identity), Saldeo API credentials
 - **Projekte**: TrackingTime Pro API key
 - **Marketing**: Claude API key + model ID, YouTube OAuth
 - **AI-Anbindungen**: AI connectors / layers (e.g. Anthropic, Stella index URL + key, embed toggles)
@@ -291,6 +297,8 @@ The `api/v1` namespace is IP-restricted to two addresses (`194.126.177.181`, `23
 | `/dls/v1/nbp-rate` | EUR/PLN exchange rates |
 | `/dls/v1/nbp-expense-rates` | EUR/PLN + USD/PLN + USD→EUR for expenses |
 | `/dls/v1/ksef-import` | Polish e-invoice import |
+| `/dls/v1/ksef-send/{id}` | Send invoice to KSeF (FA(3) XML) |
+| `/dls/v1/ksef-send-status/{id}` | Check KSeF send processing status |
 | `/dls/v1/saldeo-export` | Saldeo CSV export |
 | `/dls/v1/subscription-billing-run` | Manual trigger for subscription billing cron |
 | `/dls/v1/invoice-pdf/{id}` | Generate invoice PDF |

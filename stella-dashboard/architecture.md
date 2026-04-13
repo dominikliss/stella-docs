@@ -80,6 +80,7 @@ inc/
     tracking-time.php        # TrackingTime Pro import (time entries, tasks, projects)
     ksef-import.php          # POST /dls/v1/ksef-import
     ksef-test-connection.php # POST /dls/v1/ksef-test-connection
+    ksef-send.php            # POST /dls/v1/ksef-send/{id}, GET /dls/v1/ksef-send-status/{id}
     youtube-sync.php         # POST /dls/v1/youtube/sync, GET /dls/v1/youtube/status
     youtube-analytics.php    # OAuth + YouTube Analytics API sync → dls_youtube_analytics_*
     saldeo-export.php        # GET  /dls/v1/saldeo-export
@@ -109,11 +110,12 @@ inc/
     mail-crypto.php          # Mailbox password AES encryption
     dls-imap-factory.php     # Webklex PHPIMAP client factory (no ext-imap)
     pm-db-service.php        # PmDbService: projects / task lists / tasks / assignees / comments / time entries
-    ksef-service.php         # KSeF API 2.0 (production only)
+    ksef-service.php         # KSeF API 2.0 (test + production, import + send)
+    ksef-xml-builder.php     # FA(3) XML generation for outgoing invoices
     saldeo-export-service.php
     subscription-billing-service.php
     nbp-exchange-rate-service.php
-    option-service.php       # WP options: ksef_*, saldeo_*, youtube_*, tracking_time_pro_*
+    option-service.php       # WP options: ksef_* (incl. test_mode, seller_*), saldeo_*, youtube_*, tracking_time_pro_*
     youtube-data-service.php
     youtube-sync-service.php
     youtube-oauth-service.php
@@ -328,15 +330,62 @@ assets/scss/                 # SCSS source (ScssPhp, compiled on theme load when
 - **TrackingTime link:** `tt_project_id`, `tt_task_id`, etc. stored for idempotent import from TrackingTime Pro API (`inc/routes/tracking-time.php`).
 
 ## KSeF Integration
-- Service: `inc/services/ksef-service.php` — class `DLS\Services\KSeFService` (namespace `DLS\Services`)
-- **Production only** — base URL: `https://api.ksef.mf.gov.pl/api/v2`. No test environment.
-- Auth: 6-step async JWT flow (challenge → RSA-OAEP-SHA256 encrypt → POST `/auth/ksef-token` → poll status → redeem → `accessToken`)
+
+### Overview
+Service: `inc/services/ksef-service.php` — class `DLS\Services\KSeFService` (namespace `DLS\Services`).
+Supports both **importing** (receiving) and **sending** (outgoing) invoices via KSeF API 2.0.
+
+### Environment
+- **Test mode** (default): `https://api-test.ksef.mf.gov.pl/api/v2` — controlled by `ksef_test_mode` option.
+- **Production**: `https://api.ksef.mf.gov.pl/api/v2` — switch off test mode in Verwaltung → KSeF settings.
+
+### Auth
+6-step async JWT flow (challenge → RSA-OAEP-SHA256 encrypt → POST `/auth/ksef-token` → poll status → redeem → `accessToken`). Same JWT used for both import and send operations.
+
+### Importing (receiving invoices)
 - Import window: always fixed 3-month range (first day of 2 months ago → last day of current month). Frontend date params are ignored.
 - Upsert behaviour: **on create** — write all fields including `note`, `type`, `post_title`; **on update** — only refresh financial/date fields (`invoice_date`, `price_net`, `vat_percent`, `currency`) and KSeF identifiers. Never overwrite user-edited `note` or `post_title` on re-import.
 - Seller name rules (transaction `note` on **create** only): if seller name starts with `"Good Code"` → note `"Freelancer (Pawel)"`; if it starts with `"KANCELARIA PODATKOWA ANDRZEJ NOWAK SPÓŁKA Z OGRANICZONĄ ODPOWIEDZIALNOŚCIĄ"` → note `"Accounting KPAN"` + invoice number (trimmed).
 - `ksef_reference` and `ksef_seller_nip` are **ACF fields** (field keys `field_6829ksef000r1` / `field_6829ksef000n2`) — use `update_field($field_key, $value, $post_id)`, not `update_post_meta`.
 - PLN conversion rate is auto-populated via `NbpExchangeRateService::get_rate_for_input_date($issue_date)` and stored in `pln_conversion_rate_invoice_date`.
-- Settings stored as WP options: `ksef_enabled`, `ksef_nip`, `ksef_token`
+
+### Sending (outgoing invoices)
+- **XML Builder**: `inc/services/ksef-xml-builder.php` — class `DLS\Services\KSeFXmlBuilder`. Generates FA(3) compliant XML from `invoice` CPT data (schema: `http://crd.gov.pl/wzor/2025/06/25/13775/`).
+- **REST route**: `POST /dls/v1/ksef-send/{invoice_id}` — builds XML, validates, sends to KSeF, updates ACF tracking fields.
+- **Status check**: `GET /dls/v1/ksef-send-status/{invoice_id}` — polls KSeF for processing result, updates `ksef_invoice_number` on success.
+- **Duplicate prevention**: refuses to send if `ksef_send_status === 'sent'` (HTTP 409).
+- **Validation**: structural XML validation via `KSeFXmlBuilder::validate_xml()` before sending (checks required elements, NIP format, date format, P_12 rate values).
+- **VAT rate mapping** (from transaction `vat_pct` + `vat_free`):
+  - `vat_pct > 0` → rate string (e.g. `"23"`)
+  - `vat_free === "Drittland"` → `"np II"` (third country, outside EU)
+  - `vat_free === "Reverse Charge"` → `"np I"` (EU intra-community)
+  - Non-PL EU buyer (fallback) → `"np I"`
+  - Non-PL non-EU buyer (fallback) → `"np II"`
+- **Buyer identification** (Podmiot2):
+  - PL buyer: `<NIP>` (10-digit, extracted from `vat_number`)
+  - EU buyer: `<KodUE>` + `<NrVatUE>` (e.g. `DE` + `DE123456789`)
+  - Non-EU buyer: `<KodKraju>` + `<NrID>` (country ISO code + tax ID)
+- **Country resolution**: `KSeFXmlBuilder::resolve_country_code()` maps free-text country names (German, English, Polish) to ISO alpha-2 codes.
+- **ACF tracking fields** on `invoice` CPT:
+  - `ksef_invoice_number` (`field_6961inv_ksef_number`) — KSeF number assigned after successful send
+  - `ksef_send_status` (`field_6961inv_ksef_status`) — `""` / `"pending"` / `"sent"` / `"error"`
+  - `ksef_sent_at` (`field_6961inv_ksef_sent_at`) — ISO 8601 timestamp of last send attempt
+  - `ksef_error_message` (`field_6961inv_ksef_error`) — last error from KSeF API
+  - `ksef_reference_number` (`field_6961inv_ksef_ref`) — internal reference for status polling
+- **Schema files**: `inc/ksef/schemat.xsd` (FA(3) XSD), `inc/ksef/styl.xsl` (XSLT for HTML preview), `inc/ksef/wyroznik.xml` (schema reference).
+
+### Settings (WP options)
+- `ksef_enabled` (bool) — master toggle
+- `ksef_nip` (string) — 10-digit NIP for authentication
+- `ksef_token` (string) — KSeF portal authorization token
+- `ksef_test_mode` (bool, default `true`) — use test environment
+- `ksef_seller_name` (string) — company name for FA(3) Podmiot1
+- `ksef_seller_address` (string) — street address for FA(3) Podmiot1
+- `ksef_seller_city` (string) — "PLZ Ort" for FA(3) Podmiot1
+
+### Frontend
+- `ksef-settings.js` — KSeF config card in Verwaltung: NIP, token, test mode toggle, seller identity fields, save, test connection.
+- `invoices.js` — KSeF column with status badges (Gesendet/Wird verarbeitet/Fehler), send button (IconLandmark), detail view shows KSeF number + error message.
 
 ## Referral / Commission System
 - ACF fields on `client` post type: `referred_client` (bool), `referral_referrer_client_id` (int), `referral_commission_percent` (float, default 10), `referral_commission_payout_date` (date), `referral_commission_reports` (repeater: `generated_at` datetime, `pdf_url` url) — auto-appended when a PDF is generated
