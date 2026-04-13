@@ -35,7 +35,7 @@
 - After changing `inc/acf/settings/group_6762f36b7113a.json`, sync the field group in WP admin (ACF) so PHP `get_field()` and `BasicService` SQL include the new meta keys.
 
 ## PHP Namespaces
-- `DLS\Services\` — all services (`FileService`, `ClientService`, `OptionService`, `BasicService`, `KSeFService`, `SaldeoExportService`, `SubscriptionBillingService`, `YouTubeDataService`, `YouTubeSyncService`, `YouTubeOAuthService`, `YouTubeAnalyticsApiService`, `YouTubeAnalyticsSyncService`, `AiAgentRegistry`, `AnthropicChatService`, `AiChatSessionService`, `PmDbService`, `MailboxDbService`, `EmailCrudService`, `EmailSpamService`, `EmailCategoryDbService`, `MailSyncService`, `MailChunkSyncService`, `ClientEmailMatchService`, `MailThreadIdService`, `MailHtmlSplitQuoteService`, `MailAttachmentStorageService`, `MailCrypto`, `DlsImapFactory`, `WritingStyleHistoryService`, `NbpExchangeRateService`, `InvoicePdfService`, `CommissionReportService`). Services are autoloaded via Composer classmap.
+- `DLS\Services\` — all services (`FileService`, `ClientService`, `OptionService`, `BasicService`, `KSeFService`, `KSeFXmlBuilder`, `BankAccountDbService`, `SaldeoExportService`, `SubscriptionBillingService`, `YouTubeDataService`, `YouTubeSyncService`, `YouTubeOAuthService`, `YouTubeAnalyticsApiService`, `YouTubeAnalyticsSyncService`, `AiAgentRegistry`, `AnthropicChatService`, `AiChatSessionService`, `PmDbService`, `MailboxDbService`, `EmailCrudService`, `EmailSpamService`, `EmailCategoryDbService`, `MailSyncService`, `MailChunkSyncService`, `ClientEmailMatchService`, `MailThreadIdService`, `MailHtmlSplitQuoteService`, `MailAttachmentStorageService`, `MailCrypto`, `DlsImapFactory`, `WritingStyleHistoryService`, `NbpExchangeRateService`, `InvoicePdfService`, `CommissionReportService`). Services are autoloaded via Composer classmap.
 - No namespace — route callback functions (`dls_*` prefix convention)
 
 ## Subscription billing (WP-Cron)
@@ -65,6 +65,7 @@ inc/
   mail-sync-cron.php         # WP-Cron: `dls_mail_imap_sync_cron` every 5 min → sync active mailboxes
   install-mail-tables.php    # dbDelta: dls_mailbox, dls_email, spam lists, folder_client, dls_email_attachment, embed queue; migrations v1–v23
   install-pm-tables.php      # dbDelta: dls_pm_project, dls_pm_task_list, dls_pm_task, dls_pm_task_assignee, dls_pm_comment, dls_pm_time_entry; migrations v1–v2
+  install-bank-account-tables.php # dbDelta: dls_bank_account (label, iban, bic, bank_name, account_holder, condition_country, condition_vat, currency, is_primary, US fields); migrations v1–v3; seeds defaults
   install-ai-chat-tables.php # dbDelta: dls_ai_chat_session, dls_ai_chat_message
   install-writing-style-history.php # dbDelta: dls_writing_style_run + analysis_type (v2); append-only email AI analysis history
   install-youtube-tables.php # dbDelta: YouTube Data + Analytics custom tables
@@ -78,6 +79,7 @@ inc/
     mail-sync.php            # Sync, chunk-sync, recompute, clear-client-links (split from mailboxes.php)
     pm-projects.php          # /dls/v1/pm/* — projects, task lists, tasks, assignees, comments, time entries
     tracking-time.php        # TrackingTime Pro import (time entries, tasks, projects)
+    bank-accounts.php        # GET /dls/v1/bank-accounts, POST, PUT /{id}, DELETE /{id}
     ksef-import.php          # POST /dls/v1/ksef-import
     ksef-test-connection.php # POST /dls/v1/ksef-test-connection
     ksef-send.php            # POST /dls/v1/ksef-send/{id}, GET /dls/v1/ksef-send-status/{id}
@@ -110,12 +112,13 @@ inc/
     mail-crypto.php          # Mailbox password AES encryption
     dls-imap-factory.php     # Webklex PHPIMAP client factory (no ext-imap)
     pm-db-service.php        # PmDbService: projects / task lists / tasks / assignees / comments / time entries
-    ksef-service.php         # KSeF API 2.0 (test + production, import + send)
-    ksef-xml-builder.php     # FA(3) XML generation for outgoing invoices
+    ksef-service.php         # KSeF API 2.0 (test + production, import + send); selects token by ksef_test_mode
+    ksef-xml-builder.php     # FA(3) XML generation for outgoing invoices (schema 1-0E)
+    bank-account-db-service.php # BankAccountDbService — dls_bank_account CRUD + find_account / set_primary / get_primary_for_currency
     saldeo-export-service.php
     subscription-billing-service.php
     nbp-exchange-rate-service.php
-    option-service.php       # WP options: ksef_* (incl. test_mode, seller_*), saldeo_*, youtube_*, tracking_time_pro_*
+    option-service.php       # WP options: ksef_* (incl. test_mode, token, test_token, seller_*), saldeo_*, youtube_*, tracking_time_pro_*
     youtube-data-service.php
     youtube-sync-service.php
     youtube-oauth-service.php
@@ -132,7 +135,7 @@ inc/
     client-service.php
     basic-service.php
     file-service.php         # PDF generation, TipTap (core); delegates invoice PDFs and commission reports to split services
-    invoice-pdf-service.php  # InvoicePdfService — invoice PDF generation (split from FileService)
+    invoice-pdf-service.php  # InvoicePdfService — invoice PDF generation; bank account selected via three-tier priority (invoice pin → transaction pin → BankAccountDbService::find_account)
     commission-report-service.php # CommissionReportService — referral commission PDFs (split from FileService)
   shortcodes/                # [shortcode] registrations
   rewrite-rules.php          # Extra add_rewrite_rule calls (client slug pattern, etc.) — separate from app-routes.php
@@ -151,7 +154,8 @@ src/
     file-form.js             # Formik form for file CPT (TipTap, template modes)
     tiptap-editor.js         # TipTap StarterKit wrapper for file body HTML
     expanding-content.js     # Animated height expand/collapse
-    invoices.js / invoice-form.js  # Invoices list uses PageLayout + EntityListTable + useEntityCrud; detail uses DataTable
+    invoices.js / invoice-form.js  # Invoices list uses PageLayout + EntityListTable + useEntityCrud; detail uses DataTable; invoice-form has bank account selector (BankAccountDefaultSetter auto-selects primary for linked transaction currency); bank_account_id saved via direct apiFetch to wp/v2/invoice/{id}
+    bank-account-settings.js # Bank account CRUD panel (EntityListPanel + SidebarForm); side-by-side with KSeF settings in management-page
     clients.js / client-form.js / client-card.js
     products.js / product-form.js  # Products list uses EntityCardList + useEntityCrud; form uses useFormSubmit
     open-invoices.js               # Uses PageLayout + EntityListTable + useEntityCrud
@@ -350,42 +354,166 @@ Supports both **importing** (receiving) and **sending** (outgoing) invoices via 
 - PLN conversion rate is auto-populated via `NbpExchangeRateService::get_rate_for_input_date($issue_date)` and stored in `pln_conversion_rate_invoice_date`.
 
 ### Sending (outgoing invoices)
+
+Mandatory from **2026-02-01** (large enterprises) / **2026-04-01** (all). FA(3) schema only.
+
 - **XML Builder**: `inc/services/ksef-xml-builder.php` — class `DLS\Services\KSeFXmlBuilder`. Generates FA(3) compliant XML from `invoice` CPT data (schema: `http://crd.gov.pl/wzor/2025/06/25/13775/`).
-- **REST route**: `POST /dls/v1/ksef-send/{invoice_id}` — builds XML, validates, sends to KSeF, updates ACF tracking fields.
-- **Status check**: `GET /dls/v1/ksef-send-status/{invoice_id}` — polls KSeF for processing result, updates `ksef_invoice_number` on success.
+- **REST route**: `POST /dls/v1/ksef-send/{invoice_id}` — builds XML, validates, sends via interactive session, updates ACF tracking fields.
+- **Status check**: `GET /dls/v1/ksef-send-status/{invoice_id}` — polls KSeF session-based status, updates `ksef_invoice_number` on success.
 - **Duplicate prevention**: refuses to send if `ksef_send_status === 'sent'` (HTTP 409).
 - **Validation**: structural XML validation via `KSeFXmlBuilder::validate_xml()` before sending (checks required elements, NIP format, date format, P_12 rate values).
-- **VAT rate mapping** (from transaction `vat_pct` + `vat_free`):
-  - `vat_pct > 0` → rate string (e.g. `"23"`)
-  - `vat_free === "Drittland"` → `"np II"` (third country, outside EU)
-  - `vat_free === "Reverse Charge"` → `"np I"` (EU intra-community)
-  - Non-PL EU buyer (fallback) → `"np I"`
-  - Non-PL non-EU buyer (fallback) → `"np II"`
-- **Buyer identification** (Podmiot2):
-  - PL buyer: `<NIP>` (10-digit, extracted from `vat_number`)
-  - EU buyer: `<KodUE>` + `<NrVatUE>` (e.g. `DE` + `DE123456789`)
-  - Non-EU buyer: `<KodKraju>` + `<NrID>` (country ISO code + tax ID)
+
+#### Interactive session flow (KSeF API 2.0)
+
+Sending uses **encrypted interactive sessions** — no direct `PUT /invoices`:
+
+1. **Authenticate** — JWT via existing ksef-token flow (same `accessToken` for all session operations).
+2. **Fetch encryption cert** — `GET /security/public-key-certificates` with `usage: SymmetricKeyEncryption` (different from `KsefTokenEncryption` used in auth).
+3. **Generate AES key + IV** — `random_bytes(32)` for AES-256 key, `random_bytes(16)` for CBC IV.
+4. **Encrypt AES key** — RSA-OAEP-SHA256 with the SymmetricKeyEncryption public key.
+5. **Open session** — `POST /sessions/online` with `formCode` (`FA (3)`, schema `1-0E`), `encryption` (encrypted key + IV in base64).
+6. **Encrypt invoice** — AES-256-CBC with PKCS#7 padding (`openssl_encrypt` with `OPENSSL_RAW_DATA`).
+7. **Submit** — `POST /sessions/online/{sessionRef}/invoices` with JSON payload:
+   - `invoiceHash` — SHA-256 of plain XML (base64)
+   - `invoiceSize` — byte length of plain XML
+   - `encryptedInvoiceHash` — SHA-256 of ciphertext (base64)
+   - `encryptedInvoiceSize` — byte length of ciphertext
+   - `encryptedInvoiceContent` — ciphertext (base64)
+   - `offlineMode` — `false`
+8. **Close session** — `POST /sessions/online/{sessionRef}/close` (204 No Content on success).
+9. **Poll status** — `GET /sessions/{sessionRef}/invoices/{invoiceRef}` — up to 5 attempts (2 s apart) inline; frontend polls via REST if still pending.
+
+#### Reference storage
+
+`ksef_reference_number` stores a **JSON string** with both identifiers needed for status polling:
+```json
+{"session": "<sessionRef>", "invoice": "<invoiceRef>"}
+```
+The status endpoint parses this and passes both refs to `KSeFService::check_send_status()`.
+
+#### VAT rate mapping
+- `vat_pct > 0` → rate string (e.g. `"23"`)
+- `vat_free === "Drittland"` → `"np II"` (third country, outside EU)
+- `vat_free === "Reverse Charge"` → `"np I"` (EU intra-community)
+- Non-PL EU buyer (fallback) → `"np I"`
+- Non-PL non-EU buyer (fallback) → `"np II"`
+
+#### Buyer identification (Podmiot2)
+- PL buyer: `<NIP>` (10-digit, extracted from `vat_number`)
+- EU buyer: `<KodUE>` + `<NrVatUE>` (e.g. `DE` + `DE123456789`)
+- Non-EU buyer: `<KodKraju>` + `<NrID>` (country ISO code + tax ID)
+
 - **Country resolution**: `KSeFXmlBuilder::resolve_country_code()` maps free-text country names (German, English, Polish) to ISO alpha-2 codes.
 - **ACF tracking fields** on `invoice` CPT:
   - `ksef_invoice_number` (`field_6961inv_ksef_number`) — KSeF number assigned after successful send
   - `ksef_send_status` (`field_6961inv_ksef_status`) — `""` / `"pending"` / `"sent"` / `"error"`
   - `ksef_sent_at` (`field_6961inv_ksef_sent_at`) — ISO 8601 timestamp of last send attempt
   - `ksef_error_message` (`field_6961inv_ksef_error`) — last error from KSeF API
-  - `ksef_reference_number` (`field_6961inv_ksef_ref`) — internal reference for status polling
+  - `ksef_reference_number` (`field_6961inv_ksef_ref`) — JSON `{"session":"…","invoice":"…"}` for session-based status polling
 - **Schema files**: `inc/ksef/schemat.xsd` (FA(3) XSD), `inc/ksef/styl.xsl` (XSLT for HTML preview), `inc/ksef/wyroznik.xml` (schema reference).
+
+#### FA(3) mandatory fields in generated XML
+
+Beyond the basic structure, the following elements are mandatory in FA(3) schema `1-0E` and must always be present:
+
+- **`Podmiot2` (buyer):** `<JST>2</JST>` + `<GV>2</GV>` after `<Adres>` — required by schema even when buyer is not a local government unit or value-added goods dealer.
+- **`Adnotacje`:** `<NoweSrodkiTransportu><P_22N>1</P_22N></NoweSrodkiTransportu>`, `<P_23>2</P_23>`, and `<PMarzy><P_PMarzyN>1</P_PMarzyN></PMarzy>` — always required markers for new means of transport, tourist services, and margin procedures respectively (value `1`/`2` = "does not apply").
+
+#### Re-sending between environments
+
+- A custom post meta key `_ksef_sent_env` (`production` or `test`) tracks which environment an invoice was last sent to.
+- The send endpoint (`POST /dls/v1/ksef-send/{id}`) allows re-sending if the target environment **differs** from the stored `_ksef_sent_env` — it clears all previous KSeF references (`ksef_send_status`, `ksef_reference_number`, etc.) before the new send.
+- Re-sending to the **same** environment when `ksef_send_status === 'sent'` is blocked with HTTP 409.
+- The KSeF send button in `invoices.js` is **always visible** — the backend controls the allow/block logic.
 
 ### Settings (WP options)
 - `ksef_enabled` (bool) — master toggle
 - `ksef_nip` (string) — 10-digit NIP for authentication
-- `ksef_token` (string) — KSeF portal authorization token
-- `ksef_test_mode` (bool, default `true`) — use test environment
+- `ksef_token` (string) — KSeF portal authorization token for **production** (`https://ap.ksef.mf.gov.pl/`)
+- `ksef_test_token` (string) — separate token for **test environment** (`https://ap-test.ksef.mf.gov.pl/`); generated independently at the KSeF test portal
+- `ksef_test_mode` (bool, default `true`) — use test environment; `KSeFService` selects the matching token automatically
 - `ksef_seller_name` (string) — company name for FA(3) Podmiot1
 - `ksef_seller_address` (string) — street address for FA(3) Podmiot1
 - `ksef_seller_city` (string) — "PLZ Ort" for FA(3) Podmiot1
 
 ### Frontend
-- `ksef-settings.js` — KSeF config card in Verwaltung: NIP, token, test mode toggle, seller identity fields, save, test connection.
-- `invoices.js` — KSeF column with status badges (Gesendet/Wird verarbeitet/Fehler), send button (IconLandmark), detail view shows KSeF number + error message.
+- `ksef-settings.js` — KSeF config card in Verwaltung: NIP, separate production/test tokens, test mode toggle (shown last), seller identity fields, save, test connection. Composed inside `.dls-buchhaltung-body__ksef` in `management-page.js` for side-by-side layout with bank accounts.
+- `invoices.js` — KSeF column with status badges (Gesendet/Wird verarbeitet/Fehler), send button (IconLandmark) **always visible** (backend controls permission), detail view shows KSeF number + error message.
+
+## Bank Accounts (`dls_bank_account`)
+
+### Overview
+
+Bank accounts for invoice and PDF generation are stored in a **custom database table** (`dls_bank_account`) managed via `inc/install-bank-account-tables.php` (option `dls_bank_account_db_version`, current v3). A CRUD REST API and a React UI in Verwaltung → Buchhaltung allow adding, editing, and deleting entries.
+
+### Database table
+
+```sql
+CREATE TABLE dls_bank_account (
+  id            bigint(20) NOT NULL AUTO_INCREMENT PRIMARY KEY,
+  label         varchar(255) NOT NULL DEFAULT '',
+  iban          varchar(64)  NOT NULL DEFAULT '',
+  bic           varchar(32)  NOT NULL DEFAULT '',
+  bank_name     varchar(255) NOT NULL DEFAULT '',
+  account_holder varchar(255) NOT NULL DEFAULT '',
+  condition_country varchar(16) NOT NULL DEFAULT '',   -- ISO alpha-2 or '' (any)
+  condition_vat int(11)      NOT NULL DEFAULT -1,      -- VAT % or -1 (any)
+  currency      varchar(8)   NOT NULL DEFAULT '',      -- EUR, PLN, USD, …
+  is_primary    tinyint(1)   NOT NULL DEFAULT 0,       -- one primary per currency
+  -- US-specific fields
+  ach_routing   varchar(32)  NOT NULL DEFAULT '',
+  wire_routing  varchar(32)  NOT NULL DEFAULT '',
+  account_number varchar(64) NOT NULL DEFAULT '',
+  account_type  varchar(16)  NOT NULL DEFAULT ''       -- 'checking' | 'savings' | ''
+);
+```
+
+### Service — `BankAccountDbService`
+
+File: `inc/services/bank-account-db-service.php` (class `DLS\Services\BankAccountDbService`).
+
+- `list_accounts()` — all rows ordered by `id ASC`
+- `get_account(int $id)` — single row or null
+- `create_account(array $data)` / `update_account(int $id, array $data)` / `delete_account(int $id)` — CRUD
+- `find_account(string $currency, string $country, int $vat_pct)` — intelligent lookup:
+  1. Filter by exact `currency` match (returns `null` if no account has that currency)
+  2. Among matching accounts, prefer `condition_country` match over `''` (any)
+  3. Among those, prefer `condition_vat` match over `-1` (any)
+  4. Returns the best match or the first currency-match as fallback
+- `set_primary(int $id, string $currency)` — unsets `is_primary` for all accounts with the same currency, then sets it for `$id`
+- `get_primary_for_currency(string $currency)` — returns the account with `is_primary = 1` for that currency, or null
+
+### REST API
+
+File: `inc/routes/bank-accounts.php` — registered under `dls/v1`. Auth: `dls_require_login`.
+
+| Method | Path | Action |
+|--------|------|--------|
+| `GET` | `/dls/v1/bank-accounts` | List all accounts |
+| `POST` | `/dls/v1/bank-accounts` | Create (calls `set_primary` if `is_primary === true`) |
+| `PUT` | `/dls/v1/bank-accounts/{id}` | Update (calls `set_primary` if `is_primary === true`) |
+| `DELETE` | `/dls/v1/bank-accounts/{id}` | Delete |
+
+### Bank account selection priority
+
+Both PDF and KSeF XML generation use the same three-tier priority chain:
+
+1. **Invoice pin** — `bank_account_id` WP post meta on the `invoice` CPT (set via the invoice form selector)
+2. **Transaction pin** — `bank_account_id` WP post meta on the linked `transaction` CPT
+3. **Auto-select** — `BankAccountDbService::find_account($currency, $buyer_country, $vat_pct)`
+
+`bank_account_id` is registered as WordPress post meta for **both** `transaction` and `invoice` CPTs via `register_post_meta` (`show_in_rest: true`, `type: integer`, `default: 0`) in `functions.php`. The invoice form saves this value via a direct `apiFetch` POST to `wp/v2/invoice/{id}` (bypassing `@wordpress/core-data` which may not reliably serialize post meta for CPTs without `custom-fields` support).
+
+### Frontend
+
+- `bank-account-settings.js` — `EntityListPanel`-based CRUD UI rendered in `.dls-buchhaltung-body__accounts` (side-by-side with KSeF settings). List rows show label + currency badge + optional "Primär" badge, IBAN/account number below. Sidebar form with all fields; US-specific fields shown only when `condition_country === 'USA'`. `is_primary` toggle auto-unsets the previous primary for that currency on save.
+- `invoice-form.js` — bank account `<select>` replaces the old `bank_details_country_code` field. `BankAccountDefaultSetter` watches `transaction_id`, looks up the linked transaction's currency, and auto-selects the primary account for that currency when no `bank_account_id` is already set on the invoice.
+- `management-page.js` — Buchhaltung tab wraps both `KsefSettings` and `BankAccountSettings` in `div.dls-buchhaltung-body` (flexbox, side-by-side, wraps on narrow screens).
+- `management-page.scss` — `.dls-buchhaltung-body { display: flex; flex-wrap: wrap; gap: …; }` with `__ksef` (fixed width) and `__accounts` (`flex: 1 1 360px`) children.
+
+### Seed data
+
+`dls_bank_account_seed_defaults()` (called on first install / when table is empty) seeds the initial bank accounts from the previously hardcoded PDF generation values (AT/EUR, PL/PLN, USA/USD).
 
 ## Referral / Commission System
 - ACF fields on `client` post type: `referred_client` (bool), `referral_referrer_client_id` (int), `referral_commission_percent` (float, default 10), `referral_commission_payout_date` (date), `referral_commission_reports` (repeater: `generated_at` datetime, `pdf_url` url) — auto-appended when a PDF is generated

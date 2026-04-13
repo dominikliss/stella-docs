@@ -43,9 +43,15 @@ The core financial module. Handles income and expenses for a sole proprietorship
 **Invoices**
 - Invoices linked to a client and a transaction
 - Multi-language: DE, EN, PL
-- Multi-bank: AT, PL, USA bank details
+- Bank account chosen from a configurable table (`dls_bank_account`); primary account for the invoice currency is auto-selected based on the linked transaction; can be overridden per invoice
 - Line items (positions) with product references, quantity, unit price, and VAT
 - PDF generation from the invoice form; versioned PDFs stored on disk
+
+**Bank Accounts**
+- Custom `dls_bank_account` table for managing multiple bank accounts (AT/EUR, PL/PLN, USA/USD and more)
+- Each account has: label, IBAN/BIC or US routing numbers, account holder, condition filters (country, VAT rate), currency, and an `is_primary` flag per currency
+- Intelligent three-tier selection: invoice pin → transaction pin → `BankAccountDbService::find_account()` (currency first, then country/VAT tiebreaker)
+- Managed via Verwaltung → Buchhaltung → bank account panel (side-by-side with KSeF settings)
 
 **Products (Produkte)**
 - Product catalogue with base price, description, recurring flag, and subscription period (monthly / quarterly / yearly)
@@ -63,15 +69,20 @@ The core financial module. Handles income and expenses for a sole proprietorship
 
 **KSeF integration (Polish e-invoices)**
 - Import Polish purchase invoices from the KSeF API (Ministry of Finance)
-- Send outgoing invoices to KSeF as FA(3) XML (mandatory from 2026-02-01)
+- Send outgoing invoices to KSeF as FA(3) XML (schema `1-0E`) via encrypted interactive sessions (mandatory from 2026-02-01 for large enterprises, 2026-04-01 for all)
+- Sending flow: JWT auth → open session with AES-256 key (RSA-OAEP encrypted) → encrypt invoice (AES-256-CBC) → submit → close session → poll status
 - Supports domestic PL buyers (23% VAT), EU reverse-charge (np I), and third-country exports (np II)
-- Test mode toggle (api-test.ksef.mf.gov.pl) — default on, switch to production when ready
-- 6-step async JWT authentication (RSA-OAEP-SHA256), same token for import and send
+- **Separate tokens** for test (`ksef_test_token`) and production (`ksef_token`) environments; `KSeFService` selects automatically based on `ksef_test_mode` option
+- Test environment: `https://ap-test.ksef.mf.gov.pl/` — generate test token at the KSeF test portal
+- Production environment: `https://ap.ksef.mf.gov.pl/`
+- Re-sending: invoices can be re-sent to a different environment (tracked via `_ksef_sent_env` post meta); re-sending to the same environment when already sent is blocked (HTTP 409)
+- 6-step async JWT authentication (RSA-OAEP-SHA256), same token for import and send sessions
 - Fixed 3-month import window (idempotent upsert)
 - Upsert logic: create writes all fields; re-import only updates financial/date fields — never overwrites user-edited notes
-- Send tracking: KSeF number, send status (pending/sent/error), error messages stored on invoice CPT
+- Send tracking: KSeF number, send status (pending/sent/error), error messages, session+invoice references, sent environment stored on invoice CPT
 - XML validation before send (structural checks against FA(3) schema requirements)
-- Duplicate prevention: refuses re-send if already sent (HTTP 409)
+- FA(3) mandatory markers always included: `JST`/`GV` in Podmiot2; `NoweSrodkiTransportu`/`P_23`/`PMarzy` in Adnotacje
+- Send button always visible in invoice list — backend controls allow/block logic
 - Automatic PLN conversion rate via NBP
 - Seller name rule: invoices from "Good Code" → note set to "Freelancer (Pawel)"
 

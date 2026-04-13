@@ -47,9 +47,21 @@ ACF `date_picker` fields return `"Y-m-d"` strings. Positions repeater items use 
 | `service_start_date`       | date_picker | `"Y-m-d"` string                              |
 | `service_end_date`         | date_picker | `"Y-m-d"` string                              |
 | `language_code`            | select      | `"DE"`, `"EN"`, `"PL"`                         |
-| `bank_details_country_code`| select      | `"AT"`, `"PL"`, `"USA"`                       |
+| `bank_details_country_code`| select      | `"AT"`, `"PL"`, `"USA"` — **legacy, no longer used for bank account selection**; bank account is now selected via `bank_account_id` post meta or `BankAccountDbService::find_account()` |
 | `invoice_url`              | url         | string — PDF URL (from import or manual)      |
 | `positions`                | repeater    | array of `{ product_id, description, quantity, unit_price, vat_percent }` |
+| `ksef_invoice_number`      | text        | KSeF number assigned after successful send. Field key: `field_6961inv_ksef_number` |
+| `ksef_send_status`         | select      | `""` / `"pending"` / `"sent"` / `"error"`. Field key: `field_6961inv_ksef_status` |
+| `ksef_sent_at`             | text        | ISO 8601 timestamp of last send attempt. Field key: `field_6961inv_ksef_sent_at` |
+| `ksef_error_message`       | text        | Last error from KSeF API. Field key: `field_6961inv_ksef_error` |
+| `ksef_reference_number`    | text        | JSON string `{"session":"…","invoice":"…"}` for status polling. Field key: `field_6961inv_ksef_ref` |
+
+### WP post meta on `invoice` (not ACF)
+
+| Meta key         | Type    | Notes |
+|------------------|---------|-------|
+| `bank_account_id`| integer | ID of the pinned `dls_bank_account` row; `0` = no pin. Registered via `register_post_meta` with `show_in_rest: true`. Saved via direct `apiFetch POST wp/v2/invoice/{id}` — do **not** rely on `saveEntityRecord` for this field. Takes priority over transaction pin and auto-select. |
+| `_ksef_sent_env` | string  | `"production"` or `"test"` — environment of the last successful KSeF send. Allows re-sending to a different environment without HTTP 409. |
 
 ## client
 | Field name             | ACF type     | Return value / notes                          |
