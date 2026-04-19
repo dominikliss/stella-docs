@@ -38,7 +38,7 @@ The core financial module. Handles income and expenses for a sole proprietorship
 - VAT modes: standard (`nein`), Reverse Charge, Innengemeinschaftlicher Erwerb, Drittland
 - Expense categories: Werbung, Material, Beratung, GWG, Investition, Erlöskorrektur
 - Automatic PLN/EUR conversion rates fetched from the NBP API and stored per transaction
-- KSeF reference and seller NIP stored as ACF fields for Polish e-invoice traceability
+- KSeF reference and seller NIP stored as ACF fields for Polish e-invoice traceability (expense list shows a **KSeF** badge when `ksef_reference` is set; income list shows the same badge when the linked invoice has KSeF send status **sent** or **pending**, or a non-empty `ksef_invoice_number`)
 
 **Invoices**
 - Invoices linked to a client and a transaction

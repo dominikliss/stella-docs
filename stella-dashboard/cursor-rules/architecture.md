@@ -68,7 +68,7 @@ New browser-facing endpoints MUST use `dls/v1` namespace. The `api/v1` namespace
 ## File Structure
 ```
 inc/
-  constants.php              # App-wide constants: DLS_ALLOWED_IPS, DLS_OWNER_EMAILS, DLS_OWNER_DOMAINS, DLS_ANALYSIS_TIMEOUT
+  constants.php              # App-wide constants: DLS_ALLOWED_IPS, DLS_OWNER_EMAILS, DLS_OWNER_DOMAINS, DLS_MAIL_CLASSIFICATION_ENABLED, DLS_ANALYSIS_TIMEOUT
   subscription-billing.php   # Clears legacy subscription cron; billing is manual via REST only
   mail-sync-cron.php         # WP-Cron: `dls_mail_imap_sync_cron` every 5 min → sync active mailboxes
   install-mail-tables.php    # dbDelta: dls_mailbox, dls_email, spam lists, folder_client, dls_email_attachment, embed queue; migrations v1–v23
@@ -186,11 +186,9 @@ src/
     conversation-list-item.js # Thread row in master panel (avatar, subject, badge)
     message-thread.js        # Wraps message list for a thread
     message-date-separator.js # Date label between days in thread view
-    mail-admin-tab.js        # Mailbox admin orchestrator: IMAP settings, folder-client mapping, sync buttons, clear-client-links
+    mail-admin-tab.js        # Mailbox admin: IMAP account form, folder→client in sidebar, account-row sync + wipe-resync modal
     mailbox-imap-status.js   # IMAP status presentation helpers (split from mail-admin-tab.js)
-    mailbox-category-manager.js # Email category CRUD UI (split from mail-admin-tab.js)
-    mailbox-folder-detail.js # Folder-client mapping UI (split from mail-admin-tab.js)
-    mailbox-sync-controls.js # Sync/chunk-sync UI + useMailboxSync hook (split from mail-admin-tab.js)
+    mailbox-sync-controls.js # useMailboxSync (quick/chunk sync, wipe) + SyncConfirmModals (wipe only)
     management-page.js       # /verwaltung integrations orchestrator (delegates to sub-components)
     management-integration-card.js # IntegrationServiceCard shell (icon, title, badge, header actions)
     ksef-settings.js         # KSeF config (split from management-page.js)
@@ -295,24 +293,24 @@ assets/scss/                 # SCSS source (ScssPhp, compiled on theme load when
 - **Spam on sync:** Blocklist wins (2); whitelist forces 0 and skips heuristics; else emoji-in-subject and subdomain-sender heuristics (with dominikliss/foxcraft + client-website exemptions) — `EmailSpamService::resolve_email_spam_status` / `EmailCrudService::upsert_email_row`.
 - **Client auto-assign (new strict rules, 2025-03):**
   1. **Folder mapping first** (`dls_mailbox_folder_client`) — sets `client_id` before address logic; never overwritten by address logic.
-  2. **Address rule:** collect **To, Cc, Bcc, From** only (no Reply-To). Drop: mailbox login, dominikliss.com + subdomains, foxcraft.digital + subdomains, `liss.dominik@gmail.com` / `liss.dominikliss@gmail.com`.
+  2. **Address rule:** collect **To, Cc, Bcc, From** only (no Reply-To). Drop: mailbox login, dominikliss.com + subdomains, foxcraft.digital + subdomains, `liss.dominik@gmail.com`.
   3. **Exactly one** distinct external address → assign if it matches a client/invoice/person email.
   4. **More than one** distinct external address → assign only if **all** map to the **same** client in the CRM index.
   5. Otherwise leave `client_id` null. **No domain-from-address, no subject/website domain heuristics, no outbound thread inheritance, no folder consensus propagation.**
   - Implemented in `ClientEmailMatchService::resolve_client_id_single_counterparty_exact()`. Legacy `resolve_client_id()` kept for non-import callers only.
   - `EmailCrudService::clear_all_email_client_links( ?int $mailbox_id )` — bulk-remove `client_id` from `dls_email` rows. Exposed as `POST /dls/v1/emails/clear-client-links` with optional `{ mailbox_id }` body.
-  - Verwaltung UI: "Zuordnungen löschen" button per mailbox with confirmation modal (`mail-admin-tab.js`).
+  - **Verwaltung:** kein UI-Button mehr; weiterhin `POST /dls/v1/emails/clear-client-links` (z. B. WP-CLI / manuell).
 - **`date_sent` fallback chain:** `getDate()` → raw `Date:` header scan → iCalendar body parsing (DTSTAMP / CREATED / LAST-MODIFIED / DTSTART in text body, HTML, attachments, or raw MIME body) for calendar/event mails missing a `Date:` header.
 - **Quote splitting:** List endpoint strips quoted reply history from `body_html` via `MailHtmlSplitQuoteService::split_latest_and_quoted()`; full body available from `GET /dls/v1/emails/{id}` (`body_has_quote_history` flag on list items).
-- **UI:** `messages-page.js` (`PageLayout` + `content-section` / `content-col-*`, dark inbox card, collapsible filters, `messages-focus-inbox-row.js`; thread detail in wide `SidebarForm` via `messages-conversation-sidebar.js`: `ScrollPanel` + `EmailConversationThread`, Kunde, mailto reply draft), `mail-admin-tab.js` (orchestrator → `mailbox-imap-status.js`, `mailbox-category-manager.js`, `mailbox-folder-detail.js`, `mailbox-sync-controls.js`), `list-search-field.js` (debounced search). Thread rendering still uses `EmailMessageBlock` + `EmailDetailSidebar` + `EmailHtmlIframe` + `MessageAttachmentList` inside the conversation component. SCSS: `messages-page.scss` (scoped under `.dls-messages-page`), `form.scss` (`sidebar-form--messages-conversation` / `--email-meta` z-index), `messages.scss` (imports `inbox.scss`, `mail-admin-panel.scss`, `chunk-sync.scss`) + `filter-bar.scss`; bubbles / thread: `conversation-layout.scss`.
+- **UI:** `messages-page.js` (`PageLayout` + `content-section` / `content-col-*`, dark inbox card, collapsible filters, `messages-focus-inbox-row.js`; thread detail in wide `SidebarForm` via `messages-conversation-sidebar.js`: `ScrollPanel` + `EmailConversationThread`, Kunde, mailto reply draft), `mail-admin-tab.js` (`mailbox-imap-status.js`, `mailbox-sync-controls.js` — Sync in der Kontenliste, nicht im Bearbeiten-Sidebar), `list-search-field.js` (debounced search). Thread rendering still uses `EmailMessageBlock` + `EmailDetailSidebar` + `EmailHtmlIframe` + `MessageAttachmentList` inside the conversation component. SCSS: `messages-page.scss` (scoped under `.dls-messages-page`), `form.scss` (`sidebar-form--messages-conversation` / `--email-meta` z-index), `messages.scss` (imports `inbox.scss`, `mail-admin-panel.scss`, `chunk-sync.scss`) + `filter-bar.scss`; bubbles / thread: `conversation-layout.scss`.
 
 ## E-Mail-AI-Analysen (Ollama, Verwaltung → AI-Profile)
 
-**UI:** Tab **AI-Profile** (`/verwaltung/ai-profiles/`) — `ai-profiles-page.js`: Karten pro Profil, Detail mit Lauf-Historie, Start (Modell + Stichprobe), **Grounding übernehmen** (promote), Bearbeiten (Prompts, Filter-JSON, Grounding). Es darf **global nur ein** Corpus-Lauf gleichzeitig laufen — zweiter Start liefert **409** (`analysis_busy`), sofern nicht derselbe Profil-Lauf bereits läuft (dann **200** mit Status). **Anbindungen** (Ollama-URL) liegen auf **AI-Anbindungen** (`dls_ai_connector` + `AiRuntimeCredentials`). Die Layer-Metadaten (`dls_ai_analysis_config`, `dls_ai_action`) bleiben für andere Features; Schreibstil-/Klassifizierungs-Grounding wird primär in **`dls_ai_profile`** geführt und bei PATCH auf `reply_style_grounding` / `inbox_classification_grounding` aus den Aktionen mit synchronisiert (`AiActionDbService::sync_legacy_options_from_row` spiegelt auch in die Profil-Zeile).
+**UI:** Tab **AI-Profile** (`/verwaltung/ai-profiles/`) — `ai-profiles-page.js`: Karten-Footer **Bearbeiten** + **Analyse starten** (gespeicherte Filter/Modell); Sidebar **Profil bearbeiten** mit Prompts, Filtern, Speichern, **Vergangene Analysen** (EntityListTable), **Übernehmen** (promote) — Laufstart nur von der Karte. Es darf **global nur ein** Corpus-Lauf gleichzeitig laufen — zweiter Start liefert **409** (`analysis_busy`), sofern nicht derselbe Profil-Lauf bereits läuft (dann **200** mit Status). **Anbindungen** (Ollama-URL) liegen auf **AI-Anbindungen** (`dls_ai_connector` + `AiRuntimeCredentials`). Die Layer-Metadaten (`dls_ai_analysis_config`, `dls_ai_action`) bleiben für andere Features; Schreibstil-/Klassifizierungs-Grounding wird primär in **`dls_ai_profile`** geführt und bei PATCH auf `reply_style_grounding` / `inbox_classification_grounding` aus den Aktionen mit synchronisiert (`AiActionDbService::sync_legacy_options_from_row` spiegelt auch in die Profil-Zeile).
 
 ### Tabellen & Install
 
-- **`dls_ai_profile`** / **`dls_ai_profile_run`:** `inc/install-ai-profile-tables.php` (Option `dls_ai_profile_db_version`). Ein Profil je `(name, source_type)` — Seeds: `writing_style`+`email`, `classification`+`email` (Prompts aus den früheren Learn-Skripten; User-Prompt mit `{{corpus}}`, `{{count}}`, `{{model}}`). Filter-JSON u. a. `direction`, `spam_status`, `sample_limit`, `min_body_chars`, `max_body_chars`; Klassifizierung: `require_substring` für Output-Check.
+- **`dls_ai_profile`** / **`dls_ai_profile_run`:** `inc/install-ai-profile-tables.php` (Option `dls_ai_profile_db_version`). Ein Profil je `(name, source_type)` — Seeds liefern weiter `system_prompt` + `user_prompt`; **Verwaltungs-UI** bearbeitet nur **`user_prompt`** (Analyse-Prompt) und leert `system_prompt` beim Speichern. Ollama-Aufruf (`ai-profile-run-execute.php`): System-Rolle nur wenn `system_prompt` nicht leer (Legacy), sonst nur User-Nachricht aus `user_prompt` (Platzhalter `{{corpus}}`, `{{count}}`, `{{model}}`). Filter-JSON u. a. `direction`, `spam_status`, `sample_limit`, `min_body_chars`, `max_body_chars`; Klassifizierung: `require_substring` für Output-Check.
 - **Worker:** `inc/scripts/run-ai-profile.php --run-id=N` — Logik in `inc/ai-profile-run-execute.php` (Corpus → Platzhalter ersetzen → Ollama `/api/chat`, Timeout 14400s). Corpus-Builder: `AiEmailCorpusBuilder` + `AiCorpusBuilderRegistry` (`task` / `slack` → noch nicht implementiert).
 - **REST (neu):** `inc/routes/ai-profiles.php` — `GET/PATCH /dls/v1/ai/profiles`, `GET /dls/v1/ai/profiles/{id}`, `POST /dls/v1/ai/profiles/{id}/run`, `POST /dls/v1/ai/profiles/runs/{id}/promote`, `POST /dls/v1/ai/profiles/worker/stop`. Worker-State: Option `dls_ai_profile_worker_state`; Cron-Fallback: `dls_ai_profile_cron_worker`.
 

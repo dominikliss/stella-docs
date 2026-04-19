@@ -29,10 +29,13 @@ ACF `date_picker` fields return **`Y-m-d`** strings (e.g. `"2026-03-07"`) — co
 | `eur_conversion_rate_transaction_date`   | text         | Same for payment date |
 | `vat_percent`                          | text         | string                                                    |
 | `vat_free`                             | radio        | `"nein"`, `"Reverse Charge"`, `"Innengemeinschaftlicher Erwerb"`, `"Drittland"` |
-| `expense_category`                     | radio        | `"N/A"`, `"Werbung"`, `"Material"`, `"Beratung"`, `"GWG"`, `"Investition"`, `"Erlöskorrektur"` |
-| `internal_category`                    | radio        | `"N/A"`, `"Investition"`                                 |
+| `expense_category`                     | radio        | `"N/A"`, `"Werbung"`, … — conditional on `type` = Ausgabe in ACF |
+| `income_category`                      | radio        | `"Dienstleistung"` (default), `"Werbeinnahmen"` — conditional on `type` = Einnahme. If `Werbeinnahmen` (or legacy `Werbung`), KSeF FA line items include `GTU` = `GTU_12`; PDF shows GTU notice. Field key: `field_65b921_income_cat` |
+| `internal_category`                    | radio        | `"N/A"`, `"Investition"` — conditional on `type` = Ausgabe        |
 | `ksef_reference`                       | text         | KSeF invoice number — set on import, used for deduplication. Field key: `field_6829ksef000r1` |
 | `ksef_seller_nip`                      | text         | Seller NIP from KSeF XML. Field key: `field_6829ksef000n2` |
+| `expense_receipt_rel_path`             | text         | Relative path under `wp-content/private/dls-expense-receipts/` — set by Beleg import (`POST /dls/v1/expense-receipt-import`). Field key: `field_6965exprec001` |
+| `expense_receipt_original_filename`    | text         | Original upload filename. Field key: `field_6965exprec002` |
 
 Note: `invoice_url` and `invoice_url_pl` are stored via import (post meta) — used in open-invoices. Not in ACF field group; may require custom REST exposure.
 
@@ -47,9 +50,10 @@ ACF `date_picker` fields return `"Y-m-d"` strings. Positions repeater items use 
 | `service_start_date`       | date_picker | `"Y-m-d"` string                              |
 | `service_end_date`         | date_picker | `"Y-m-d"` string                              |
 | `language_code`            | select      | `"DE"`, `"EN"`, `"PL"`                         |
-| `bank_details_country_code`| select      | `"AT"`, `"PL"`, `"USA"` — **legacy, no longer used for bank account selection**; bank account is now selected via `bank_account_id` post meta or `BankAccountDbService::find_account()` |
+| `bank_account_id`          | select      | `dls_bank_account` row id as string; `"0"` = no pin. Field key `field_6961inv_bank_acct`. Choices from `acf/load_field`. `ui: 0`. |
+| `bank_details_country_code`| select      | `"AT"`, `"PL"`, `"USA"` — legacy; bank line on PDF/KSeF comes from `bank_account_id` + `BankAccountDbService` |
 | `invoice_url`              | url         | string — PDF URL (from import or manual)      |
-| `positions`                | repeater    | array of `{ product_id, description, quantity, unit_price, vat_percent }` |
+| `positions`                | repeater    | array of `{ product_id, description, quantity, unit_price, vat_percent }` — optional `description` overrides the line title; inline HTML in that field is rendered on the invoice PDF (allowlisted tags) and stripped for KSeF `P_7` |
 | `ksef_invoice_number`      | text        | KSeF number assigned after successful send. Field key: `field_6961inv_ksef_number` |
 | `ksef_send_status`         | select      | `""` / `"pending"` / `"sent"` / `"error"`. Field key: `field_6961inv_ksef_status` |
 | `ksef_sent_at`             | text        | ISO 8601 timestamp of last send attempt. Field key: `field_6961inv_ksef_sent_at` |
@@ -60,7 +64,6 @@ ACF `date_picker` fields return `"Y-m-d"` strings. Positions repeater items use 
 
 | Meta key         | Type    | Notes |
 |------------------|---------|-------|
-| `bank_account_id`| integer | ID of the pinned `dls_bank_account` row; `0` = no pin. Registered via `register_post_meta` with `show_in_rest: true`. Saved via direct `apiFetch POST wp/v2/invoice/{id}` — do **not** rely on `saveEntityRecord` for this field. Takes priority over transaction pin and auto-select. |
 | `_ksef_sent_env` | string  | `"production"` or `"test"` — environment of the last successful KSeF send. Allows re-sending to a different environment without HTTP 409. |
 
 ## client
@@ -117,7 +120,7 @@ ACF `number` returns number. `base_price` can be used directly for arithmetic.
 | Field name               | ACF type     | Return value / notes                    |
 |--------------------------|--------------|-----------------------------------------|
 | `name`                   | text         | string                                  |
-| `description`            | textarea     | string                                  |
+| `description`            | textarea     | string — allowlisted inline HTML (`br`, `strong`, …) is rendered on invoice PDFs under the product title |
 | `base_price`             | number       | number — use directly for arithmetic    |
 | `is_recurring`           | true_false   | boolean                                 |
 | `subscription_period`    | radio        | `"monthly"`, `"quarterly"`, `"yearly"`  |

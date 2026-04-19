@@ -1,108 +1,172 @@
 # Nachrichten (IMAP) — theme implementation
 
-This document describes the **implemented** mail module in the ddashboard theme (not the separate AI-email roadmap in `.cursor/rules/ai-email-project-assistant.mdc`).
+This document describes the **implemented** mail module (v3) in the ddashboard theme.
 
 ## Routes (virtual, no WP page)
 
 | Path | UI |
 |------|-----|
-| `/nachrichten/` | Inbox (`messages-page.js`) — `PageLayout` + grid: dark `.card` inbox, collapsible filters, thread detail, shortcuts + sidebar |
-| `/nachrichten/verwaltung/` | Mailbox admin (IMAP credentials, sync) |
+| `/nachrichten/` | Inbox (`messages-page.js`) — `PageLayout` + dark inbox card, thread grouping, tabs, filters |
+| `/nachrichten/verwaltung/` | Mailbox admin (`mail-admin-tab.js`) — IMAP credentials, sync, classification rules |
 
 Registered in `inc/app-routes.php`. React mounts into `.dls-nachrichten`.
 
-## Database
+## Database (`dls_mail_db_version = 31`)
 
-Option: `dls_mail_db_version` — current schema version constant: **`DLS_MAIL_DB_VERSION`** in `inc/install-mail-tables.php` (migrations run on `init` via `dls_install_mail_tables`).
+Option: `dls_mail_db_version` — schema version constant `DLS_MAIL_DB_VERSION` in `inc/install-mail-tables.php` (migrations run on `init` via `dls_install_mail_tables`).
+
+**Legacy tables dropped in v3:** `dls_mailbox`, `dls_email`, `dls_email_spam_blocklist`, `dls_email_spam_whitelist`, `dls_mailbox_folder_client`, `dls_email_attachment`, embed queue. Spam is now handled at the IMAP level.
 
 | Table | Purpose |
 |-------|---------|
-| `{prefix}dls_mailbox` | IMAP accounts, encrypted password, folder names, optional `imap_sync_extra_folders` (chunk sync of non-inbox folders) |
-| `{prefix}dls_email` | Messages per mailbox; unique `(mailbox_id, message_id, imap_folder)`; `spam_status` 0 = clean, 1 = likely spam, 2 = confirmed spam; `direction` inbound/outbound; `stella_indexed_at` = last **successful** Stella/Chroma upsert (kept while a new upsert is queued) |
-| `{prefix}dls_email_spam_blocklist` | Normalized sender addresses → forced spam (2) on sync |
-| `{prefix}dls_email_spam_whitelist` | Normalized sender addresses → no heuristic spam (0); emoji/subdomain rules skipped |
-| `{prefix}dls_mailbox_folder_client` | Optional IMAP folder → `client_id` mapping per mailbox |
+| `dls_mail_account` | IMAP accounts — credentials (`MailCrypto` AES), `is_active` flag |
+| `dls_mail_folder` | Per-account folder rows: `uid_validity`, `category`, `last_synced_at` |
+| `dls_mail_message` | One row per `(account_id, folder_id, imap_uid)`; `direction` inbound/outbound; `thread_id`; classification: `email_category`, `email_action`, `email_urgency`, `classification_source` (`rule`/`ai`); `has_attachment`, `is_seen`, `is_flagged`, `subject_normalized` |
+| `dls_mail_folder_link` | Polymorphic folder → entity mapping |
+| `dls_mail_message_link` | Polymorphic message → entity; `source`: `folder` / `manual` / `address` |
+| `dls_mail_attachment` | Attachment metadata; files under `wp-content/private/dls-mail-attachments/{account_id}/{message_id}/` |
+| `dls_mail_classification_rule` | Ordered Layer-1 classification rules |
+| `dls_mail_sync_run` | Chunk sync audit log — `status` running → done/error/cancelled; counts, `errors_json`, timestamps |
 
-## PHP services (namespace `DLS\Services` unless noted)
+## PHP services (namespace `DLS\Services\`)
 
 | File | Role |
 |------|------|
-| `inc/services/mailbox-db-service.php` | CRUD mailboxes/emails; `upsert_email_row` applies spam resolution; blocklist/whitelist helpers |
-| `inc/services/client-email-match-service.php` | Maps addresses / domains to `client` (ACF emails, people, **website** host); subdomain detection for spam heuristic |
-| `inc/services/mail-sync-service.php` | Full / incremental IMAP import |
-| `inc/services/mail-chunk-sync-service.php` | Background chunked sync; optional extra folders controlled by mailbox flag |
-| `inc/services/mail-thread-id-service.php` | Thread IDs |
-| `inc/services/mail-crypto.php` | Mailbox password encryption |
-| `inc/services/dls-imap-factory.php` | IMAP client construction |
+| `inc/services/mail-db-service.php` — `MailDbService` | Single DB façade: account/folder/message/attachment CRUD, client email map from WP CPTs, `list_emails` with pagination + filters, `delete_emails_for_mailbox` + manual-link transient, `restore_manual_links_after_resync` |
+| `inc/services/mail-sync-v2.php` — `MailSyncV2` | IMAP sync engine: `sync_account` (quick), `start_chunk_job` / `process_chunk_step` / `cancel_chunk_job` (chunk wipe-resync), `recompute_thread_ids`, `recompute_client_assignments` |
+| `inc/services/mail-sync-run-db-service.php` — `MailSyncRunDbService` | Append-only `dls_mail_sync_run` audit log; `insert_chunk_running` → `finalize_chunk_run` / `mark_cancelled_for_running_account` |
+| `inc/services/mail-attachment-service.php` — `MailAttachmentService` | Download IMAP attachments to `wp-content/private/dls-mail-attachments/`; 25 MB cap; MIME blocklist; `purge_attachments_for_account`, `delete_account_attachment_tree` |
+| `inc/services/mail-classification-service.php` — `MailClassificationService` | Layer-1 rule-based classification (`dls_mail_classification_rule`); Layer-2 Ollama (synchronous `/api/chat`, `format: json`) if no rule matches and Ollama URL configured; writes `email_category`, `email_action`, `email_urgency`, `classification_source`; rule CRUD + `reorder_rules` |
+| `inc/services/mail-crypto.php` — `MailCrypto` | `encrypt/decrypt` for IMAP passwords (AES) |
+| `inc/services/dls-imap-factory.php` — `DlsImapFactory` | `make_client()` — Webklex PHPIMAP, no `ext-imap` |
+
+## WP-Cron
+
+- `inc/mail-sync-cron.php` — hook `dls_mail_imap_sync_cron`, custom interval `dls_every_five_minutes` (300 s).
+- Loops active accounts from `MailDbService::list_mailboxes()`, calls `MailSyncV2::sync_account($id, $limit)`.
+- Default limit 100; filterable via `dls_mail_cron_sync_limit` (min 10).
+
+## Quick sync vs chunk sync
+
+### Quick sync (`MailSyncV2::sync_account`)
+Per-folder UID diff (IMAP vs DB):
+- Handles **UIDVALIDITY** change: purge all messages for that folder, reimport.
+- Flag sync for up to `FLAG_SYNC_LIMIT` (500) existing UIDs — updates `is_seen`, `is_flagged`.
+- Imports new UIDs up to `$limit` total across all folders.
+- Called by WP-Cron and `POST /mailboxes/{id}/sync`.
+
+### Chunk sync (full wipe-resync)
+1. `start_chunk_job` — wipes all messages for the mailbox (`delete_emails_for_mailbox`), saves manual links to transient `dls_mail_pending_manual_links_{id}` (3 h), builds per-folder UID queues, logs run in `MailSyncRunDbService`.
+2. `process_chunk_step` — imports one folder's queued batch; runs `MailAttachmentService` per message; runs `MailClassificationService` only when `DLS_MAIL_CLASSIFICATION_ENABLED` is true (main INBOX inbound). Returns job summary (`done`, `processed`, `queued_done`, `total`, …).
+3. On completion: `restore_manual_links_after_resync` reads the transient, re-inserts manual links.
+4. Job state in transient `dls_mail_sync_job_{id}` (3 h TTL). Default `uid_cap = 0` (unlimited UIDs across folders).
+
+## Direction detection (`MailSyncV2::extract_message_row`)
+
+- `outbound`: IMAP path matches Sent folder pattern (`sent` / `gesendete` case-insensitive) **or** From header matches `DLS_OWNER_EMAILS` or a domain in `DLS_OWNER_DOMAINS` (see `inc/constants.php`).
+- All other messages: `inbound`.
+- When **`DLS_MAIL_CLASSIFICATION_ENABLED`** is `true` in `inc/constants.php`, **main INBOX** + **`direction = inbound`** messages may be classified on import; outbound and IMAP subfolders are never classified (already filed). Default is **`false`** until the pipeline is ready.
+
+## Classification (`MailClassificationService`)
+
+**Master switch:** `DLS_MAIL_CLASSIFICATION_ENABLED` (`inc/constants.php`). When `false`, `classify_message` / REST on-demand classify return immediately (no rules, no Ollama).
+
+When **enabled**, applied **only** to **main INBOX** (`imap_folder` exactly `INBOX`, case-insensitive) **inbound** rows (same guard in sync and REST):
+
+1. **Layer 1 — rules:** Ordered rules in `dls_mail_classification_rule`; first match wins; `classification_source = 'rule'`.
+2. **Layer 2 — Ollama:** Only if no rule matches and `AiRuntimeCredentials::ollama_base_url()` is set; synchronous POST to `/api/chat` with `format: json`; `classification_source = 'ai'`.
+
+Classification is **synchronous** in the import request when the switch is on. Stored English tokens on `dls_mail_message`: `email_category`, `email_action`, `email_urgency`, `classification_source`. German UI labels from `src/helpers/email-classification-labels.js`.
+
+## Client assignment
+
+Client links are stored in `dls_mail_message_link` with `source` column:
+
+| Source | Set by | Priority |
+|--------|--------|----------|
+| `folder` | `dls_mail_folder_link` entry matching the message's folder | Highest |
+| `address` | `MailDbService::build_client_email_map()` → From/To/Cc matching against WP CPTs (client emails, people, invoice emails) | Second |
+| `manual` | User via `PUT /dls/v1/emails/{id}` with `client_id` | Survives wipe-resync |
+
+`recompute_client_assignments` deletes all `folder` + `address` links and re-derives them from current data. Manual links are never deleted by recompute.
+
+`POST /dls/v1/emails/clear-client-links` removes all `address`-source links (optionally filtered by `mailbox_id`).
 
 ## REST API (`dls/v1`, logged-in)
 
-Defined in `inc/routes/mailboxes.php` (and related).
+### Mailboxes (`dls_mail_permission`)
 
-**Mailboxes:** `GET/PUT/DELETE /dls/v1/mailboxes`, `GET/POST/DELETE …/folder-clients`, `GET …/email-folders` (distinct `imap_folder` values from imported emails + counts), `GET /dls/v1/folder-clients-overview` (all mailboxes: union of imported folder paths + saved mappings, with counts and `client_id`), etc.
+| Method | Path | Action |
+|--------|------|--------|
+| GET, POST | `/mailboxes` | List / create |
+| GET, PUT, DELETE | `/mailboxes/{id}` | Get / update / delete |
+| POST | `/mailboxes/test-imap` | Test IMAP credentials (no persist) |
+| GET | `/mailboxes/imap-health` | Health check all active accounts |
+| POST | `/mailboxes/list-folders` | List IMAP folder tree |
+| GET | `/mailboxes/{id}/email-folders` | Distinct folder paths from imported messages |
+| GET, POST, DELETE | `/mailboxes/{id}/folder-clients` | Folder→entity assignment CRUD |
+| GET | `/folder-clients-overview` | All mailboxes + folder paths (counts, assignments) |
 
-**Verwaltung UI:** Tabelle „IMAP-Ordner → Kunde“ unter `/nachrichten/verwaltung/` — Kundenwahl speichert per `POST`/`DELETE` auf `…/folder-clients` ohne separaten Speichern-Button.
+### Sync (`dls_mail_permission`)
 
-**Emails:** `GET /dls/v1/emails` (filters: `mailbox_id`, `direction`, `thread_id`, `spam_status`, `search`, pagination). **`GET /dls/v1/emails/{id}/stella-chroma-raw`** — proxies to Stella **`GET /emails/document/email_{id}`**; Stella returns `{ id, document, metadata }` (Chroma `…/collections/{uuid}/get`); WordPress wraps as `{ ok, document_id, stella: { … } }`.
+| Method | Path | Action |
+|--------|------|--------|
+| POST | `/mailboxes/{id}/sync` | Quick sync — body `{ limit }` (default 100) |
+| POST | `/mailboxes/{id}/sync-chunk/start` | Start chunk wipe-resync — body `{ chunk_size, uid_cap }` |
+| POST | `/mailboxes/{id}/sync-chunk/step` | Advance one chunk step |
+| GET | `/mailboxes/{id}/sync-chunk` | Chunk sync status |
+| DELETE | `/mailboxes/{id}/sync-chunk` | Cancel chunk sync |
+| DELETE | `/mailboxes/{id}/emails` | Wipe all messages for account |
+| POST | `/emails/recompute-metadata` | Recompute thread_id and/or client links — body `{ mailbox_id?, threads?, clients? }` |
+| POST | `/emails/clear-client-links` | Remove `address`-source links — body `{ mailbox_id? }` |
 
-**Metadata rebuild (batch):** `POST /dls/v1/emails/recompute-metadata` — JSON `mailbox_id` (optional; omit = all mailboxes), `threads` / `clients` (optional booleans, default `true`). Recomputes `thread_id` (see `MailThreadIdService`) and/or `client_id` from current matching rules. **Verwaltung:** button „Neu gruppieren“ per mailbox.
+### Emails (`dls_mail_permission`)
 
-**Spam:** `PUT /dls/v1/emails/{id}` (`spam_status`, `client_id`), `POST …/confirm-spam`, `POST …/whitelist-sender`, `GET/DELETE …/emails/spam-blocklist`, `GET/DELETE …/emails/spam-whitelist`.
+| Method | Path | Action |
+|--------|------|--------|
+| GET | `/emails` | Paginated list — filters: `mailbox_id`, `client_id`, `direction`, `thread_id`, `imap_folder`, `search`, `page`, `per_page`; response `{ items, total }` |
+| GET | `/emails/{id}` | Full message row |
+| PUT | `/emails/{id}` | Update `client_id`, `is_seen`, `is_flagged` |
 
-## Thread / conversation id (`thread_id`)
+### Classification rules (`dls_require_login`)
 
-- Prefer **References** / **In-Reply-To** Message-IDs (stable `hdr-…` ids).
-- If those are missing, a **heuristic** `heu-…` id is used: normalized subject (reply prefixes stripped) + external participant addresses (mailbox login and **owner/internal** addresses excluded — see below).
-- Standalone **Message-ID** alone is **not** used as a per-message thread root (so messages without headers still group by subject/participants).
+| Method | Path | Action |
+|--------|------|--------|
+| GET | `/mail/classification-rules` | List rules + taxonomy metadata (categories, actions, urgencies, condition types) |
+| POST | `/mail/classification-rules` | Create rule |
+| PUT | `/mail/classification-rules/{id}` | Update rule |
+| DELETE | `/mail/classification-rules/{id}` | Delete rule |
+| POST | `/mail/classification-rules/reorder` | Reorder — body `{ ordered_ids: number[] }` |
+| POST | `/mail/messages/{id}/classify` | Re-classify single message |
 
-## Client assignment order (`MailSyncService`)
+## Thread ID
 
-Applied on IMAP import and on `POST /dls/v1/emails/recompute-metadata` (`clients: true`):
+- Prefer **References** / **In-Reply-To** Message-ID headers (stable `hdr-…` ids).
+- Fallback: `heu-…` id — normalized subject + external participant addresses (owner/internal excluded).
+- Standalone Message-ID alone is not used as a thread root.
 
-1. **`thread_id`** is set first (import only; recompute uses stored `thread_id`).
-2. **Folder → client** (`dls_mailbox_folder_client`): matching IMAP path sets `client_id` (**highest priority** vs address rules).
-3. **Address / domain / subject** (`ClientEmailMatchService`) only if `client_id` is still empty.
-4. **Outbound thread inherit**: for `direction = outbound`, if the same `thread_id` has inbound row(s) with `client_id`, the **dominant** inbound client (most frequent, then latest) is applied — **overrides** folder + address (so Gesendet follows the conversation’s Kunde).
-
-**Verwaltung:** `GET /dls/v1/mailboxes/{id}/email-folders` returns distinct `imap_folder` values from imported emails (with inbound/total counts) to pick paths for folder mapping.
-
-## Client auto-match (`ClientEmailMatchService`)
-
-- Ignores **owner / house** addresses when resolving: `liss.dominikliss@gmail.com`, `liss.dominik@gmail.com`, any `@*.dominikliss.com` / `@dominikliss.com`, any `@*.foxcraft.digital` / `@foxcraft.digital` (see `is_internal_owner_email_normalized` / `is_internal_owner_domain_host`). Domain tokens in the subject matching those hosts are skipped too.
-- Client **website** (`ACF website`) indexes the normalized host **and parent suffixes** (e.g. `mail.example.com` and `example.com`) so an address `@example.com` still matches when the stored URL is only a subdomain. Bare compound suffixes like `co.uk` are not registered as keys.
-
-## Spam logic (inbound, on `upsert_email_row`)
-
-1. **Blocklist** (`dls_email_spam_blocklist`) → `spam_status = 2` (strongest).
-2. Else **whitelist** (`dls_email_spam_whitelist`) → `spam_status = 0` (heuristics skipped).
-3. Else **heuristics** (raise to at least 1 if applicable):
-   - **Emoji** in subject (`\p{Extended_Pictographic}`).
-   - **Subdomain** sender host (heuristic + compound TLD list), except if host contains `dominikliss` or `foxcraft`, or matches a **client website** domain via `ClientEmailMatchService::host_matches_client_website()`.
-
-Confirming spam adds addresses to the blocklist and removes them from the whitelist. Whitelisting an inbound sender adds to the whitelist, clears blocklist entry for that address, and sets all inbound rows from that `from_email` to 0.
+`MailSyncV2::recompute_thread_ids` can rebuild thread IDs across all stored messages from their stored headers.
 
 ## Frontend
 
 | File | Notes |
 |------|--------|
-| `src/components/messages-page.js` | `PageLayout` inbox: filters, thread list grouped by `thread_id`, Schnellzugriff, spam lists; opens `messages-conversation-sidebar.js` for detail |
-| `src/components/messages-conversation-sidebar.js` | Fixed right `SidebarForm` (wide): identity + subject, `ScrollPanel` + `EmailConversationThread`, Kunde zuweisen, mailto reply draft |
-| `src/components/email-detail-sidebar.js` | Per-message „Kopfdaten“ (`SidebarForm`): `EmailMetaTable` … **Anhänge**, Roh-Header, **ChromaDB-Roh-JSON** (`GET /dls/v1/emails/{id}/stella-chroma-raw`), vollständiger Body |
-| `src/components/email-meta-table.js` | Shared Kopfdaten key/value table (full view + sidebar); **Klassifizierung** block: Ebene 1 (`email_category`, `email_action`) und Ebene 2 (`email_l2_*`), inkl. gespeicherter englischer Tokens unter der deutschen Bezeichnung |
-| `src/components/messages-focus-inbox-row.js` | Inbox row: avatar, snippet, distinct per-thread `email_category` pills (German labels), time, actions |
-| `src/components/list-search-field.js` | Debounced search; uses `.field-container` + form input styles |
+| `src/components/messages-page.js` | Root `/nachrichten` — `PageLayout` + dark inbox, thread grouping by `thread_id`, tabs **Kunden** / **WordPress** / **Sonstiges** (`classifyThread`: Kunden = latest message has `client_id`; WordPress = any `from_email` contains `wordpress`; else Sonstiges). Header badge shows total INBOX messages vs. count in the active tab; empty-state copy explains tab mismatch. Filters, pagination, `MessagesFocusInboxRow`, `MessagesConversationSidebar`; mounts on `.dls-nachrichten` |
+| `src/components/mail-admin-tab.js` | Mailbox CRUD, IMAP health, folder→entity mappings, chunk sync + wipe-resync, `MailAdminClassificationRules` — full rule CRUD (GET list + metadata, POST/PUT/DELETE rule, POST reorder) |
+| `src/components/mailbox-sync-controls.js` | `useMailboxSync` hook + `SyncConfirmModals`; quick sync, chunk sync (poll `step` ~400 ms), wipe (DELETE + start chunk), resume active jobs on mount via `Promise.allSettled` |
+| `src/helpers/email-classification-labels.js` | English token → German label maps for categories, actions, urgency, condition types, source; `emailClassificationDisplayDe(token, kind)`; `EMAIL_CATEGORY_COLOR` |
+| `src/helpers/mail-admin-shared.js` | `mailPath(suffix)`, `mailboxSchema` (Yup), `clientLabel(client)` |
+| `src/helpers/mail-conversation-resolution.js` | Thread helpers: `resolveThreadContactPerson`, `conversationListAvatarInfo`, `threadSubjectPreview`, internal-email filtering, avatar, reply `mailto:` builder |
 
-**List search:** `ListSearchField` — wrapper `field-container dls-list-search-field`; `input[type="search"]` styled in `form.scss`.
-
-**Layout / SCSS:** Dark UI shell in `assets/scss/components/messages-page.scss` (scoped under `.dls-messages-page`). Filter row uses `.filter-bar` + `filter-bar.scss`; blocklist tables in `inbox.scss`.
+**SCSS:** `messages-page.scss` (`.dls-messages-page` shell), `mail-admin-panel.scss`, `inbox.scss`, `chunk-sync.scss`, `filter-bar.scss`, `conversation-layout.scss` — imported by `messages.scss`.
 
 ## Build / SCSS
 
-- JS: `npm run build` → `build/index.js`.
-- SCSS: compiled via theme helper (`stella_compile_all_new_scss` in `functions.php`) into `assets/css/styles.css` (and login).
+- JS: `npm run build` → `build/index.js` (required after any `src/` change).
+- SCSS: compiled via `stella_compile_all_new_scss` in `functions.php` into `assets/css/styles.css`. Never edit CSS directly.
 
 ## Related Cursor rules
 
-- **Architecture:** `.cursor/rules/architecture.mdc` — short Nachrichten summary.
-- **Mail detail (optional):** `.cursor/rules/mail-nachrichten.mdc` — agent checklist for mail changes.
-- **AI email roadmap (future Ollama/Chroma):** `.cursor/rules/ai-email-project-assistant.mdc` — separate from this IMAP implementation.
+- **Architecture:** `.cursor/rules/architecture.mdc` — Nachrichten summary + file structure.
+- **Mail detail:** `.cursor/rules/mail-nachrichten.mdc` — agent checklist for mail changes.
+- **AI email roadmap (future):** `.cursor/rules/ai-email-project-assistant.mdc` — separate from this IMAP implementation.

@@ -14,7 +14,7 @@ Vollständige Architektur: **`architecture.md`** → Abschnitt **„E-Mail-AI-An
 |--------|-------------|------------|
 | Profil `name` | `writing_style` | `classification` |
 | `source_type` | `email` | `email` |
-| Corpus (`dls_email`) | `direction = outbound` | `direction = inbound` |
+| Corpus (`dls_mail_message`) | `direction = outbound` | `direction = inbound` |
 | Primäre Tabelle | `dls_ai_profile` + `dls_ai_profile_run` | gleich |
 | REST (neu) | `GET/PATCH /dls/v1/ai/profiles`, `POST …/run`, promote, worker/stop | gleich |
 | Legacy kompatibel | `ai-writing-style.php` (Profil-gestützt) | `ai-email-classification-suggestions.php` |
@@ -24,7 +24,7 @@ Vollständige Architektur: **`architecture.md`** → Abschnitt **„E-Mail-AI-An
 - **Historie:** weiterhin `dls_writing_style_run` via `WritingStyleHistoryService` (Worker protokolliert parallel); zusätzlich `dls_ai_profile_run` als kanonische Run-Historie.
 - **Konflikt:** global nur ein aktiver Run; 409 `analysis_busy`, außer derselbe Profil-Lauf läuft schon (200).
 - **UI:** `ai-profiles-page.js` auf `/verwaltung/ai-profiles/`.
-- **Prompt ändern:** in DB (`dls_ai_profile.system_prompt` / `user_prompt`) oder Seed/Migration; User-Prompt-Platzhalter `{{corpus}}`, `{{count}}`, `{{model}}`. Klassifizierung: Worker prüft `require_substring` (Standard `### Regelbasierte Muster`).
+- **Prompt ändern:** UI pflegt nur **`user_prompt`** (Analyse-Prompt); Speichern setzt **`system_prompt`** leer. Platzhalter: `{{corpus}}`, `{{count}}`, `{{model}}`. Worker sendet an Ollama nur eine **System**-Nachricht, wenn `system_prompt` in der DB noch nicht leer ist (Legacy), sonst nur **User** mit `user_prompt`. Klassifizierung: Worker prüft `require_substring` (Standard `### Regelbasierte Muster`).
 - **Maschinenlesbare Felder:** In `dls_email` (Layer-2) unverändert englische Tokens; Taxonomie-Markdown bleibt deutschsprachig wo vorgesehen.
 
 ## Checkliste: neues Profil / neuer Quelltyp

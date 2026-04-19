@@ -35,7 +35,7 @@
 - After changing `inc/acf/settings/group_6762f36b7113a.json`, sync the field group in WP admin (ACF) so PHP `get_field()` and `BasicService` SQL include the new meta keys.
 
 ## PHP Namespaces
-- `DLS\Services\` — all services (`FileService`, `ClientService`, `OptionService`, `BasicService`, `KSeFService`, `KSeFXmlBuilder`, `BankAccountDbService`, `SaldeoExportService`, `SubscriptionBillingService`, `YouTubeDataService`, `YouTubeSyncService`, `YouTubeOAuthService`, `YouTubeAnalyticsApiService`, `YouTubeAnalyticsSyncService`, `AiAgentRegistry`, `AnthropicChatService`, `AiChatSessionService`, `PmDbService`, `MailboxDbService`, `EmailCrudService`, `EmailSpamService`, `EmailCategoryDbService`, `MailSyncService`, `MailChunkSyncService`, `ClientEmailMatchService`, `MailThreadIdService`, `MailHtmlSplitQuoteService`, `MailAttachmentStorageService`, `MailCrypto`, `DlsImapFactory`, `WritingStyleHistoryService`, `NbpExchangeRateService`, `InvoicePdfService`, `CommissionReportService`). Services are autoloaded via Composer classmap.
+- `DLS\Services\` — all services (`FileService`, `ClientService`, `OptionService`, `BasicService`, `KSeFService`, `KSeFXmlBuilder`, `BankAccountDbService`, `SaldeoExportService`, `SubscriptionBillingService`, `YouTubeDataService`, `YouTubeSyncService`, `YouTubeOAuthService`, `YouTubeAnalyticsApiService`, `YouTubeAnalyticsSyncService`, `AiAgentRegistry`, `AnthropicChatService`, `AiChatSessionService`, `PmDbService`, `MailDbService`, `MailSyncV2`, `MailSyncRunDbService`, `MailAttachmentService`, `MailClassificationService`, `MailCrypto`, `DlsImapFactory`, `ExpenseReceiptStorageService`, `WritingStyleHistoryService`, `NbpExchangeRateService`, `InvoicePdfService`, `CommissionReportService`). Services are autoloaded via Composer classmap.
 - No namespace — route callback functions (`dls_*` prefix convention)
 
 ## Subscription billing (WP-Cron)
@@ -60,10 +60,10 @@ New browser-facing endpoints MUST use `dls/v1` namespace. The `api/v1` namespace
 ## File Structure
 ```
 inc/
-  constants.php              # App-wide constants: DLS_ALLOWED_IPS, DLS_OWNER_EMAILS, DLS_OWNER_DOMAINS, DLS_ANALYSIS_TIMEOUT
+  constants.php              # App-wide constants: DLS_ALLOWED_IPS, DLS_OWNER_EMAILS, DLS_OWNER_DOMAINS, DLS_MAIL_CLASSIFICATION_ENABLED, DLS_ANALYSIS_TIMEOUT
   subscription-billing.php   # Clears legacy subscription cron; billing is manual via REST only
   mail-sync-cron.php         # WP-Cron: `dls_mail_imap_sync_cron` every 5 min → sync active mailboxes
-  install-mail-tables.php    # dbDelta: dls_mailbox, dls_email, spam lists, folder_client, dls_email_attachment, embed queue; migrations v1–v23
+  install-mail-tables.php    # dbDelta v3 (DLS_MAIL_DB_VERSION = 31): dls_mail_account, dls_mail_folder, dls_mail_message, dls_mail_folder_link, dls_mail_message_link, dls_mail_attachment, dls_mail_classification_rule, dls_mail_sync_run; drops legacy dls_mailbox / dls_email tables on upgrade
   install-pm-tables.php      # dbDelta: dls_pm_project, dls_pm_task_list, dls_pm_task, dls_pm_task_assignee, dls_pm_comment, dls_pm_time_entry; migrations v1–v2
   install-bank-account-tables.php # dbDelta: dls_bank_account (label, iban, bic, bank_name, account_holder, condition_country, condition_vat, currency, is_primary, US fields); migrations v1–v3; seeds defaults
   install-ai-chat-tables.php # dbDelta: dls_ai_chat_session, dls_ai_chat_message
@@ -72,11 +72,10 @@ inc/
   acf/settings/              # ACF field group JSON configs (group_*.json)
   post-types/                # CPT registration
   routes/                    # REST API endpoints (dls/v1 namespace unless noted)
-    mailboxes.php            # Mailbox CRUD, folder-client mappings, folder-clients-overview
-    mail-emails.php          # Email list/get/update + attachment endpoints (split from mailboxes.php)
-    mail-spam.php            # Spam confirm, blocklist, whitelist endpoints (split from mailboxes.php)
-    mail-categories.php      # Email category CRUD endpoints (split from mailboxes.php)
-    mail-sync.php            # Sync, chunk-sync, recompute, clear-client-links (split from mailboxes.php)
+    mailboxes.php            # Mailbox CRUD, folder-entity assignments, folder-clients-overview, IMAP health/test/list-folders
+    mail-emails.php          # Email list/get/update endpoints
+    mail-sync.php            # Quick sync, chunk wipe-resync (start/step/cancel/status), recompute-metadata, clear-client-links, DELETE emails
+    mail-classification.php  # Classification rules CRUD + reorder; POST /mail/messages/{id}/classify
     pm-projects.php          # /dls/v1/pm/* — projects, task lists, tasks, assignees, comments, time entries
     tracking-time.php        # TrackingTime Pro import (time entries, tasks, projects)
     bank-accounts.php        # GET /dls/v1/bank-accounts, POST, PUT /{id}, DELETE /{id}
@@ -86,6 +85,7 @@ inc/
     youtube-sync.php         # POST /dls/v1/youtube/sync, GET /dls/v1/youtube/status
     youtube-analytics.php    # OAuth + YouTube Analytics API sync → dls_youtube_analytics_*
     saldeo-export.php        # GET  /dls/v1/saldeo-export
+    expense-receipt-import.php # POST /dls/v1/expense-receipt-import (multipart PDF/JPEG → Ausgabe); GET /dls/v1/expense-receipt/{transaction_id} (inline Beleg)
     subscription-billing-run.php # POST /dls/v1/subscription-billing-run
     client-portal-user-create.php # POST/DELETE /dls/v1/client-portal-user
     nbp-rate.php             # GET  /dls/v1/nbp-rate, GET /dls/v1/nbp-expense-rates (EUR/PLN + USD/PLN + USD→EUR for USD expenses)
@@ -99,23 +99,19 @@ inc/
     authenticate.php         # api/v1 (IP-restricted): POST /generate-password-key, POST /set-password — portal password reset flow
     customer-data.php        # api/v1 (IP-restricted): GET /customer-data, POST /accept-file — customer portal data + file acceptance
   services/                  # PHP service classes (DLS\Services\)
-    mailbox-db-service.php   # MailboxDbService facade — mailbox CRUD + delegates to EmailCrudService, EmailSpamService, EmailCategoryDbService
-    email-crud-service.php   # EmailCrudService — email record CRUD (split from MailboxDbService)
-    email-spam-service.php   # EmailSpamService — spam heuristics, blocklist/whitelist (split from MailboxDbService)
-    email-category-db-service.php # EmailCategoryDbService — email category CRUD (split from MailboxDbService)
-    mail-sync-service.php    # IMAP import (newest-N fetch per folder); date_sent fallback; prune_emails_removed_from_imap_folder (full UID map vs DB)
-    mail-chunk-sync-service.php # Background chunked IMAP sync; prune_imap_orphans_for_completed_chunk_job on job complete
-    client-email-match-service.php # resolve_client_id_single_counterparty_exact (strict) + resolve_client_id (legacy)
-    mail-thread-id-service.php
-    mail-html-split-quote-service.php # split_latest_and_quoted — strips quoted history from body_html for list
-    mail-attachment-storage-service.php # store IMAP attachments → wp-content/private/dls-mail-attachments/
-    mail-crypto.php          # Mailbox password AES encryption
-    dls-imap-factory.php     # Webklex PHPIMAP client factory (no ext-imap)
+    mail-db-service.php      # MailDbService — single DB façade for accounts/folders/messages/attachments/links; client email map from WP CPTs; list_emails with pagination
+    mail-sync-v2.php         # MailSyncV2 — IMAP sync engine: quick sync (sync_account), chunk wipe-resync (start/process/cancel_chunk_job), recompute_thread_ids, recompute_client_assignments
+    mail-sync-run-db-service.php # MailSyncRunDbService — append-only dls_mail_sync_run log for chunk jobs
+    mail-attachment-service.php  # MailAttachmentService — download IMAP attachments to private storage; 25 MB cap; MIME blocklist
+    mail-classification-service.php # MailClassificationService — Layer-1 rules (dls_mail_classification_rule); Layer-2 Ollama optional; synchronous on import
+    mail-crypto.php          # MailCrypto — AES encrypt/decrypt for IMAP passwords
+    dls-imap-factory.php     # DlsImapFactory — Webklex PHPIMAP client factory (no ext-imap)
     pm-db-service.php        # PmDbService: projects / task lists / tasks / assignees / comments / time entries
     ksef-service.php         # KSeF API 2.0 (test + production, import + send); selects token by ksef_test_mode
     ksef-xml-builder.php     # FA(3) XML generation for outgoing invoices (schema 1-0E)
     bank-account-db-service.php # BankAccountDbService — dls_bank_account CRUD + find_account / set_primary / get_primary_for_currency
     saldeo-export-service.php
+    expense-receipt-storage-service.php # private receipts under wp-content/private/dls-expense-receipts/{year}/{month}/
     subscription-billing-service.php
     nbp-exchange-rate-service.php
     option-service.php       # WP options: ksef_* (incl. test_mode, token, test_token, seller_*), saldeo_*, youtube_*, tracking_time_pro_*
@@ -146,7 +142,8 @@ inc/
     learn-email-classification-suggestions.php # CLI / cron — Taxonomie aus eingegangenen Mails; dls_email_classification_* options
 src/
   components/                # React components
-    accounting.js            # Main dashboard — PageLayout (filter + actions), chart, transaction list, KSeF import
+    accounting.js            # Main dashboard — PageLayout (filter + actions), chart, transaction list, KSeF import, Beleg import modal
+    expense-receipt-import-modal.js # Multipart upload → expense-receipt-import REST; year/month picker
     transactions.js          # Reusable transaction table with expand/edit/delete (uses EntityListTable)
     transaction-form.js      # Formik form for creating/editing transactions (uses useFormSubmit)
     transaction-card.js      # Expanded detail view for a single transaction (uses DataTable + CrudActions)
@@ -154,7 +151,7 @@ src/
     file-form.js             # Formik form for file CPT (TipTap, template modes)
     tiptap-editor.js         # TipTap StarterKit wrapper for file body HTML
     expanding-content.js     # Animated height expand/collapse
-    invoices.js / invoice-form.js  # Invoices list uses PageLayout + EntityListTable + useEntityCrud; detail uses DataTable; invoice-form has bank account selector (BankAccountDefaultSetter auto-selects primary for linked transaction currency); bank_account_id saved via direct apiFetch to wp/v2/invoice/{id}
+    invoices.js / invoice-form.js  # Invoices list uses PageLayout + EntityListTable + useEntityCrud; detail uses DataTable; bank account is ACF `bank_account_id` (select); language-based default via `helpers/invoice-bank-account.js`; choices from `acf/load_field` on invoice CPT
     bank-account-settings.js # Bank account CRUD panel (EntityListPanel + SidebarForm); side-by-side with KSeF settings in management-page
     clients.js / client-form.js / client-card.js
     products.js / product-form.js  # Products list uses EntityCardList + useEntityCrud; form uses useFormSubmit
@@ -173,7 +170,7 @@ src/
     formik-date-picker.js    # Formik + react-datepicker wrapper; stores Y-m-d (or "" when empty); locale=de
     chat-bubble.js           # Generic chat bubble — align="start" (counterpart) or "end" (own/outbound)
     project-management.js    # PM board (projects / task lists / tasks / comments; uses useDlsQuery + useRestAction + DataTable)
-    messages-page.js         # /nachrichten — PageLayout + dark inbox card, filters, thread detail, spam lists (useDlsQuery + useRestAction)
+    messages-page.js         # /nachrichten — PageLayout + dark inbox card, thread grouping by thread_id, tabs Kunden/WordPress/Sonstiges, filters (mailbox, direction, search), pagination, MessagesFocusInboxRow, MessagesConversationSidebar; mounts on .dls-nachrichten
     email-conversation-thread.js # Thread view (sorted messages, date separators)
     email-message-block.js   # Single email bubble (from, date, body, attachments)
     email-detail-sidebar.js  # Sidebar: client link, spam actions
@@ -184,11 +181,9 @@ src/
     conversation-list-item.js # Thread row in master panel (avatar, subject, badge)
     message-thread.js        # Wraps message list for a thread
     message-date-separator.js # Date label between days in thread view
-    mail-admin-tab.js        # Mailbox admin orchestrator: IMAP settings, folder-client mapping, sync buttons, clear-client-links
+    mail-admin-tab.js        # Mailbox admin: IMAP account form, IMAP health, folder→entity assignments, chunk sync + wipe-resync, MailAdminClassificationRules (rule CRUD + reorder)
     mailbox-imap-status.js   # IMAP status presentation helpers (split from mail-admin-tab.js)
-    mailbox-category-manager.js # Email category CRUD UI (split from mail-admin-tab.js)
-    mailbox-folder-detail.js # Folder-client mapping UI (split from mail-admin-tab.js)
-    mailbox-sync-controls.js # Sync/chunk-sync UI + useMailboxSync hook (split from mail-admin-tab.js)
+    mailbox-sync-controls.js # useMailboxSync (quick/chunk sync, wipe) + SyncConfirmModals (wipe only)
     management-page.js       # /verwaltung integrations orchestrator (delegates to sub-components)
     management-integration-card.js # IntegrationServiceCard shell (icon, title, badge, header actions)
     ksef-settings.js         # KSeF config (split from management-page.js)
@@ -236,6 +231,7 @@ src/
     mail-conversation-resolution.js # Thread helpers: normalizeMailAddress, isInternalOwnerEmailNormalized,
                              #   resolveThreadContactPerson, threadFallbackContactLabel,
                              #   conversationListAvatarInfo, threadSubjectPreview, personDisplayName
+    email-classification-labels.js # English token → German label maps for categories, actions, urgency, condition types, source; emailClassificationDisplayDe(token, kind); EMAIL_CATEGORY_COLOR
     html-mail-plain-text.js  # Plain-text extraction from email HTML
   queries.js                 # Centralised list-query constants: TRANSACTION_LIST_QUERY, INVOICE_LIST_QUERY,
                              #   CLIENT_LIST_QUERY, PERSON_LIST_QUERY, FILE_LIST_QUERY, PRODUCT_LIST_QUERY,
@@ -284,33 +280,43 @@ assets/scss/                 # SCSS source (ScssPhp, compiled on theme load when
 
 ## Nachrichten (IMAP)
 
-- **Tables** (`inc/install-mail-tables.php`, option `dls_mail_db_version`): `dls_mailbox`, `dls_email` (`spam_status` 0 / 1 / 2), `dls_email_spam_blocklist`, `dls_email_spam_whitelist`, `dls_mailbox_folder_client`, `dls_email_attachment` (attachment bytes under `wp-content/private/dls-mail-attachments/`).
-- **Klassifizierung in `dls_email` (Speicher):** `email_category` / `email_action` (Layer-1, regelbasiert) und `email_l2_intent`, `email_l2_action`, `email_l2_urgency`, `email_l2_confidence`, `email_l2_rationale` (Layer-2) werden **auf Englisch** persistiert — Dringlichkeit `immediate` \| `soon` \| `normal` \| `later`, Konfidenz `high` \| `medium` \| `low`. **Migration v23** wandelt frühere deutsche Werte (`sofort`, `hoch`, …) um. **REST** `PATCH` akzeptiert weiterhin deutsche JSON-Alias-Felder (`dringlichkeit`, `konfidenz`, …); `EmailCrudService` normalisiert vor dem Schreiben. **UI:** deutsche Beschriftungen in `email-meta-table.js` via `src/helpers/email-classification-labels.js` (Tooltip = roher Token).
-- **Services:** `MailboxDbService` (facade), `EmailCrudService`, `EmailSpamService`, `EmailCategoryDbService`, `MailSyncService`, `MailChunkSyncService`, `ClientEmailMatchService`, `MailThreadIdService`, `MailHtmlSplitQuoteService`, `MailAttachmentStorageService`, `MailCrypto`, `DlsImapFactory` — under `inc/services/`.
-- **WP-Cron:** `inc/mail-sync-cron.php` — hook `dls_mail_imap_sync_cron` every **5 minutes** (`dls_every_five_minutes` custom schedule); syncs all active mailboxes (limit 50 each, filterable via `dls_mail_cron_sync_limit`).
-- **Import vs. prune:** Folder import only **fetches the newest N** messages per run (`limit` / cron limit). **Orphan prune** is separate: after sync, `MailSyncService::prune_emails_removed_from_imap_folder()` compares DB `imap_uid` rows for that folder to the **full current UID set** from IMAP (`getUid()->data()`). Messages still on the server but outside the N-batch are **not** deleted. Rows with NULL `imap_uid` are not UID-pruned. Chunk sync runs the same prune when a background job completes (`MailChunkSyncService::prune_imap_orphans_for_completed_chunk_job`). Sync `debug` may include `imap_pruned`. **UIDVALIDITY** changes remain the standard IMAP caveat.
-- **REST:** `inc/routes/mailboxes.php` (mailbox CRUD, folder-client mappings), `mail-emails.php` (emails list/get/update, attachments), `mail-spam.php` (spam confirm, blocklist, whitelist), `mail-categories.php` (email categories), `mail-sync.php` (sync, chunk-sync, recompute, clear-client-links) — all `dls/v1`.
-- **Spam on sync:** Blocklist wins (2); whitelist forces 0 and skips heuristics; else emoji-in-subject and subdomain-sender heuristics (with dominikliss/foxcraft + client-website exemptions) — `EmailSpamService::resolve_email_spam_status` / `EmailCrudService::upsert_email_row`.
-- **Client auto-assign (new strict rules, 2025-03):**
-  1. **Folder mapping first** (`dls_mailbox_folder_client`) — sets `client_id` before address logic; never overwritten by address logic.
-  2. **Address rule:** collect **To, Cc, Bcc, From** only (no Reply-To). Drop: mailbox login, dominikliss.com + subdomains, foxcraft.digital + subdomains, `liss.dominik@gmail.com` / `liss.dominikliss@gmail.com`.
-  3. **Exactly one** distinct external address → assign if it matches a client/invoice/person email.
-  4. **More than one** distinct external address → assign only if **all** map to the **same** client in the CRM index.
-  5. Otherwise leave `client_id` null. **No domain-from-address, no subject/website domain heuristics, no outbound thread inheritance, no folder consensus propagation.**
-  - Implemented in `ClientEmailMatchService::resolve_client_id_single_counterparty_exact()`. Legacy `resolve_client_id()` kept for non-import callers only.
-  - `EmailCrudService::clear_all_email_client_links( ?int $mailbox_id )` — bulk-remove `client_id` from `dls_email` rows. Exposed as `POST /dls/v1/emails/clear-client-links` with optional `{ mailbox_id }` body.
-  - Verwaltung UI: "Zuordnungen löschen" button per mailbox with confirmation modal (`mail-admin-tab.js`).
-- **`date_sent` fallback chain:** `getDate()` → raw `Date:` header scan → iCalendar body parsing (DTSTAMP / CREATED / LAST-MODIFIED / DTSTART in text body, HTML, attachments, or raw MIME body) for calendar/event mails missing a `Date:` header.
-- **Quote splitting:** List endpoint strips quoted reply history from `body_html` via `MailHtmlSplitQuoteService::split_latest_and_quoted()`; full body available from `GET /dls/v1/emails/{id}` (`body_has_quote_history` flag on list items).
-- **UI:** `messages-page.js` (`PageLayout` + `content-section` / `content-col-*`, dark inbox card, collapsible filters, `messages-focus-inbox-row.js`; thread detail in wide `SidebarForm` via `messages-conversation-sidebar.js`: `ScrollPanel` + `EmailConversationThread`, Kunde, mailto reply draft), `mail-admin-tab.js` (orchestrator → `mailbox-imap-status.js`, `mailbox-category-manager.js`, `mailbox-folder-detail.js`, `mailbox-sync-controls.js`), `list-search-field.js` (debounced search). Thread rendering still uses `EmailMessageBlock` + `EmailDetailSidebar` + `EmailHtmlIframe` + `MessageAttachmentList` inside the conversation component. SCSS: `messages-page.scss` (scoped under `.dls-messages-page`), `form.scss` (`sidebar-form--messages-conversation` / `--email-meta` z-index), `messages.scss` (imports `inbox.scss`, `mail-admin-panel.scss`, `chunk-sync.scss`) + `filter-bar.scss`; bubbles / thread: `conversation-layout.scss`.
+**Schema version:** `DLS_MAIL_DB_VERSION = 31` (option `dls_mail_db_version`). Legacy tables (`dls_mailbox`, `dls_email`, spam blocklist/whitelist, embed queue) were dropped in the v3 migration.
+
+- **Tables** (`inc/install-mail-tables.php`):
+
+| Table | Purpose |
+|---|---|
+| `dls_mail_account` | IMAP accounts — credentials (password AES-encrypted), active flag |
+| `dls_mail_folder` | Per-account folder rows: `uid_validity`, `category`, `last_synced_at` |
+| `dls_mail_message` | One row per `(account_id, folder_id, imap_uid)`; `direction` inbound/outbound; `thread_id`; classification columns `email_category`, `email_action`, `email_urgency`, `classification_source` (`rule`/`ai`); `has_attachment`, `is_seen`, `is_flagged`, `subject_normalized` |
+| `dls_mail_folder_link` | Polymorphic folder → entity mapping |
+| `dls_mail_message_link` | Polymorphic message → entity; `source`: `folder` / `manual` / `address` |
+| `dls_mail_attachment` | Attachment metadata; files under `wp-content/private/dls-mail-attachments/{account_id}/{message_id}/` |
+| `dls_mail_classification_rule` | Ordered Layer-1 classification rules |
+| `dls_mail_sync_run` | Chunk sync audit log — `status` running → done/error/cancelled; `chunk_size`, `uid_cap`, `total_queued`, `processed_count`, `deleted_count`, `restored_links`, `errors_json`, timestamps |
+
+- **Services** (`inc/services/`): `MailDbService` (DB façade), `MailSyncV2` (sync engine), `MailSyncRunDbService` (chunk audit log), `MailAttachmentService` (private attachment storage), `MailClassificationService` (rule + Ollama classification), `MailCrypto` (password AES), `DlsImapFactory` (Webklex PHPIMAP).
+- **WP-Cron:** `inc/mail-sync-cron.php` — hook `dls_mail_imap_sync_cron` every **5 minutes** (`dls_every_five_minutes`); calls `MailSyncV2::sync_account($id, $limit)` for each active account (default limit 100, filterable via `dls_mail_cron_sync_limit`, min 10).
+- **Quick sync vs chunk sync:**
+  - **Quick** (`sync_account`): per-folder UID diff, handles UIDVALIDITY change (purge + reimport), flag sync up to 500 UIDs, imports new UIDs up to `$limit`. Used by cron and `POST /mailboxes/{id}/sync`.
+  - **Chunk** (full wipe-resync): `start_chunk_job` wipes all mailbox messages, saves manual links to transient, builds per-folder UID queues, logs run in `MailSyncRunDbService`. `process_chunk_step` imports one folder's batch. On completion: `restore_manual_links_after_resync`. Job in transient `dls_mail_sync_job_{id}` (3 h TTL). Default `uid_cap = 0` (unlimited).
+- **Direction:** `outbound` when IMAP path matches Sent folder (`sent` / `gesendete`) or From matches `DLS_OWNER_EMAILS` / `DLS_OWNER_DOMAINS`; else `inbound`. **Classification** (`MailClassificationService`) is off by default (`DLS_MAIL_CLASSIFICATION_ENABLED`); when enabled, only **main INBOX** + **inbound** messages are classified (not subfolders, not outbound).
+- **Classification** (`MailClassificationService`): Layer-1 ordered rules in `dls_mail_classification_rule` (first match; `classification_source = 'rule'`); Layer-2 Ollama synchronous call if no rule matches and `AiRuntimeCredentials::ollama_base_url()` is set (`classification_source = 'ai'`). Runs **synchronously** inside `import_uid_batch`.
+- **Client assignment** — links in `dls_mail_message_link` with `source`:
+  1. **`folder`** — folder→entity from `dls_mail_folder_link`; highest priority.
+  2. **`address`** — From/To matching against `MailDbService::build_client_email_map` (WP CPTs: client emails, people, invoice emails).
+  3. **`manual`** — user-set via `PUT /emails/{id}`; survives wipe-resync via transient restore.
+  - `recompute_client_assignments` deletes `folder` + `address` links and re-derives them; manual links are preserved.
+- **REST** (all `dls/v1`): `mailboxes.php` (mailbox CRUD, folder-entity assignments, IMAP health/test/list-folders, `folder-clients-overview`), `mail-emails.php` (email list/get/update), `mail-sync.php` (quick sync, chunk sync start/step/cancel/status, wipe, recompute-metadata, clear-client-links), `mail-classification.php` (classification rules CRUD + reorder, POST classify).
+- **UI:** `messages-page.js` (dark inbox, thread grouping by `thread_id`, tabs Kunden/WordPress/Sonstiges, filters, pagination), `mail-admin-tab.js` (mailbox CRUD + classification rules), `mailbox-sync-controls.js` (quick/chunk/wipe sync + resume), `email-classification-labels.js` (token → German label maps), `mail-conversation-resolution.js` (thread helpers, avatar, reply builder). SCSS: `messages-page.scss`, `mail-admin-panel.scss`, `inbox.scss`, `chunk-sync.scss`, `filter-bar.scss`, `conversation-layout.scss` (imported by `messages.scss`).
 
 ## E-Mail-AI-Analysen (Ollama, Verwaltung → AI-Profile)
 
-**UI:** Tab **AI-Profile** (`/verwaltung/ai-profiles/`) — `ai-profiles-page.js`: Karten pro Profil, Detail mit Lauf-Historie, Start (Modell + Stichprobe), **Grounding übernehmen** (promote), Bearbeiten (Prompts, Filter-JSON, Grounding). Es darf **global nur ein** Corpus-Lauf gleichzeitig laufen — zweiter Start liefert **409** (`analysis_busy`), sofern nicht derselbe Profil-Lauf bereits läuft (dann **200** mit Status). **Anbindungen** (Ollama-URL) liegen auf **AI-Anbindungen** (`dls_ai_connector` + `AiRuntimeCredentials`). Die Layer-Metadaten (`dls_ai_analysis_config`, `dls_ai_action`) bleiben für andere Features; Schreibstil-/Klassifizierungs-Grounding wird primär in **`dls_ai_profile`** geführt und bei PATCH auf `reply_style_grounding` / `inbox_classification_grounding` aus den Aktionen mit synchronisiert (`AiActionDbService::sync_legacy_options_from_row` spiegelt auch in die Profil-Zeile).
+**UI:** Tab **AI-Profile** (`/verwaltung/ai-profiles/`) — `ai-profiles-page.js`: Karten-Footer **Bearbeiten** + **Analyse starten** (gespeicherte Filter/Modell); Sidebar **Profil bearbeiten** mit Prompts, Filtern, Speichern, **Vergangene Analysen** (EntityListTable), **Übernehmen** (promote) — Laufstart nur von der Karte. Es darf **global nur ein** Corpus-Lauf gleichzeitig laufen — zweiter Start liefert **409** (`analysis_busy`), sofern nicht derselbe Profil-Lauf bereits läuft (dann **200** mit Status). **Anbindungen** (Ollama-URL) liegen auf **AI-Anbindungen** (`dls_ai_connector` + `AiRuntimeCredentials`). Die Layer-Metadaten (`dls_ai_analysis_config`, `dls_ai_action`) bleiben für andere Features; Schreibstil-/Klassifizierungs-Grounding wird primär in **`dls_ai_profile`** geführt und bei PATCH auf `reply_style_grounding` / `inbox_classification_grounding` aus den Aktionen mit synchronisiert (`AiActionDbService::sync_legacy_options_from_row` spiegelt auch in die Profil-Zeile).
 
 ### Tabellen & Install
 
-- **`dls_ai_profile`** / **`dls_ai_profile_run`:** `inc/install-ai-profile-tables.php` (Option `dls_ai_profile_db_version`). Ein Profil je `(name, source_type)` — Seeds: `writing_style`+`email`, `classification`+`email` (Prompts aus den früheren Learn-Skripten; User-Prompt mit `{{corpus}}`, `{{count}}`, `{{model}}`). Filter-JSON u. a. `direction`, `spam_status`, `sample_limit`, `min_body_chars`, `max_body_chars`; Klassifizierung: `require_substring` für Output-Check.
+- **`dls_ai_profile`** / **`dls_ai_profile_run`:** `inc/install-ai-profile-tables.php` (Option `dls_ai_profile_db_version`). Ein Profil je `(name, source_type)` — Seeds liefern weiter `system_prompt` + `user_prompt`; **Verwaltungs-UI** bearbeitet nur **`user_prompt`** (Analyse-Prompt) und leert `system_prompt` beim Speichern. Ollama-Aufruf (`ai-profile-run-execute.php`): System-Rolle nur wenn `system_prompt` nicht leer (Legacy), sonst nur User-Nachricht aus `user_prompt` (Platzhalter `{{corpus}}`, `{{count}}`, `{{model}}`). Filter-JSON u. a. `direction`, `spam_status`, `sample_limit`, `min_body_chars`, `max_body_chars`; Klassifizierung: `require_substring` für Output-Check.
 - **Worker:** `inc/scripts/run-ai-profile.php --run-id=N` — Logik in `inc/ai-profile-run-execute.php` (Corpus → Platzhalter ersetzen → Ollama `/api/chat`, Timeout 14400s). Corpus-Builder: `AiEmailCorpusBuilder` + `AiCorpusBuilderRegistry` (`task` / `slack` → noch nicht implementiert).
 - **REST (neu):** `inc/routes/ai-profiles.php` — `GET/PATCH /dls/v1/ai/profiles`, `GET /dls/v1/ai/profiles/{id}`, `POST /dls/v1/ai/profiles/{id}/run`, `POST /dls/v1/ai/profiles/runs/{id}/promote`, `POST /dls/v1/ai/profiles/worker/stop`. Worker-State: Option `dls_ai_profile_worker_state`; Cron-Fallback: `dls_ai_profile_cron_worker`.
 
@@ -357,7 +363,7 @@ Supports both **importing** (receiving) and **sending** (outgoing) invoices via 
 
 Mandatory from **2026-02-01** (large enterprises) / **2026-04-01** (all). FA(3) schema only.
 
-- **XML Builder**: `inc/services/ksef-xml-builder.php` — class `DLS\Services\KSeFXmlBuilder`. Generates FA(3) compliant XML from `invoice` CPT data (schema: `http://crd.gov.pl/wzor/2025/06/25/13775/`).
+- **XML Builder**: `inc/services/ksef-xml-builder.php` — class `DLS\Services\KSeFXmlBuilder`. Generates FA(3) compliant XML from `invoice` CPT data (schema: `http://crd.gov.pl/wzor/2025/06/25/13775/`). When the linked **Einnahme** transaction has ACF `income_category` = `Werbeinnahmen` (legacy stored value `Werbung` still triggers GTU), each `FaWiersz` includes optional `GTU` = `GTU_12` (JPK_V7 — advertising / marketing-type services).
 - **REST route**: `POST /dls/v1/ksef-send/{invoice_id}` — builds XML, validates, sends via interactive session, updates ACF tracking fields.
 - **Status check**: `GET /dls/v1/ksef-send-status/{invoice_id}` — polls KSeF session-based status, updates `ksef_invoice_number` on success.
 - **Duplicate prevention**: refuses to send if `ksef_send_status === 'sent'` (HTTP 409).
@@ -493,21 +499,20 @@ File: `inc/routes/bank-accounts.php` — registered under `dls/v1`. Auth: `dls_r
 | `POST` | `/dls/v1/bank-accounts` | Create (calls `set_primary` if `is_primary === true`) |
 | `PUT` | `/dls/v1/bank-accounts/{id}` | Update (calls `set_primary` if `is_primary === true`) |
 | `DELETE` | `/dls/v1/bank-accounts/{id}` | Delete |
-
 ### Bank account selection priority
 
 Both PDF and KSeF XML generation use the same three-tier priority chain:
 
-1. **Invoice pin** — `bank_account_id` WP post meta on the `invoice` CPT (set via the invoice form selector)
-2. **Transaction pin** — `bank_account_id` WP post meta on the linked `transaction` CPT
+1. **Invoice pin** — ACF field `bank_account_id` on the `invoice` CPT (`field_6961inv_bank_acct`, select of `dls_bank_account` row ids; `0` = no pin). Read in PHP via `get_field( 'bank_account_id', $invoice_id )`.
+2. **Transaction pin** — `bank_account_id` registered post meta on the linked `transaction` CPT (`register_post_meta` in `functions.php`, `show_in_rest: true`).
 3. **Auto-select** — `BankAccountDbService::find_account($currency, $buyer_country, $vat_pct)`
 
-`bank_account_id` is registered as WordPress post meta for **both** `transaction` and `invoice` CPTs via `register_post_meta` (`show_in_rest: true`, `type: integer`, `default: 0`) in `functions.php`. The invoice form saves this value via a direct `apiFetch` POST to `wp/v2/invoice/{id}` (bypassing `@wordpress/core-data` which may not reliably serialize post meta for CPTs without `custom-fields` support).
+Invoice bank choices are built in `inc/post-types/invoice.php` (`acf/load_field/name=bank_account_id` → `BankAccountDbService::list_accounts()`). The React invoice form saves `bank_account_id` inside the normal `acf` payload on `saveEntityRecord` and invalidates `getEntityRecord` after save.
 
 ### Frontend
 
 - `bank-account-settings.js` — `EntityListPanel`-based CRUD UI rendered in `.dls-buchhaltung-body__accounts` (side-by-side with KSeF settings). List rows show label + currency badge + optional "Primär" badge, IBAN/account number below. Sidebar form with all fields; US-specific fields shown only when `condition_country === 'USA'`. `is_primary` toggle auto-unsets the previous primary for that currency on save.
-- `invoice-form.js` — bank account `<select>` replaces the old `bank_details_country_code` field. `BankAccountDefaultSetter` watches `transaction_id`, looks up the linked transaction's currency, and auto-selects the primary account for that currency when no `bank_account_id` is already set on the invoice.
+- `invoice-form.js` — bank account native `<select>` (`InvoiceBankAccountSelect`), backed by `acf.bank_account_id`. If the invoice has **no** stored pin (&gt; 0 in ACF), `InvoiceBankAccountLanguageSuggest` picks a default from **Sprache** (DE→EUR-first, PL→PLN-first, EN→EUR/USD) using `suggestBankAccountId()` in `src/helpers/invoice-bank-account.js`. Changing **Sprache** refreshes the suggestion unless the user already chose a non-empty account for the same language. A stored ACF value is never overwritten by the effect. `invoices.js` passes `key={mountKey}` so the form resets when opening the sidebar.
 - `management-page.js` — Buchhaltung tab wraps both `KsefSettings` and `BankAccountSettings` in `div.dls-buchhaltung-body` (flexbox, side-by-side, wraps on narrow screens).
 - `management-page.scss` — `.dls-buchhaltung-body { display: flex; flex-wrap: wrap; gap: …; }` with `__ksef` (fixed width) and `__accounts` (`flex: 1 1 360px`) children.
 
@@ -532,6 +537,7 @@ Both PDF and KSeF XML generation use the same three-tier priority chain:
 - `get_pdf_base_css(string $extra_css)` — shared `<style>` block for all PDFs; pass document-specific CSS via `$extra_css`
 - `get_pdf_header_html(...)` — shared dark-background header (customer info + profile + Dominik info + invoice-meta row); used by invoices AND commission report
 - Invoice PDFs use `[0, 0, 0, 0]` constructor margins (edge-to-edge layout)
+- **Invoice `InvoicePdfService`**: If `service_start_date` and `service_end_date` fall on the same calendar day, the PDF shows **Leistungsdatum** / **Service date** / **Data sprzedaży** (PL) with a single formatted date instead of **Leistungszeitraum** with a range. When that day matches the invoice date, the value line still uses the existing “same as invoice date” wording (DE/EN/PL). Position override text, product title, and product `description` are passed through `wp_kses` with a small inline tag allowlist (`br`, `strong`, `b`, `em`, `i`, `u`, `p`, `span`) so Html2Pdf renders formatting instead of escaping tags as plain text. KSeF `FaWiersz` / `P_7` uses plain text (`wp_strip_all_tags` on the override description) because FA XML must not carry HTML markup.
 - Commission report uses `[13, 13, 13, 13]` constructor margins + `<page backbottom="10mm">` + `<page_footer>[[page_cu]]/[[page_nb]]</page_footer>` for page numbering
 
 ### Page margins + edge-to-edge header

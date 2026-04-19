@@ -52,6 +52,7 @@ Use `dls/v1` for browser-facing routes. The `api/v1` namespace is IP-restricted 
 - `DLS_ALLOWED_IPS` — IP whitelist for `api/v1` routes
 - `DLS_OWNER_EMAILS` — owner email addresses for client-matching exclusions
 - `DLS_OWNER_DOMAINS` — owner domains for client-matching exclusions
+- `DLS_MAIL_CLASSIFICATION_ENABLED` — when `true`, `MailClassificationService` may run (main INBOX inbound only); default `false`
 - `DLS_ANALYSIS_TIMEOUT` — max runtime for async email analysis jobs
 
 Use these constants instead of hardcoding values.

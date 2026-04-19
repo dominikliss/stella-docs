@@ -1,6 +1,6 @@
 # Open Gaps & Next Steps
 
-Last updated: 2026-04-05
+Last updated: 2026-04-19
 
 **Pipeline detail:** [integration/email-indexing.md](integration/email-indexing.md)  
 **Cross-system overview:** [integration/ddashboard-and-stella-server.md](integration/ddashboard-and-stella-server.md)
@@ -9,19 +9,18 @@ Last updated: 2026-04-05
 
 ## Email Indexing Pipeline
 
-### High Priority
+> **Status:** The ddashboard mail stack was rewritten to v3 (`DLS_MAIL_DB_VERSION = 31`). The legacy `dls_email` table, `EmailEmbedQueueService`, `StellaEmailIndexClient`, and `email-embed-cron.php` no longer exist. The embed pipeline described in `integration/email-indexing.md` needs to be rebuilt against the new `dls_mail_message` / `dls_mail_message_link` schema before any of the items below apply.
 
-- [ ] **End-to-end test** — trigger manual re-index for one email, verify document lands in ChromaDB `emails` collection
-- [ ] **Verify retry cap** — confirm `email-embed-queue-service.php` caps at ~3 attempts and writes `last_error` on failure
-- [ ] **Verify metadata fields** — confirm `build_metadata()` in `StellaEmailIndexClient` includes: `sender`, `direction`, `date` (unix int), `subject`, `email_id`
+### Blocked until v3 integration is implemented
 
-### Medium Priority
-
+- [ ] **Design embed queue for v3** — decide whether to add an `embed_queue` column on `dls_mail_message`, a separate queue table, or use Action Scheduler; update `integration/email-indexing.md` accordingly
+- [ ] **Re-implement indexing client** — new `StellaEmailIndexClient` (or equivalent) pointing at `dls_mail_message` rows
+- [ ] **Retry cap** — cap at ~3 attempts; write `last_error` somewhere on failure
 - [ ] **Normalize query response** — `POST /emails/query` currently returns raw ChromaDB structure; normalize for easier consumption in ddashboard
+
+### Medium Priority (after v3 integration)
+
 - [ ] **Global indexing pause flag** — settings toggle to stop enqueuing without touching code (useful during Stella deploys / model swaps)
-
-### Low Priority
-
 - [ ] **Length guard** — add character cap (~6000 chars) in Stella upsert with truncation warning in logs
 - [ ] **Chunking** — implement `email_{id}_0`, `email_{id}_1` pattern in Stella if long emails become a problem
 

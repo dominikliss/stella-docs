@@ -2,7 +2,9 @@
 
 End-to-end flow for indexing emails from ddashboard into ChromaDB via Stella API.
 
-**Status: partially complete — see gaps below.**
+> **⚠️ Needs update for mail v3:** The ddashboard mail stack was rewritten (April 2026, `DLS_MAIL_DB_VERSION = 31`). The `dls_email` table, `EmailEmbedQueueService`, `StellaEmailIndexClient`, and `email-embed-cron.php` referenced below no longer exist. The pipeline must be redesigned against the new `dls_mail_message` / `dls_mail_message_link` schema. See `open-gaps.md` → Email Indexing Pipeline.
+
+**Status: blocked — embed pipeline removed as part of mail v3 rewrite; see above.**
 
 ---
 
