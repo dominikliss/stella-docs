@@ -146,8 +146,11 @@ Semantic similarity over indexed messages.
 }
 ```
 
-- `where` — optional (Chroma metadata filter).
-- `n_results` — optional, default **10**.
+- `where` — optional. Chroma metadata filter syntax (`$eq`, `$and`, `$or`, …). Pass `null` or omit for an unfiltered search.
+- `n_results` — optional, default **10**. Max is enforced by Chroma (collection size).
+
+**⚠️ One result per Chroma document, not per message.**  
+Because each message produces one document per link, the same `message_id` can appear multiple times in `results` (once per link-document that matches). Callers that want one result per message must deduplicate on `metadata.message_id`, keeping the hit with the lowest `distance`.
 
 **Response 200**
 
@@ -183,25 +186,43 @@ Semantic similarity over indexed messages.
 }
 ```
 
-`distance` — ChromaDB cosine distance; **smaller = more similar**. Typical good hits are below **0.3**.
+`distance` — ChromaDB cosine distance; **smaller = more similar**. Typical good hits are below **0.3**. Range is [0, 2].
+
+> **Implementation note:** ChromaDB returns a list-of-lists format internally; `_normalize_query_result` in `routers/emails.py` flattens this into the `results` array above before returning.
 
 **`where` examples**
+
+Filter by client (use `entity_type` + `entity_id` together — there is no `client_id` metadata field):
 
 ```json
 { "$and": [{"entity_type": {"$eq": "client"}}, {"entity_id": {"$eq": 42}}] }
 ```
 
+Filter by direction:
+
 ```json
 { "direction": {"$eq": "inbound"} }
 ```
+
+Filter by thread:
 
 ```json
 { "thread_id": {"$eq": "hdr-abc123"} }
 ```
 
+Filter by mailbox account:
+
 ```json
 { "account_id": {"$eq": 1} }
 ```
+
+Filter by specific message (useful to check what is indexed):
+
+```json
+{ "message_id": {"$eq": 123} }
+```
+
+Combined — client inbound only:
 
 ```json
 {
@@ -222,8 +243,17 @@ Single Chroma document by full id.
 **Path format:** `msg_{message_id}_link_{link_id}`  
 **Example:** `GET /emails/document/msg_123_link_55`
 
-**Response 200:** `{ "id", "document", "metadata" }`  
-**Response 404:** document not found.
+**Response 200:**
+
+```json
+{
+  "id": "msg_123_link_55",
+  "document": "Subject: Betreff\n\nBody text…",
+  "metadata": { "message_id": 123, "entity_type": "client", "entity_id": 42, "…": "…" }
+}
+```
+
+**Response 404:** document not found (Chroma returned no IDs for that doc id).
 
 ---
 
@@ -334,7 +364,7 @@ ChromaDB **v2** HTTP API (`CHROMA_URL`, e.g. `http://127.0.0.1:8000`), tenant/da
 
 **Option:** `dls_stella_email_index_url` — e.g. `http://<host>:8080/stella`
 
-**Upsert**
+**Upsert** (`StellaEmailIndexService::post_upsert()`)
 
 ```php
 $base = rtrim( (string) get_option( 'dls_stella_email_index_url', '' ), '/' );
@@ -353,5 +383,16 @@ $response = wp_remote_post( $url, [
 $url = $base . '/emails/message/' . (int) $message_id;
 $response = wp_remote_request( $url, [ 'method' => 'DELETE', 'timeout' => 15 ] );
 ```
+
+**Semantic search (`POST /dls/v1/emails/semantic-search` in ddashboard)**
+
+ddashboard proxies the query and deduplicates results by `message_id` (since Stella returns one hit per Chroma document, not per message). It also converts `distance` [0, 2] to a `semantic_score` [0, 1]:
+
+```php
+// score = 1 - distance/2   (0.0 = no match, 1.0 = perfect)
+$score = max( 0.0, min( 1.0, 1.0 - $distance / 2.0 ) );
+```
+
+Only the best-scoring document per `message_id` is kept. The resolved `dls_mail_message` rows are returned with a `semantic_score` field appended.
 
 WordPress must build `$payload` from **`dls_mail_message`** + **`dls_mail_message_link`** rows (see request schema above). Queue/cron wiring is product-side — see [`../integration/email-indexing.md`](../integration/email-indexing.md).
