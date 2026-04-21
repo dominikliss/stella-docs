@@ -175,7 +175,7 @@ src/
     formik-date-picker.js    # Formik + react-datepicker wrapper; stores Y-m-d (or "" when empty); locale=de
     chat-bubble.js           # Generic chat bubble — align="start" (counterpart) or "end" (own/outbound)
     project-management.js    # PM board (projects / task lists / tasks / comments; uses useDlsQuery + useRestAction + DataTable)
-    messages-page.js         # /nachrichten — PageLayout + dark inbox card, filters, thread detail, spam lists (useDlsQuery + useRestAction)
+    messages-page.js         # /nachrichten — PageLayout + single main column; dark inbox; .client-data tabs; useDlsQuery list + skeletons; MessagesFocusInboxRow, MessagesConversationSidebar; mounts on .dls-nachrichten
     email-conversation-thread.js # Thread view (sorted messages, date separators)
     email-message-block.js   # Single email bubble (from, date, body, attachments)
     email-detail-sidebar.js  # Sidebar: client link, spam actions
@@ -207,7 +207,7 @@ src/
     icons.js                 # All shared SVG icons (IconDownload, IconEdit, IconTrash, IconAttachment, …)
     toggle.js                # Custom toggle switch
     dropdown.js              # Custom dropdown — trigger + floating menu
-    skeleton.js              # SkeletonRows for table loading states
+    skeleton.js              # SkeletonRows + SkeletonInboxTabsStrip / SkeletonInboxFocusRows / SkeletonInboxPaginationBar
     toast-container.js       # Fixed bottom-right toast stack
     loader.js                # Spinning ring loader
     delete-modal.js          # Reusable confirm-delete / confirm-action modal (description prop for custom body)
@@ -284,25 +284,15 @@ assets/scss/                 # SCSS source (ScssPhp, compiled on theme load when
 
 ## Nachrichten (IMAP)
 
-- **Tables** (`inc/install-mail-tables.php`, option `dls_mail_db_version`): `dls_mailbox`, `dls_email` (`spam_status` 0 / 1 / 2), `dls_email_spam_blocklist`, `dls_email_spam_whitelist`, `dls_mailbox_folder_client`, `dls_email_attachment` (attachment bytes under `wp-content/private/dls-mail-attachments/`).
-- **Klassifizierung in `dls_email` (Speicher):** `email_category` / `email_action` (Layer-1, regelbasiert) und `email_l2_intent`, `email_l2_action`, `email_l2_urgency`, `email_l2_confidence`, `email_l2_rationale` (Layer-2) werden **auf Englisch** persistiert — Dringlichkeit `immediate` \| `soon` \| `normal` \| `later`, Konfidenz `high` \| `medium` \| `low`. **Migration v23** wandelt frühere deutsche Werte (`sofort`, `hoch`, …) um. **REST** `PATCH` akzeptiert weiterhin deutsche JSON-Alias-Felder (`dringlichkeit`, `konfidenz`, …); `EmailCrudService` normalisiert vor dem Schreiben. **UI:** deutsche Beschriftungen in `email-meta-table.js` via `src/helpers/email-classification-labels.js` (Tooltip = roher Token).
-- **Services:** `MailboxDbService` (facade), `EmailCrudService`, `EmailSpamService`, `EmailCategoryDbService`, `MailSyncService`, `MailChunkSyncService`, `ClientEmailMatchService`, `MailThreadIdService`, `MailHtmlSplitQuoteService`, `MailAttachmentStorageService`, `MailCrypto`, `DlsImapFactory` — under `inc/services/`.
-- **WP-Cron:** `inc/mail-sync-cron.php` — hook `dls_mail_imap_sync_cron` every **5 minutes** (`dls_every_five_minutes` custom schedule); syncs all active mailboxes (limit 50 each, filterable via `dls_mail_cron_sync_limit`).
-- **Import vs. prune:** Folder import only **fetches the newest N** messages per run (`limit` / cron limit). **Orphan prune** is separate: after sync, `MailSyncService::prune_emails_removed_from_imap_folder()` compares DB `imap_uid` rows for that folder to the **full current UID set** from IMAP (`getUid()->data()`). Messages still on the server but outside the N-batch are **not** deleted. Rows with NULL `imap_uid` are not UID-pruned. Chunk sync runs the same prune when a background job completes (`MailChunkSyncService::prune_imap_orphans_for_completed_chunk_job`). Sync `debug` may include `imap_pruned`. **UIDVALIDITY** changes remain the standard IMAP caveat.
-- **REST:** `inc/routes/mailboxes.php` (mailbox CRUD, folder-client mappings), `mail-emails.php` (emails list/get/update, attachments), `mail-spam.php` (spam confirm, blocklist, whitelist), `mail-categories.php` (email categories), `mail-sync.php` (sync, chunk-sync, recompute, clear-client-links) — all `dls/v1`.
-- **Spam on sync:** Blocklist wins (2); whitelist forces 0 and skips heuristics; else emoji-in-subject and subdomain-sender heuristics (with dominikliss/foxcraft + client-website exemptions) — `EmailSpamService::resolve_email_spam_status` / `EmailCrudService::upsert_email_row`.
-- **Client auto-assign (new strict rules, 2025-03):**
-  1. **Folder mapping first** (`dls_mailbox_folder_client`) — sets `client_id` before address logic; never overwritten by address logic.
-  2. **Address rule:** collect **To, Cc, Bcc, From** only (no Reply-To). Drop: mailbox login, dominikliss.com + subdomains, foxcraft.digital + subdomains, `liss.dominik@gmail.com`.
-  3. **Exactly one** distinct external address → assign if it matches a client/invoice/person email.
-  4. **More than one** distinct external address → assign only if **all** map to the **same** client in the CRM index.
-  5. Otherwise leave `client_id` null. **No domain-from-address, no subject/website domain heuristics, no outbound thread inheritance, no folder consensus propagation.**
-  - Implemented in `ClientEmailMatchService::resolve_client_id_single_counterparty_exact()`. Legacy `resolve_client_id()` kept for non-import callers only.
-  - `EmailCrudService::clear_all_email_client_links( ?int $mailbox_id )` — bulk-remove `client_id` from `dls_email` rows. Exposed as `POST /dls/v1/emails/clear-client-links` with optional `{ mailbox_id }` body.
-  - **Verwaltung:** kein UI-Button mehr; weiterhin `POST /dls/v1/emails/clear-client-links` (z. B. WP-CLI / manuell).
-- **`date_sent` fallback chain:** `getDate()` → raw `Date:` header scan → iCalendar body parsing (DTSTAMP / CREATED / LAST-MODIFIED / DTSTART in text body, HTML, attachments, or raw MIME body) for calendar/event mails missing a `Date:` header.
-- **Quote splitting:** List endpoint strips quoted reply history from `body_html` via `MailHtmlSplitQuoteService::split_latest_and_quoted()`; full body available from `GET /dls/v1/emails/{id}` (`body_has_quote_history` flag on list items).
-- **UI:** `messages-page.js` (`PageLayout` + `content-section` / `content-col-*`, dark inbox card, collapsible filters, `messages-focus-inbox-row.js`; thread detail in wide `SidebarForm` via `messages-conversation-sidebar.js`: `ScrollPanel` + `EmailConversationThread`, Kunde, mailto reply draft), `mail-admin-tab.js` (`mailbox-imap-status.js`, `mailbox-sync-controls.js` — Sync in der Kontenliste, nicht im Bearbeiten-Sidebar), `list-search-field.js` (debounced search). Thread rendering still uses `EmailMessageBlock` + `EmailDetailSidebar` + `EmailHtmlIframe` + `MessageAttachmentList` inside the conversation component. SCSS: `messages-page.scss` (scoped under `.dls-messages-page`), `form.scss` (`sidebar-form--messages-conversation` / `--email-meta` z-index), `messages.scss` (imports `inbox.scss`, `mail-admin-panel.scss`, `chunk-sync.scss`) + `filter-bar.scss`; bubbles / thread: `conversation-layout.scss`.
+**Authoritative detail:** [`stella-dashboard/mail-nachrichten.md`](../mail-nachrichten.md) and the **Nachrichten (IMAP)** section in this file’s parent [`architecture.md`](../architecture.md).
+
+**Schema version:** `DLS_MAIL_DB_VERSION = 32` (option `dls_mail_db_version`). v3 tables: `dls_mail_account`, `dls_mail_folder`, `dls_mail_message`, `dls_mail_folder_link`, `dls_mail_message_link`, `dls_mail_attachment`, `dls_mail_classification_rule`, `dls_mail_sync_run`. Legacy `dls_mailbox` / `dls_email` and old spam/embed tables were dropped on upgrade.
+
+**Services (namespace `DLS\Services\`):** `MailDbService`, `MailSyncV2`, `MailSyncRunDbService`, `MailAttachmentService`, `MailClassificationService` (optional), `MailCrypto`, `DlsImapFactory`.
+
+**REST (`dls/v1`):** `mailboxes.php`, `mail-emails.php`, `mail-sync.php`, `mail-classification.php` — see parent architecture for paths.
+
+**UI snapshot:** `/nachrichten` — `messages-page.js`: single main column (max-width), dark inbox card, **`.client-data` + `.tabs`** (Kunden / WordPress / Sonstiges), **`useDlsQuery`** for paged INBOX, skeleton strip/rows/pagination, **`MessagesFocusInboxRow`**, conversation in wide **`SidebarForm`** (`messages-conversation-sidebar.js`) with subject below sender and client badge; no inbox filter bar or Schnellzugriff aside. Verwaltung tab: **`mail-admin-tab.js`** + **`mailbox-sync-controls.js`**.
 
 ## E-Mail-AI-Analysen (Ollama, Verwaltung → AI-Profile)
 

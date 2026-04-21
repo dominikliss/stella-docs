@@ -166,54 +166,38 @@ Projects, task lists, tasks, assignees, comments, time entries — full CRUD.
 
 ### 4. Nachrichten (IMAP Email Inbox) — `/nachrichten`
 
-A custom email inbox that syncs multiple IMAP accounts into a MySQL database. The `/nachrichten` UI uses the standard **dark** app chrome (`PageLayout`, `content-section` grid): inbox card with thread rows, collapsible filters, **conversation detail in a fixed right-hand `SidebarForm` (wide)** with thread bubbles, client assign, and a mailto-based reply draft; plus Schnellzugriff tiles and a complementary column.
+A custom email inbox that syncs multiple IMAP accounts into MySQL **v3** tables (`dls_mail_db_version`, `DLS_MAIL_DB_VERSION = 32`). The `/nachrichten` screen uses **`PageLayout`** with a single **main column** (max-width), a dark **inbox card**, **`.client-data` + `.tabs`** for **Kunden / WordPress / Sonstiges** (same DOM pattern as the client card), thread rows via **`MessagesFocusInboxRow`**, and **`TablePagination`**. List data loads with **`useDlsQuery`** (`GET /dls/v1/emails` with `imap_folder=INBOX` and pagination — the REST layer still supports additional filters, but the inbox UI does not expose a filter/search bar). Loading states use **inbox skeleton** components (`SkeletonInboxTabsStrip`, `SkeletonInboxFocusRows`, `SkeletonInboxPaginationBar`). Opening a thread opens a wide **`SidebarForm`** (`messages-conversation-sidebar.js`): sender, **client badge**, **subject below sender** (aligned with the list), **`ScrollPanel`** + **`EmailConversationThread`**, mailto reply draft; no separate “Schnellzugriff” column.
 
 **IMAP sync**
-- WP-Cron runs every 5 minutes (`dls_mail_imap_sync_cron`) — syncs all active mailboxes (limit 50 emails per run, filterable)
-- Background chunked sync available for large inboxes (chunk-sync progress bar in admin)
-- Uses webklex/php-imap (no PHP `ext-imap` extension required)
-- IMAP credentials encrypted at rest (`MailCrypto`, AES)
+- WP-Cron every 5 minutes (`dls_mail_imap_sync_cron`, `dls_every_five_minutes`) — **`MailSyncV2::sync_account`** per active account (default batch size 100, filterable via `dls_mail_cron_sync_limit`, minimum 10)
+- **Chunk** wipe-resync for large rebuilds (progress in Verwaltung → Nachrichten)
+- webklex/php-imap (no PHP `ext-imap` required)
+- IMAP passwords encrypted at rest (`MailCrypto`)
 
-**Email storage** (custom MySQL tables, option `dls_mail_db_version` v8):
-`dls_mailbox`, `dls_email`, `dls_email_spam_blocklist`, `dls_email_spam_whitelist`, `dls_mailbox_folder_client`, `dls_email_attachment`
+**Email storage** (v3 — see `stella-dashboard/mail-nachrichten.md` for the full table list)
+- Core: `dls_mail_account`, `dls_mail_folder`, `dls_mail_message` (includes `thread_id`, direction, classification fields when enabled, `is_seen`, `has_attachment`, …)
+- Links: `dls_mail_folder_link`, `dls_mail_message_link` (`source`: folder / address / manual)
+- Attachments: `dls_mail_attachment`; files under `wp-content/private/dls-mail-attachments/{account_id}/{message_id}/`
+- Classification rules + sync audit: `dls_mail_classification_rule`, `dls_mail_sync_run`
 
-**Client auto-assignment (strict 2025 rules)**
-1. Folder mapping first (`dls_mailbox_folder_client`) — highest priority, never overwritten
-2. Collect To, Cc, Bcc, From addresses; drop own/internal addresses
-3. Exactly one external address → assign if it matches a known client/invoice/person email
-4. Multiple external addresses all pointing to the same client → assign to that client
-5. Otherwise: `client_id` = null
+**Client assignment** (message links, not a single `client_id` column on the legacy model)
+1. **Folder** — folder→entity from `dls_mail_folder_link` (highest priority)
+2. **Address** — From/To matching against CRM email maps (`MailDbService`)
+3. **Manual** — user-set via `PUT /dls/v1/emails/{id}`; preserved across wipe-resync via transient restore
 
-**Spam detection**
-- Blocklist: always spam (status 2)
-- Whitelist: force not-spam (status 0), skip heuristics
-- Heuristics: emoji in subject, subdomain sender (with exemptions for dominikliss.com, foxcraft.digital)
+**Optional AI classification** — `MailClassificationService`, gated by `DLS_MAIL_CLASSIFICATION_ENABLED` (default off); Layer-1 rules + optional Layer-2 Ollama for main INBOX inbound only.
 
 **Thread / conversation view**
-- Threading via `Message-ID` / `In-Reply-To` headers
-- Quote splitting: `MailHtmlSplitQuoteService` strips quoted reply history from list view; full body available on single email fetch
-- `date_sent` fallback chain: IMAP header → raw `Date:` scan → iCalendar body/attachment parsing (for calendar emails without a `Date:` header)
+- Threads grouped by `thread_id` on `dls_mail_message`; chronology and bubbles in **`EmailConversationThread`** / **`EmailMessageBlock`**
 
 **Attachments**
-- Downloaded and stored under `wp-content/private/dls-mail-attachments/`
-- Downloadable via REST (`GET /dls/v1/emails/{id}/attachments/{att_id}/download`)
+- Stored privately; download URLs exposed via the mail emails REST layer (see `mail-emails.php`)
 
-**Spam / blocklist management**
-- Confirm spam, whitelist sender, spam blocklist + whitelist editor in admin tab
-- "Clear client links" per mailbox (bulk remove `client_id` from all emails of a mailbox)
+**Admin (Verwaltung → Nachrichten)**
+- Mailbox CRUD, IMAP health, folder→entity assignments, quick sync + chunk sync + wipe, classification rules when used — `mail-admin-tab.js`, `mailbox-sync-controls.js`
 
-**Folder-client mapping**
-- Assign a client to a mailbox folder so all emails in that folder are auto-assigned
-- Managed in Verwaltung → Nachrichten admin tab
-
-**UI**
-- `MasterDetailLayout`: thread list on the left, conversation on the right
-- `ConversationListItem`: avatar (initials), subject preview, unread badge, spam badge
-- `EmailConversationThread`: chronological bubbles with date separators
-- `EmailMessageBlock`: from/to/cc meta table, body (HTML sandboxed iframe or plain text), attachments
-- `EmailDetailSidebar`: client link, spam actions
-- `ListSearchField`: debounced inbox search
-- Filter bar with mailbox selector
+**UI components (inbox)**
+- `messages-page.js`, `messages-focus-inbox-row.js`, `messages-conversation-sidebar.js`, `email-conversation-thread.js`, `skeleton.js` (inbox skeleton exports)
 
 ---
 

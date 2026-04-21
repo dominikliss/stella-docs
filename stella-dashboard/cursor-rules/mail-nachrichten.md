@@ -6,7 +6,7 @@ _Source of agent rule in theme repo: `.cursor/rules/mail-nachrichten.mdc`._
 
 # Nachrichten (IMAP) — agent checklist
 
-## DB tables (`dls_mail_db_version = 31`)
+## DB tables (`dls_mail_db_version = 32`)
 
 | Table | Purpose |
 |---|---|
@@ -117,14 +117,14 @@ Links stored in `dls_mail_message_link` with `source`:
 
 | Component | Role |
 |---|---|
-| `messages-page.js` | Root `/nachrichten`: `PageLayout` + dark inbox card, thread grouping by `thread_id`, tabs Kunden/WordPress/Sonstiges via `classifyThread`, filters (mailbox, direction, search), pagination, `MessagesFocusInboxRow`, `MessagesConversationSidebar`; mounts on `.dls-nachrichten` |
+| `messages-page.js` | Root `/nachrichten`: `PageLayout` (Aktualisieren only; no inbox filter UI). **`useDlsQuery`** for paged INBOX; **`groupEmailsIntoThreads`** + **`classifyThread`** tabs (Kunden / WordPress / Sonstiges) with **`.client-data` + `.tabs`**. **`MessagesFocusInboxRow`**, **`TablePagination`**, skeleton strip/rows/pagination bar while loading. **`MessagesConversationSidebar`** — subject below sender, client badge, **`ScrollPanel`** + thread; opening does not mark read or refetch list. Mounts on `.dls-nachrichten` |
 | `mail-admin-tab.js` | Mailbox CRUD, IMAP health, folder→entity assignments, chunk sync + wipe-resync, `MailAdminClassificationRules` (rule CRUD + reorder) |
 | `mailbox-sync-controls.js` | `useMailboxSync` hook + `SyncConfirmModals`; quick sync, chunk sync (poll `step`), wipe (DELETE + start chunk), resume active jobs on mount |
 | `email-classification-labels.js` | English token → German label maps; `emailClassificationDisplayDe(token, kind)`; category color tokens |
 | `mail-admin-shared.js` | `mailPath()`, `mailboxSchema` (Yup), `clientLabel()` |
 | `mail-conversation-resolution.js` | Thread helpers: `resolveThreadContactPerson`, `conversationListAvatarInfo`, `threadSubjectPreview`, internal-email filtering, reply builder |
 
-**SCSS:** `messages-page.scss` (`.dls-messages-page` shell), `mail-admin-panel.scss`, `inbox.scss`, `chunk-sync.scss`, `filter-bar.scss`, `conversation-layout.scss` — imported by `messages.scss`.
+**SCSS:** `components/messages-page.scss`, `mail-admin-panel.scss`, `inbox.scss`, `chunk-sync.scss`, `conversation-layout.scss`, `components/skeleton.scss`, `client-card.scss` (shared **`.client-data .tab-badge`**), `header.scss` (global tabs). `filter-bar.scss` stays for other screens; Nachrichten inbox does not embed it. Imported via `messages.scss` / `styles.scss` as before.
 
 ## Do not
 

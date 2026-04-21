@@ -6,12 +6,12 @@ This document describes the **implemented** mail module (v3) in the ddashboard t
 
 | Path | UI |
 |------|-----|
-| `/nachrichten/` | Inbox (`messages-page.js`) — `PageLayout` + dark inbox card, thread grouping, tabs, filters |
+| `/nachrichten/` | Inbox (`messages-page.js`) — `PageLayout` + **`.dls-messages-page__main`** (max-width column), dark **`.dls-messages-inbox-card`**: title row (Posteingang + badge), **`.client-data` + `.tabs`** (same structure as client card: Kunden / WordPress / Sonstiges), thread list **`MessagesFocusInboxRow`**, **`TablePagination`**. Loading: **`SkeletonInboxTabsStrip`**, **`SkeletonInboxFocusRows`**, **`SkeletonInboxPaginationBar`** (`skeleton.js`). Opening a thread: wide **`SidebarForm`** **`messages-conversation-sidebar.js`** — header: sender + client badge, subject below sender (like list), **`ScrollPanel`** + **`EmailConversationThread`**, mailto reply draft (no client picker / overflow menu in sidebar). List fetch: **`GET /dls/v1/emails?imap_folder=INBOX&page&per_page`** only (no mailbox/direction/search filters in UI). |
 | `/nachrichten/verwaltung/` | Mailbox admin (`mail-admin-tab.js`) — IMAP credentials, sync, classification rules |
 
 Registered in `inc/app-routes.php`. React mounts into `.dls-nachrichten`.
 
-## Database (`dls_mail_db_version = 31`)
+## Database (`dls_mail_db_version = 32`)
 
 Option: `dls_mail_db_version` — schema version constant `DLS_MAIL_DB_VERSION` in `inc/install-mail-tables.php` (migrations run on `init` via `dls_install_mail_tables`).
 
@@ -124,7 +124,7 @@ Client links are stored in `dls_mail_message_link` with `source` column:
 
 | Method | Path | Action |
 |--------|------|--------|
-| GET | `/emails` | Paginated list — filters: `mailbox_id`, `client_id`, `direction`, `thread_id`, `imap_folder`, `search`, `page`, `per_page`; response `{ items, total }` |
+| GET | `/emails` | Paginated list — filters: `mailbox_id`, `client_id`, `direction`, `thread_id`, `imap_folder` (matched **case-insensitively** to `dls_mail_message.imap_folder`), `search`, `page`, `per_page`; response `{ items, total }` |
 | GET | `/emails/{id}` | Full message row |
 | PUT | `/emails/{id}` | Update `client_id`, `is_seen`, `is_flagged` |
 
@@ -151,14 +151,14 @@ Client links are stored in `dls_mail_message_link` with `source` column:
 
 | File | Notes |
 |------|--------|
-| `src/components/messages-page.js` | Root `/nachrichten` — `PageLayout` + dark inbox, thread grouping by `thread_id`, tabs **Kunden** / **WordPress** / **Sonstiges** (`classifyThread`: Kunden = latest message has `client_id`; WordPress = any `from_email` contains `wordpress`; else Sonstiges). Header badge shows total INBOX messages vs. count in the active tab; empty-state copy explains tab mismatch. Filters, pagination, `MessagesFocusInboxRow`, `MessagesConversationSidebar`; mounts on `.dls-nachrichten` |
+| `src/components/messages-page.js` | Root `/nachrichten` — `PageLayout` (Aktualisieren in header only; no inbox filter button). **`useDlsQuery`** loads paged INBOX list; **`groupEmailsIntoThreads`** + tab filter (**`classifyThread`**) client-side. Tabs: **`.client-data` > `.tabs` > `.tab`** (+ **`tab-badge`** counts), same DOM pattern as `client-card.js`. **`MessagesFocusInboxRow`** (avatar, name, client badge, snippet, time). **`MessagesConversationSidebar`** + **`EmailConversationThread`**. **`skeleton.js`**: inbox card skeleton while `loading`. Opening a thread does **not** auto-mark read or refetch list. Mounts on `.dls-nachrichten` |
 | `src/components/mail-admin-tab.js` | Mailbox CRUD, IMAP health, folder→entity mappings, chunk sync + wipe-resync, `MailAdminClassificationRules` — full rule CRUD (GET list + metadata, POST/PUT/DELETE rule, POST reorder) |
 | `src/components/mailbox-sync-controls.js` | `useMailboxSync` hook + `SyncConfirmModals`; quick sync, chunk sync (poll `step` ~400 ms), wipe (DELETE + start chunk), resume active jobs on mount via `Promise.allSettled` |
 | `src/helpers/email-classification-labels.js` | English token → German label maps for categories, actions, urgency, condition types, source; `emailClassificationDisplayDe(token, kind)`; `EMAIL_CATEGORY_COLOR` |
 | `src/helpers/mail-admin-shared.js` | `mailPath(suffix)`, `mailboxSchema` (Yup), `clientLabel(client)` |
 | `src/helpers/mail-conversation-resolution.js` | Thread helpers: `resolveThreadContactPerson`, `conversationListAvatarInfo`, `threadSubjectPreview`, internal-email filtering, avatar, reply `mailto:` builder |
 
-**SCSS:** `messages-page.scss` (`.dls-messages-page` shell), `mail-admin-panel.scss`, `inbox.scss`, `chunk-sync.scss`, `filter-bar.scss`, `conversation-layout.scss` — imported by `messages.scss`.
+**SCSS:** `components/messages-page.scss` (`.dls-messages-page`, inbox card, focus rows, conversation sidebar chrome), `mail-admin-panel.scss`, `inbox.scss`, `chunk-sync.scss`, `conversation-layout.scss`, `components/skeleton.scss` (incl. inbox focus-row skeleton), `client-card.scss` (shared **`.client-data .tab-badge`**), `header.scss` (global **`.tabs` / `.tab`**). `filter-bar.scss` remains in the bundle for other screens; the Nachrichten inbox no longer embeds the filter bar. Imported via `styles.scss` / `messages.scss` as before.
 
 ## Build / SCSS
 

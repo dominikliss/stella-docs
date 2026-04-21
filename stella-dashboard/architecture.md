@@ -63,7 +63,7 @@ inc/
   constants.php              # App-wide constants: DLS_ALLOWED_IPS, DLS_OWNER_EMAILS, DLS_OWNER_DOMAINS, DLS_MAIL_CLASSIFICATION_ENABLED, DLS_ANALYSIS_TIMEOUT
   subscription-billing.php   # Clears legacy subscription cron; billing is manual via REST only
   mail-sync-cron.php         # WP-Cron: `dls_mail_imap_sync_cron` every 5 min → sync active mailboxes
-  install-mail-tables.php    # dbDelta v3 (DLS_MAIL_DB_VERSION = 31): dls_mail_account, dls_mail_folder, dls_mail_message, dls_mail_folder_link, dls_mail_message_link, dls_mail_attachment, dls_mail_classification_rule, dls_mail_sync_run; drops legacy dls_mailbox / dls_email tables on upgrade
+  install-mail-tables.php    # dbDelta v3 (DLS_MAIL_DB_VERSION = 32): dls_mail_account, dls_mail_folder, dls_mail_message, dls_mail_folder_link, dls_mail_message_link, dls_mail_attachment, dls_mail_classification_rule, dls_mail_sync_run; drops legacy dls_mailbox / dls_email tables on upgrade
   install-pm-tables.php      # dbDelta: dls_pm_project, dls_pm_task_list, dls_pm_task, dls_pm_task_assignee, dls_pm_comment, dls_pm_time_entry; migrations v1–v2
   install-bank-account-tables.php # dbDelta: dls_bank_account (label, iban, bic, bank_name, account_holder, condition_country, condition_vat, currency, is_primary, US fields); migrations v1–v3; seeds defaults
   install-ai-chat-tables.php # dbDelta: dls_ai_chat_session, dls_ai_chat_message
@@ -170,7 +170,7 @@ src/
     formik-date-picker.js    # Formik + react-datepicker wrapper; stores Y-m-d (or "" when empty); locale=de
     chat-bubble.js           # Generic chat bubble — align="start" (counterpart) or "end" (own/outbound)
     project-management.js    # PM board (projects / task lists / tasks / comments; uses useDlsQuery + useRestAction + DataTable)
-    messages-page.js         # /nachrichten — PageLayout + dark inbox card, thread grouping by thread_id, tabs Kunden/WordPress/Sonstiges, filters (mailbox, direction, search), pagination, MessagesFocusInboxRow, MessagesConversationSidebar; mounts on .dls-nachrichten
+    messages-page.js         # /nachrichten — PageLayout + single main column (max-width); dark inbox card; .client-data tabs (Kunden/WordPress/Sonstiges); useDlsQuery list + skeleton loaders; MessagesFocusInboxRow, MessagesConversationSidebar (wide SidebarForm); no inbox filter bar; mounts on .dls-nachrichten
     email-conversation-thread.js # Thread view (sorted messages, date separators)
     email-message-block.js   # Single email bubble (from, date, body, attachments)
     email-detail-sidebar.js  # Sidebar: client link, spam actions
@@ -202,7 +202,7 @@ src/
     icons.js                 # All shared SVG icons (IconDownload, IconEdit, IconTrash, IconAttachment, …)
     toggle.js                # Custom toggle switch
     dropdown.js              # Custom dropdown — trigger + floating menu
-    skeleton.js              # SkeletonRows for table loading states
+    skeleton.js              # SkeletonRows + SkeletonInboxTabsStrip / SkeletonInboxFocusRows / SkeletonInboxPaginationBar (Nachrichten inbox)
     toast-container.js       # Fixed bottom-right toast stack
     loader.js                # Spinning ring loader
     delete-modal.js          # Reusable confirm-delete / confirm-action modal (description prop for custom body)
@@ -280,7 +280,7 @@ assets/scss/                 # SCSS source (ScssPhp, compiled on theme load when
 
 ## Nachrichten (IMAP)
 
-**Schema version:** `DLS_MAIL_DB_VERSION = 31` (option `dls_mail_db_version`). Legacy tables (`dls_mailbox`, `dls_email`, spam blocklist/whitelist, embed queue) were dropped in the v3 migration.
+**Schema version:** `DLS_MAIL_DB_VERSION = 32` (option `dls_mail_db_version`). Legacy tables (`dls_mailbox`, `dls_email`, spam blocklist/whitelist, embed queue) were dropped in the v3 migration.
 
 - **Tables** (`inc/install-mail-tables.php`):
 
@@ -308,7 +308,7 @@ assets/scss/                 # SCSS source (ScssPhp, compiled on theme load when
   3. **`manual`** — user-set via `PUT /emails/{id}`; survives wipe-resync via transient restore.
   - `recompute_client_assignments` deletes `folder` + `address` links and re-derives them; manual links are preserved.
 - **REST** (all `dls/v1`): `mailboxes.php` (mailbox CRUD, folder-entity assignments, IMAP health/test/list-folders, `folder-clients-overview`), `mail-emails.php` (email list/get/update), `mail-sync.php` (quick sync, chunk sync start/step/cancel/status, wipe, recompute-metadata, clear-client-links), `mail-classification.php` (classification rules CRUD + reorder, POST classify).
-- **UI:** `messages-page.js` (dark inbox, thread grouping by `thread_id`, tabs Kunden/WordPress/Sonstiges, filters, pagination), `mail-admin-tab.js` (mailbox CRUD + classification rules), `mailbox-sync-controls.js` (quick/chunk/wipe sync + resume), `email-classification-labels.js` (token → German label maps), `mail-conversation-resolution.js` (thread helpers, avatar, reply builder). SCSS: `messages-page.scss`, `mail-admin-panel.scss`, `inbox.scss`, `chunk-sync.scss`, `filter-bar.scss`, `conversation-layout.scss` (imported by `messages.scss`).
+- **UI:** `messages-page.js` (dark inbox card, `.client-data` tabs, `useDlsQuery` INBOX list, inbox skeletons, `MessagesFocusInboxRow`, `MessagesConversationSidebar`), `mail-admin-tab.js` (mailbox CRUD + classification rules), `mailbox-sync-controls.js` (quick/chunk/wipe sync + resume), `email-classification-labels.js` (token → German label maps), `mail-conversation-resolution.js` (thread helpers, avatar, reply builder). SCSS: `messages-page.scss`, `mail-admin-panel.scss`, `inbox.scss`, `chunk-sync.scss`, `conversation-layout.scss`, `skeleton.scss`, `client-card.scss` (tab-badge); `filter-bar.scss` is not used on the Nachrichten inbox screen.
 
 ## E-Mail-AI-Analysen (Ollama, Verwaltung → AI-Profile)
 

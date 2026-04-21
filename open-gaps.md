@@ -9,7 +9,7 @@ Last updated: 2026-04-19
 
 ## Email Indexing Pipeline
 
-> **Status:** The ddashboard mail stack was rewritten to v3 (`DLS_MAIL_DB_VERSION = 31`). The legacy `dls_email` table, `EmailEmbedQueueService`, `StellaEmailIndexClient`, and `email-embed-cron.php` no longer exist. The embed pipeline described in `integration/email-indexing.md` needs to be rebuilt against the new `dls_mail_message` / `dls_mail_message_link` schema before any of the items below apply.
+> **Status:** The ddashboard mail stack was rewritten to v3 (`DLS_MAIL_DB_VERSION = 32`). The legacy `dls_email` table, `EmailEmbedQueueService`, `StellaEmailIndexClient`, and `email-embed-cron.php` no longer exist. The embed pipeline described in `integration/email-indexing.md` needs to be rebuilt against the new `dls_mail_message` / `dls_mail_message_link` schema before any of the items below apply.
 
 ### Blocked until v3 integration is implemented
 
