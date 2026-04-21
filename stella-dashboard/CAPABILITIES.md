@@ -318,8 +318,8 @@ The `api/v1` namespace is IP-restricted to two addresses (`194.126.177.181`, `23
 
 | Hook | Schedule | Action |
 |---|---|---|
-| `dls_mail_imap_sync_cron` | Every 5 minutes | Sync all active mailboxes via IMAP (up to 50 emails each) |
-| `dls_email_embed_process_cron` | Every 2 minutes | Drain `dls_email_embed_queue` → Stella `POST /emails/upsert` (when email embed is enabled) |
+| `dls_mail_imap_sync_cron` | Every 5 minutes | Sync all active mailboxes via IMAP (batch size configurable; default 100 per account, minimum 10) |
+| *(planned)* | — | **Vector index:** WordPress → Stella `POST /emails/upsert` into Chroma **`emails_v3`** for `dls_mail_message` rows — queue/cron not wired yet; see [`../integration/email-indexing.md`](../integration/email-indexing.md) |
 
 **Subscription billing:** There is **no** scheduled subscription billing hook. `inc/subscription-billing.php` clears any legacy `dls_subscription_billing_cron`. Billing runs only when triggered manually via **`POST /dls/v1/subscription-billing-run`** (Buchhaltung → Aktionen). `SubscriptionBillingService::run()` still performs the merge/invoices/transactions when invoked.
 
@@ -345,7 +345,7 @@ The `api/v1` namespace is IP-restricted to two addresses (`194.126.177.181`, `23
 
 | Table group | Tables | Purpose |
 |---|---|---|
-| IMAP | `dls_mailbox`, `dls_email`, `dls_email_spam_blocklist`, `dls_email_spam_whitelist`, `dls_mailbox_folder_client`, `dls_email_attachment`, `dls_email_embed_queue` | Email sync and inbox; optional Stella embed queue |
+| Mail v3 (IMAP) | `dls_mail_account`, `dls_mail_folder`, `dls_mail_message`, `dls_mail_message_link`, `dls_mail_folder_link`, `dls_mail_attachment`, classification/sync audit tables | Inbox + Stella **`emails_v3`** payload source (indexing client TBD) |
 | PM | `dls_pm_project`, `dls_pm_task_list`, `dls_pm_task`, `dls_pm_task_assignee`, `dls_pm_comment`, `dls_pm_time_entry` | Project management |
 | AI chat | `dls_ai_chat_session`, `dls_ai_chat_message` | AI assistant sessions and history |
 | YouTube | `dls_youtube_*` (video data + analytics) | YouTube channel metrics |

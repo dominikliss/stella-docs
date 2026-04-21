@@ -1,17 +1,23 @@
 # Stella API
 
-FastAPI application running on Stella server.
+FastAPI application on the Stella server: chat healthcheck, **mail v3** email indexing into ChromaDB (`emails_v3`), and semantic query.
 
 - **Location:** `/opt/services/stella-api/`
 - **Runtime:** Docker container (`network_mode: host`)
-- **Port:** 8001 (direct) / accessible via Caddy at `:8080/stella` — ddashboard option `dls_stella_email_index_url` must be that **public base** (e.g. `http://<server>:8080/stella`), not `http://<server>:8080` alone, so paths become `…/stella/emails/document/email_123`.
 - **Process:** `uvicorn main:app`
+
+**Base URL (via Caddy):** `http://<stella-host>:8080/stella`  
+**Base URL (direct):** `http://<stella-host>:8001`
+
+ddashboard option **`dls_stella_email_index_url`** must be the **HTTP root** used before `/emails/…` / `/chat/…` — e.g. `http://<host>:8080/stella` so WordPress calls `…/stella/emails/upsert`. Trailing slashes are stripped client-side.
+
+**Auth:** none on the API — access is restricted at the network layer (UFW; operator docs: allow WordPress egress / ProtonVPN static IP as applicable). An optional WordPress option `dls_stella_email_index_key` may still be sent as `X-Stella-Key` for future use; the current Stella deploy does not require it.
 
 **Sibling service (same host, different app):** IMAP mailbox migration via **`imapsync`** + Express on port **3001** — [`imap-sync-service.md`](imap-sync-service.md). ddashboard **Werkzeuge → E-Mail-Migration** calls it through **`inc/routes/imap-sync-proxy.php`** (not FastAPI).
 
 ---
 
-## File Structure
+## File structure (typical)
 
 ```
 stella-api/
@@ -20,14 +26,20 @@ stella-api/
 └── app/
     ├── main.py               # FastAPI app, router registration
     ├── routers/
-    │   ├── __init__.py
     │   ├── chat.py           # /chat routes
     │   └── emails.py         # /emails routes
     └── services/
-        ├── __init__.py
         ├── chroma.py         # ChromaDB client (v2 API)
-        └── ollama.py         # Ollama embed client
+        └── ollama.py         # Ollama embed client (nomic-embed-text)
 ```
+
+---
+
+## ChromaDB collection
+
+| Name | Role |
+|------|------|
+| **`emails_v3`** | One Chroma document per **`dls_mail_message_link`** row (or a **sentinel** document when there are no links). Same embedding vector is reused for all link-documents of one message. |
 
 ---
 
@@ -35,165 +47,311 @@ stella-api/
 
 ### Chat
 
-| Method | Path | Status | Notes |
-|--------|------|--------|-------|
-| GET | `/chat/health` | ✅ Done | Returns `{"status": "ok"}` |
-
-### Emails
-
-| Method | Path | Status | Notes |
-|--------|------|--------|-------|
-| POST | `/emails/upsert` | ✅ Done | Embeds document + upserts into ChromaDB |
-| POST | `/emails/query` | ✅ Done | Similarity search with optional `where` filter |
-| GET | `/emails/document/{document_id}` | ✅ Done | Chroma `POST …/collections/{id}/get` via `chroma.get_by_id`; ddashboard Kopfdaten sidebar |
+| Method | Path | Response |
+|--------|------|----------|
+| GET | `/chat/health` | **200** `{"status": "ok"}` |
 
 ---
 
-## Services
+### Emails — `POST /emails/upsert`
+
+Indexes one row from **`dls_mail_message`**. Before insert, **deletes** all existing Chroma documents for that `message_id` (so removed links are cleaned up automatically). Creates **one document per entry** in `links`. If `links` is empty, creates a **sentinel** document with `entity_type="none"` (document id `msg_{message_id}_link_0`).
+
+The embedding is computed **once** per request and applied to **all** link-documents for that message.
+
+**Request body**
+
+```json
+{
+  "message_id": 123,
+  "document": "Subject: Betreff\n\nBody text (quote-stripped)",
+
+  "account_id": 1,
+  "folder_id": 4,
+  "direction": "inbound",
+  "date_sent_ts": 1712345678,
+  "date_received_ts": 1712345700,
+  "thread_id": "hdr-abc123",
+  "category": "invoice_question",
+  "action": "reply_needed",
+  "urgency": "immediate",
+  "classification_source": "rule",
+  "has_attachment": 0,
+  "is_seen": 1,
+  "is_flagged": 0,
+
+  "links": [
+    {
+      "link_id": 55,
+      "entity_type": "client",
+      "entity_id": 42,
+      "link_source": "manual"
+    },
+    {
+      "link_id": 56,
+      "entity_type": "project",
+      "entity_id": 7,
+      "link_source": "folder"
+    }
+  ]
+}
+```
+
+**Enumerated / constrained values**
+
+| Field | Values |
+|------|--------|
+| `direction` | `"inbound"` / `"outbound"` |
+| `classification_source` | `"rule"` / `"ai"` / `""` |
+| `has_attachment`, `is_seen`, `is_flagged` | `0` / `1` |
+| `entity_type` (in `links`) | `"client"` / `"project"` / `"none"` |
+| `link_source` | `"folder"` / `"manual"` / `"address"` / `"none"` |
+| `category`, `action`, `urgency` | English tokens from `dls_mail_message`; `""` if not classified |
+
+**Message without links**
+
+```json
+{
+  "message_id": 124,
+  "document": "Subject: …\n\n…",
+  "links": []
+}
+```
+
+→ Creates document id **`msg_124_link_0`** with `entity_type="none"`, `entity_id=0`.
+
+**Response:** **204 No Content**
+
+---
+
+### Emails — `DELETE /emails/message/{message_id}`
+
+Deletes **all** Chroma documents for that message. Call when a row is removed from **`dls_mail_message`**.
+
+**Response:** **204 No Content**
+
+---
+
+### Emails — `POST /emails/query`
+
+Semantic similarity over indexed messages.
+
+**Request body**
+
+```json
+{
+  "text": "Suchtext",
+  "where": { "$and": [{"entity_type": {"$eq": "client"}}, {"entity_id": {"$eq": 42}}] },
+  "n_results": 10
+}
+```
+
+- `where` — optional (Chroma metadata filter).
+- `n_results` — optional, default **10**.
+
+**Response 200**
+
+```json
+{
+  "results": [
+    {
+      "id": "msg_123_link_55",
+      "document": "Subject: Betreff\n\nBody text…",
+      "metadata": {
+        "message_id": 123,
+        "account_id": 1,
+        "folder_id": 4,
+        "direction": "inbound",
+        "date_sent_ts": 1712345678,
+        "date_received_ts": 1712345700,
+        "thread_id": "hdr-abc123",
+        "category": "invoice_question",
+        "action": "reply_needed",
+        "urgency": "immediate",
+        "classification_source": "rule",
+        "has_attachment": 0,
+        "is_seen": 1,
+        "is_flagged": 0,
+        "link_id": 55,
+        "entity_type": "client",
+        "entity_id": 42,
+        "link_source": "manual"
+      },
+      "distance": 0.21
+    }
+  ]
+}
+```
+
+`distance` — ChromaDB cosine distance; **smaller = more similar**. Typical good hits are below **0.3**.
+
+**`where` examples**
+
+```json
+{ "$and": [{"entity_type": {"$eq": "client"}}, {"entity_id": {"$eq": 42}}] }
+```
+
+```json
+{ "direction": {"$eq": "inbound"} }
+```
+
+```json
+{ "thread_id": {"$eq": "hdr-abc123"} }
+```
+
+```json
+{ "account_id": {"$eq": 1} }
+```
+
+```json
+{
+  "$and": [
+    {"entity_type": {"$eq": "client"}},
+    {"entity_id": {"$eq": 42}},
+    {"direction": {"$eq": "inbound"}}
+  ]
+}
+```
+
+---
+
+### Emails — `GET /emails/document/{doc_id}`
+
+Single Chroma document by full id.
+
+**Path format:** `msg_{message_id}_link_{link_id}`  
+**Example:** `GET /emails/document/msg_123_link_55`
+
+**Response 200:** `{ "id", "document", "metadata" }`  
+**Response 404:** document not found.
+
+---
+
+### Emails — `GET /emails/message/{message_id}`
+
+All Chroma documents for one message (one per link, or sentinel).
+
+**Example:** `GET /emails/message/123`
+
+**Response 200:**
+
+```json
+{
+  "message_id": 123,
+  "documents": [
+    { "id": "msg_123_link_55", "document": "…", "metadata": { } },
+    { "id": "msg_123_link_56", "document": "…", "metadata": { } }
+  ]
+}
+```
+
+**Response 404:** no documents for that `message_id`.
+
+---
+
+### Emails — `GET /emails/collection/count`
+
+**Response 200:** `{ "collection": "emails_v3", "count": 412 }`
+
+---
+
+### Emails — `POST /emails/collection/reset`
+
+Drops and recreates the **`emails_v3`** collection — **all** indexed data is lost.
+
+**Response:** **204 No Content**
+
+---
+
+## Chroma document IDs
+
+| Situation | ID |
+|-----------|-----|
+| Message with links | `msg_{message_id}_link_{link_id}` |
+| Message without links (sentinel) | `msg_{message_id}_link_0` |
+
+Legacy ids like `email_{id}` are **not** used in `emails_v3`.
+
+---
+
+## Metadata fields (every document)
+
+All fields are present and filterable via `where`.
+
+| Field | Type | Source |
+|------|------|--------|
+| `message_id` | int | `dls_mail_message.id` |
+| `account_id` | int | `dls_mail_message.account_id` |
+| `folder_id` | int | `dls_mail_message.folder_id` |
+| `direction` | string | `dls_mail_message.direction` |
+| `date_sent_ts` | int | `dls_mail_message.date_sent` (Unix) |
+| `date_received_ts` | int | `dls_mail_message.date_received` (Unix) |
+| `thread_id` | string | `dls_mail_message.thread_id` |
+| `category` | string | `dls_mail_message.email_category` |
+| `action` | string | `dls_mail_message.email_action` |
+| `urgency` | string | `dls_mail_message.email_urgency` |
+| `classification_source` | string | `dls_mail_message.classification_source` |
+| `has_attachment` | int | `dls_mail_message.has_attachment` |
+| `is_seen` | int | `dls_mail_message.is_seen` |
+| `is_flagged` | int | `dls_mail_message.is_flagged` |
+| `link_id` | int | `dls_mail_message_link.id` (**0** = no link / sentinel) |
+| `entity_type` | string | `dls_mail_message_link.entity_type` |
+| `entity_id` | int | `dls_mail_message_link.entity_id` |
+| `link_source` | string | `dls_mail_message_link.source` |
+
+---
+
+## Services (implementation)
 
 ### `services/ollama.py`
 
-Async HTTP client wrapping Ollama `/api/embeddings`.
-
-```python
-OLLAMA_URL = os.getenv("OLLAMA_URL", "http://127.0.0.1:11434")
-
-async def embed(text: str) -> list[float]:
-    # POST /api/embeddings
-    # model: nomic-embed-text
-    # returns: embedding vector
-```
-
-**Model used:** `nomic-embed-text`
-**Timeout:** 60s
+Embeddings via Ollama **`/api/embeddings`**, model **`nomic-embed-text`** (typical env: `OLLAMA_URL=http://127.0.0.1:11434`).
 
 ### `services/chroma.py`
 
-HTTP client wrapping ChromaDB v2 API (`httpx`; upsert/query may be sync or async depending on deployment).
-
-```python
-CHROMA_URL = os.getenv("CHROMA_URL", "http://127.0.0.1:8000")
-BASE = f"{CHROMA_URL}/api/v2/tenants/default_tenant/databases/default_database"
-```
-
-**Functions:**
-- `get_or_create_collection(name)` → returns collection UUID `id`
-- `upsert(…)` / `query(…)` → as implemented for `/emails/upsert` and `/emails/query`
-- **`get_by_id(collection_id, doc_id)`** → `POST {BASE}/collections/{collection_id}/get` with `{"ids": [doc_id], "include": ["documents", "metadatas"]}` — used by **`GET /emails/document/{doc_id}`**
+ChromaDB **v2** HTTP API (`CHROMA_URL`, e.g. `http://127.0.0.1:8000`), tenant/database path as in [`infrastructure.md`](infrastructure.md).
 
 ---
 
-## Request / Response Schemas
-
-### `POST /emails/upsert`
-
-```json
-// Request
-{
-  "id": "email_123",
-  "document": "From: foo@bar.com\nSubject: ...\n\nbody text...",
-  "metadata": {
-    "sender": "foo@bar.com",
-    "direction": "inbound",
-    "date": 1712345678,
-    "subject": "..."
-  }
-}
-
-// Response: 204 No Content
-```
-
-### `POST /emails/query`
-
-```json
-// Request
-{
-  "text": "query string",
-  "where": { "sender": "foo@bar.com" },
-  "n_results": 5
-}
-
-// Response
-{
-  "results": { ...raw ChromaDB query response... }
-}
-```
-
-### `GET /emails/document/{document_id}`
-
-**Contract (ddashboard `GET /dls/v1/emails/{id}/stella-chroma-raw` proxies here):**
-
-- Path segment `document_id` is the Chroma record id, e.g. `email_24128` (same as `POST /emails/upsert` body field `id`).
-- **Chroma call:** `POST {BASE}/collections/{collection_uuid}/get` with body  
-  `{"ids": ["email_24128"], "include": ["documents", "metadatas"]}`  
-  (same as direct Chroma v2 API on port 8000).
-- Response **200** JSON (normalized single-record payload):
-
-```json
-{
-  "id": "email_42",
-  "document": "From: …\nSubject: …\n\n…",
-  "metadata": {
-    "mailbox_id": 1,
-    "thread_id": "…"
-  }
-}
-```
-
-- Response **404** if the document is missing (`ids` empty from Chroma or falsy result).
-- Embeddings are **not** returned (only `documents` + `metadatas` in the Chroma request).
-
-#### Implementation (deployed under `/opt/services/stella-api/`)
-
-`app/services/chroma.py` — `get_by_id`:
-
-```python
-async def get_by_id(self, collection_id: str, doc_id: str) -> dict:
-    async with httpx.AsyncClient() as client:
-        response = await client.post(
-            f"{BASE}/collections/{collection_id}/get",
-            json={"ids": [doc_id], "include": ["documents", "metadatas"]},
-            timeout=30,
-        )
-        response.raise_for_status()
-        return response.json()
-```
-
-`app/routers/emails.py`:
-
-```python
-@router.get("/document/{doc_id}")
-async def get_document(doc_id: str):
-    col_id = await chroma.get_or_create_collection("emails")
-    result = await chroma.get_by_id(col_id, doc_id)
-
-    if not result or not result.get("ids"):
-        raise HTTPException(status_code=404, detail=f"Document {doc_id} not found")
-
-    return {
-        "id": result["ids"][0],
-        "document": result["documents"][0],
-        "metadata": result["metadatas"][0],
-    }
-```
-
-Wire `chroma` to your app’s service instance; `get_or_create_collection` must match the **`emails`** collection used by `/emails/upsert`.
-
----
-
-## Environment Variables
+## Environment variables
 
 | Variable | Default | Notes |
 |----------|---------|-------|
-| `OLLAMA_URL` | `http://127.0.0.1:11434` | Set in docker-compose |
-| `CHROMA_URL` | `http://127.0.0.1:8000` | Set in docker-compose |
+| `OLLAMA_URL` | `http://127.0.0.1:11434` | docker-compose / systemd |
+| `CHROMA_URL` | `http://127.0.0.1:8000` | docker-compose |
 
 ---
 
-## Known Issues / Open Items
+## Known limitations / ops notes
 
-- `POST /emails/upsert` returns `204` but does **not** return the upserted ID — ddashboard currently gets no confirmation beyond HTTP status
-- `chroma.query()` returns raw ChromaDB response structure — not normalized for ddashboard consumption yet
-- No chunking logic — long emails are sent as single document; if body exceeds `nomic-embed-text` context window (~8192 tokens) it will be silently truncated by Ollama
-- No auth on any endpoint — relies on UFW/network-level security
-- `where: {}` passed as empty dict from ddashboard when no filter — needs to be handled as `None` in chroma query (currently done in router: `req.where or None`)
+- **No chunking** — one embedding per message text, replicated across link-documents; very long bodies depend on `nomic-embed-text` context limits (may truncate).
+- **No HTTP auth** — rely on firewall / VPN placement; do not expose `:8001` or Chroma/Ollama publicly without controls.
+- **Reset** — `POST /emails/collection/reset` is destructive; use only for rebuilds.
+
+---
+
+## ddashboard PHP (integration sketch)
+
+**Option:** `dls_stella_email_index_url` — e.g. `http://<host>:8080/stella`
+
+**Upsert**
+
+```php
+$base = rtrim( (string) get_option( 'dls_stella_email_index_url', '' ), '/' );
+$url  = $base . '/emails/upsert';
+$response = wp_remote_post( $url, [
+	'headers' => [ 'Content-Type' => 'application/json' ],
+	'body'    => wp_json_encode( $payload ),
+	'timeout' => 30,
+] );
+// HTTP 204 = success
+```
+
+**Delete (on `dls_mail_message` delete)**
+
+```php
+$url = $base . '/emails/message/' . (int) $message_id;
+$response = wp_remote_request( $url, [ 'method' => 'DELETE', 'timeout' => 15 ] );
+```
+
+WordPress must build `$payload` from **`dls_mail_message`** + **`dls_mail_message_link`** rows (see request schema above). Queue/cron wiring is product-side — see [`../integration/email-indexing.md`](../integration/email-indexing.md).

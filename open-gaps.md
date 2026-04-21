@@ -1,6 +1,6 @@
 # Open Gaps & Next Steps
 
-Last updated: 2026-04-19
+Last updated: 2026-04-21
 
 **Pipeline detail:** [integration/email-indexing.md](integration/email-indexing.md)  
 **Cross-system overview:** [integration/ddashboard-and-stella-server.md](integration/ddashboard-and-stella-server.md)
@@ -9,20 +9,23 @@ Last updated: 2026-04-19
 
 ## Email Indexing Pipeline
 
-> **Status:** The ddashboard mail stack was rewritten to v3 (`DLS_MAIL_DB_VERSION = 32`). The legacy `dls_email` table, `EmailEmbedQueueService`, `StellaEmailIndexClient`, and `email-embed-cron.php` no longer exist. The embed pipeline described in `integration/email-indexing.md` needs to be rebuilt against the new `dls_mail_message` / `dls_mail_message_link` schema before any of the items below apply.
+> **Stella (done in docs / target deploy):** FastAPI indexes **`dls_mail_message`** into Chroma collection **`emails_v3`** — `POST /emails/upsert` (multi-doc per link + sentinel), `DELETE /emails/message/{id}`, normalized **`POST /emails/query`**, collection count/reset, document/message GET. See [`stella-server/stella-api.md`](stella-server/stella-api.md) and [`integration/email-indexing.md`](integration/email-indexing.md).
 
-### Blocked until v3 integration is implemented
+> **ddashboard (still open):** Legacy `dls_email` queue and `StellaEmailIndexClient` were removed with mail v3. WordPress must enqueue, build payloads from **`dls_mail_message`** + **`dls_mail_message_link`**, call upsert/delete, and optionally expose debug REST against `GET /emails/document/msg_*`.
 
-- [ ] **Design embed queue for v3** — decide whether to add an `embed_queue` column on `dls_mail_message`, a separate queue table, or use Action Scheduler; update `integration/email-indexing.md` accordingly
-- [ ] **Re-implement indexing client** — new `StellaEmailIndexClient` (or equivalent) pointing at `dls_mail_message` rows
-- [ ] **Retry cap** — cap at ~3 attempts; write `last_error` somewhere on failure
-- [ ] **Normalize query response** — `POST /emails/query` currently returns raw ChromaDB structure; normalize for easier consumption in ddashboard
+### WordPress / theme
 
-### Medium Priority (after v3 integration)
+- [ ] **Design embed queue for v3** — column on `dls_mail_message`, separate queue table, or Action Scheduler; keep `integration/email-indexing.md` in sync
+- [ ] **Re-implement HTTP client** — upsert + delete + query as needed; base URL `dls_stella_email_index_url`
+- [ ] **Retry cap** — ~3 attempts + `last_error` (or AS failure log) on remote failures
+- [ ] **Hook DELETE** — when a `dls_mail_message` row is removed, call Stella `DELETE /emails/message/{message_id}`
+- [ ] **Update `stella-api-test.php` + AI-Anbindungen UI** — health/query probes match **`emails_v3`** contract (document ids `msg_*_link_*`)
 
-- [ ] **Global indexing pause flag** — settings toggle to stop enqueuing without touching code (useful during Stella deploys / model swaps)
-- [ ] **Length guard** — add character cap (~6000 chars) in Stella upsert with truncation warning in logs
-- [ ] **Chunking** — implement `email_{id}_0`, `email_{id}_1` pattern in Stella if long emails become a problem
+### Medium priority (Stella or both)
+
+- [ ] **Global indexing pause flag** — stop enqueuing during Stella deploys / model swaps
+- [ ] **Length guard** — optional character cap in Stella upsert with log warning
+- [ ] **Chunking** — only if single-vector truncation becomes a problem; would extend id/metadata scheme beyond one vector per message
 
 ---
 

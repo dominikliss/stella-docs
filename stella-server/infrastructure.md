@@ -88,7 +88,7 @@ Config: `/opt/services/caddy/Caddyfile`
 - **API:** v2 (v1 returns deprecation errors — always use `/api/v2/...`)
 - **Port:** 8000
 - **Base path:** `/api/v2/tenants/default_tenant/databases/default_database`
-- **Collections:** none yet (as of 2026-04-05)
+- **Collections:** Stella API maintains **`emails_v3`** for mail v3 indexing (see [`stella-api.md`](stella-api.md))
 
 ---
 

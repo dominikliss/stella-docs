@@ -21,7 +21,7 @@ This repository is consumed as a **Git submodule** at `docs/stella-docs` inside 
 | Document                                                                                   | Description                                                        |
 | ------------------------------------------------------------------------------------------ | ------------------------------------------------------------------ |
 | [integration/ddashboard-and-stella-server.md](integration/ddashboard-and-stella-server.md) | How both systems connect: network, queues, AI split, security, ops |
-| [integration/email-indexing.md](integration/email-indexing.md)                             | Email embed queue → ChromaDB via Stella API                        |
+| [integration/email-indexing.md](integration/email-indexing.md)                             | Mail v3 → Stella **`emails_v3`** / ChromaDB (contract + WordPress backlog) |
 | [stella-server/infrastructure.md](stella-server/infrastructure.md)                         | Servers, ports, Docker, Ollama, Chroma                             |
 | [stella-server/stella-api.md](stella-server/stella-api.md)                                 | FastAPI routes and behaviour                                       |
 | [stella-server/imap-sync-service.md](stella-server/imap-sync-service.md)                   | Express + `imapsync` job API (mailbox copy on Stella)              |
