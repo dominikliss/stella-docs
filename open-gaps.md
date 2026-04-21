@@ -16,7 +16,7 @@ Last updated: 2026-04-21
 ### WordPress / theme
 
 - [ ] **Design embed queue for v3** — column on `dls_mail_message`, separate queue table, or Action Scheduler; keep `integration/email-indexing.md` in sync
-- [ ] **Re-implement HTTP client** — upsert + delete + query as needed; base URL `dls_stella_email_index_url`
+- [x] **HTTP client + batch upsert** — `StellaEmailIndexService` + `POST /dls/v1/mailboxes/{id}/stella-chroma-index` (Verwaltung → Nachrichten, per-account Chroma action)
 - [ ] **Retry cap** — ~3 attempts + `last_error` (or AS failure log) on remote failures
 - [ ] **Hook DELETE** — when a `dls_mail_message` row is removed, call Stella `DELETE /emails/message/{message_id}`
 - [ ] **Update `stella-api-test.php` + AI-Anbindungen UI** — health/query probes match **`emails_v3`** contract (document ids `msg_*_link_*`)

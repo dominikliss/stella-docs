@@ -76,7 +76,7 @@ inc/
   acf/settings/              # ACF field group JSON configs (group_*.json)
   post-types/                # CPT registration
   routes/                    # REST API endpoints (dls/v1 namespace unless noted)
-    mailboxes.php            # Mailbox CRUD, folder-entity assignments, folder-clients-overview, IMAP health/test/list-folders
+    mailboxes.php            # Mailbox CRUD, folder-entity assignments, folder-clients-overview, IMAP health/test/list-folders, POST stella-chroma-index (batch Chroma upsert)
     mail-emails.php          # Email list/get/update endpoints
     mail-sync.php            # Quick sync, chunk wipe-resync (start/step/cancel/status), recompute-metadata, clear-client-links, DELETE emails
     mail-classification.php  # Classification rules CRUD + reorder; POST /mail/messages/{id}/classify
@@ -311,7 +311,7 @@ assets/scss/                 # SCSS source (ScssPhp, compiled on theme load when
   2. **`address`** — From/To matching against `MailDbService::build_client_email_map` (WP CPTs: client emails, people, invoice emails).
   3. **`manual`** — user-set via `PUT /emails/{id}`; survives wipe-resync via transient restore.
   - `recompute_client_assignments` deletes `folder` + `address` links and re-derives them; manual links are preserved.
-- **REST** (all `dls/v1`): `mailboxes.php` (mailbox CRUD, folder-entity assignments, IMAP health/test/list-folders, `folder-clients-overview`), `mail-emails.php` (email list/get/update), `mail-sync.php` (quick sync, chunk sync start/step/cancel/status, wipe, recompute-metadata, clear-client-links), `mail-classification.php` (classification rules CRUD + reorder, POST classify).
+- **REST** (all `dls/v1`): `mailboxes.php` (mailbox CRUD, folder-entity assignments, IMAP health/test/list-folders, `folder-clients-overview`, **`POST /mailboxes/{id}/stella-chroma-index`** — batch Stella `emails_v3` upsert for imported messages), `mail-emails.php` (email list/get/update), `mail-sync.php` (quick sync, chunk sync start/step/cancel/status, wipe, recompute-metadata, clear-client-links), `mail-classification.php` (classification rules CRUD + reorder, POST classify).
 - **UI:** `messages-page.js` (dark inbox card, `.client-data` tabs, `useDlsQuery` INBOX list, inbox skeletons, `MessagesFocusInboxRow`, `MessagesConversationSidebar`), `mail-admin-tab.js` (mailbox CRUD + classification rules), `mailbox-sync-controls.js` (quick/chunk/wipe sync + resume), `email-classification-labels.js` (token → German label maps), `mail-conversation-resolution.js` (thread helpers, avatar, reply builder). SCSS: `messages-page.scss`, `mail-admin-panel.scss`, `inbox.scss`, `chunk-sync.scss`, `conversation-layout.scss`, `skeleton.scss`, `client-card.scss` (tab-badge); `filter-bar.scss` is not used on the Nachrichten inbox screen.
 
 ## E-Mail-AI-Analysen (Ollama, Verwaltung → AI-Profile)

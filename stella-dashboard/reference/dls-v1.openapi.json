@@ -2226,6 +2226,46 @@
         }
       }
     },
+    "/mailboxes/{id}/stella-chroma-index": {
+      "post": {
+        "summary": "Batch upsert existing dls_mail_message rows to Stella Chroma (emails_v3); paginate with after_id until done",
+        "tags": [
+          "Mail"
+        ],
+        "security": [
+          {
+            "WPCookieAuth": []
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "after_id": {
+                    "type": "integer",
+                    "description": "Exclusive lower bound on message id; 0 on first call"
+                  },
+                  "batch_size": {
+                    "type": "integer",
+                    "description": "1–50, default 15"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "done, next_after_id, batch_ok, batch_failed, errors (sample), total_messages on first page"
+          },
+          "400": {
+            "description": "Stella index URL not configured"
+          }
+        }
+      }
+    },
     "/mailboxes/{id}": {
       "get": {
         "summary": "Get mail account",
