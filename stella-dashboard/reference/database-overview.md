@@ -12,7 +12,7 @@ Domain data for clients, invoices, transactions, etc. also lives in **posts** (`
 |---|---|
 | **Install** | `inc/install-mail-tables.php` |
 | **Version** | Option `dls_mail_db_version` — constant `DLS_MAIL_DB_VERSION` (see file) |
-| **Tables** | `dls_mail_account`, `dls_mail_folder`, `dls_mail_message`, `dls_mail_folder_link`, `dls_mail_message_link`, `dls_mail_attachment`, `dls_mail_classification_rule`, `dls_mail_sync_run` |
+| **Tables** | `dls_mail_account`, `dls_mail_folder`, `dls_mail_message`, `dls_mail_folder_link`, `dls_mail_message_link`, `dls_mail_attachment`, `dls_mail_classification_rule`, `dls_mail_sync_run`, `dls_mail_stella_index_run` |
 
 **Docs:** [`mail-nachrichten.md`](../mail-nachrichten.md)
 

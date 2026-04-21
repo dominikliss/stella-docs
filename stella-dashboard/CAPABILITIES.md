@@ -195,7 +195,7 @@ A custom email inbox that syncs multiple IMAP accounts into MySQL **v3** tables 
 
 **Admin (Verwaltung → Nachrichten)**
 - Mailbox CRUD, IMAP health, folder→entity assignments, quick sync + chunk sync + wipe, classification rules when used — `mail-admin-tab.js`, `mailbox-sync-controls.js`
-- **Chroma (Stella):** per-account action **alle importierten E-Mails indexieren** → `POST /dls/v1/mailboxes/{id}/stella-chroma-index` (batched `dls_mail_message` → Stella `POST …/emails/upsert`, collection `emails_v3`); requires **AI-Anbindungen** → Stella-Index-URL
+- **Chroma (Stella):** per-account async run (**sparkles**) — `POST …/stella-chroma-index/start` + stepped `…/step` (same UX as Vollimport), logged in **`dls_mail_stella_index_run`**; requires **AI-Anbindungen** → Stella-Index-URL
 
 **UI components (inbox)**
 - `messages-page.js`, `messages-focus-inbox-row.js`, `messages-conversation-sidebar.js`, `email-conversation-thread.js`, `skeleton.js` (inbox skeleton exports)

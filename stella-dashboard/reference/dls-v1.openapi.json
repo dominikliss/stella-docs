@@ -2226,9 +2226,9 @@
         }
       }
     },
-    "/mailboxes/{id}/stella-chroma-index": {
+    "/mailboxes/{id}/stella-chroma-index/start": {
       "post": {
-        "summary": "Batch upsert existing dls_mail_message rows to Stella Chroma (emails_v3); paginate with after_id until done",
+        "summary": "Start async Stella Chroma index job (logged in dls_mail_stella_index_run; client polls step)",
         "tags": [
           "Mail"
         ],
@@ -2243,10 +2243,6 @@
               "schema": {
                 "type": "object",
                 "properties": {
-                  "after_id": {
-                    "type": "integer",
-                    "description": "Exclusive lower bound on message id; 0 on first call"
-                  },
                   "batch_size": {
                     "type": "integer",
                     "description": "1–50, default 15"
@@ -2258,10 +2254,62 @@
         },
         "responses": {
           "200": {
-            "description": "done, next_after_id, batch_ok, batch_failed, errors (sample), total_messages on first page"
+            "description": "ok, progress fields (same shape as sync-chunk start)"
           },
           "400": {
-            "description": "Stella index URL not configured"
+            "description": "Stella URL missing, chunk sync already running, or chroma job already running"
+          }
+        }
+      }
+    },
+    "/mailboxes/{id}/stella-chroma-index/step": {
+      "post": {
+        "summary": "Process one batch of Stella upserts for the running job",
+        "tags": [
+          "Mail"
+        ],
+        "security": [
+          {
+            "WPCookieAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "ok, done, percent, processed, queued_done, total, phase, errors_tail"
+          }
+        }
+      }
+    },
+    "/mailboxes/{id}/stella-chroma-index": {
+      "get": {
+        "summary": "Stella Chroma index job status (active or idle)",
+        "tags": [
+          "Mail"
+        ],
+        "security": [
+          {
+            "WPCookieAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "active:false or progress payload"
+          }
+        }
+      },
+      "delete": {
+        "summary": "Cancel running Stella Chroma index job",
+        "tags": [
+          "Mail"
+        ],
+        "security": [
+          {
+            "WPCookieAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "{ cancelled: true }"
           }
         }
       }

@@ -11,7 +11,7 @@ End-to-end story for indexing **mail v3** messages from ddashboard (MySQL **`dls
 | Layer | State |
 |--------|--------|
 | **Stella API** | Contract documented: `POST /emails/upsert`, `DELETE /emails/message/{id}`, `POST /emails/query`, document/message/collection helpers, collection **`emails_v3`**. |
-| **ddashboard** | **`StellaEmailIndexService`** + **`POST /dls/v1/mailboxes/{id}/stella-chroma-index`** batch all existing `dls_mail_message` rows for one account into Stella (`POST …/emails/upsert`). Verwaltung → Nachrichten: per-account **Chroma-Index** action. Automatic enqueue on IMAP save and **DELETE** on message removal are still optional follow-ups. Options **`dls_stella_email_index_url`** / **`dls_stella_email_index_key`** (AI-Anbindungen). |
+| **ddashboard** | **`StellaEmailIndexService`** + async job **`POST /dls/v1/mailboxes/{id}/stella-chroma-index/start`** → **`…/step`** (browser loop, like chunk IMAP import). Run audit: **`dls_mail_stella_index_run`**. Verwaltung → Nachrichten: per-account **Chroma-Index** (sparkles). **DELETE** on message removal still optional. Options **`dls_stella_email_index_url`** / **`dls_stella_email_index_key`** (AI-Anbindungen). |
 
 ---
 

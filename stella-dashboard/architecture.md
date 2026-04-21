@@ -67,7 +67,7 @@ inc/
   constants.php              # App-wide constants: DLS_ALLOWED_IPS, DLS_OWNER_EMAILS, DLS_OWNER_DOMAINS, DLS_MAIL_CLASSIFICATION_ENABLED, DLS_ANALYSIS_TIMEOUT
   subscription-billing.php   # Clears legacy subscription cron; billing is manual via REST only
   mail-sync-cron.php         # WP-Cron: `dls_mail_imap_sync_cron` every 5 min → sync active mailboxes
-  install-mail-tables.php    # dbDelta v3 (DLS_MAIL_DB_VERSION = 32): dls_mail_account, dls_mail_folder, dls_mail_message, dls_mail_folder_link, dls_mail_message_link, dls_mail_attachment, dls_mail_classification_rule, dls_mail_sync_run; drops legacy dls_mailbox / dls_email tables on upgrade
+  install-mail-tables.php    # dbDelta v3 mail schema (see `DLS_MAIL_DB_VERSION` in file): dls_mail_account, dls_mail_folder, dls_mail_message, dls_mail_folder_link, dls_mail_message_link, dls_mail_attachment, dls_mail_classification_rule, dls_mail_sync_run, dls_mail_stella_index_run; drops legacy dls_mailbox / dls_email tables on early upgrades
   install-pm-tables.php      # dbDelta: dls_pm_project, dls_pm_task_list, dls_pm_task, dls_pm_task_assignee, dls_pm_comment, dls_pm_time_entry; migrations v1–v2
   install-bank-account-tables.php # dbDelta: dls_bank_account (label, iban, bic, bank_name, account_holder, condition_country, condition_vat, currency, is_primary, US fields); migrations v1–v3; seeds defaults
   install-ai-chat-tables.php # dbDelta: dls_ai_chat_session, dls_ai_chat_message
@@ -76,9 +76,9 @@ inc/
   acf/settings/              # ACF field group JSON configs (group_*.json)
   post-types/                # CPT registration
   routes/                    # REST API endpoints (dls/v1 namespace unless noted)
-    mailboxes.php            # Mailbox CRUD, folder-entity assignments, folder-clients-overview, IMAP health/test/list-folders, POST stella-chroma-index (batch Chroma upsert)
+    mailboxes.php            # Mailbox CRUD, folder-entity assignments, folder-clients-overview, IMAP health/test/list-folders
     mail-emails.php          # Email list/get/update endpoints
-    mail-sync.php            # Quick sync, chunk wipe-resync (start/step/cancel/status), recompute-metadata, clear-client-links, DELETE emails
+    mail-sync.php            # Quick sync, chunk wipe-resync (start/step/cancel/status), Stella chroma-index (start/step/status/cancel), recompute-metadata, clear-client-links, DELETE emails
     mail-classification.php  # Classification rules CRUD + reorder; POST /mail/messages/{id}/classify
     pm-projects.php          # /dls/v1/pm/* — projects, task lists, tasks, assignees, comments, time entries
     tracking-time.php        # TrackingTime Pro import (time entries, tasks, projects)
@@ -311,7 +311,7 @@ assets/scss/                 # SCSS source (ScssPhp, compiled on theme load when
   2. **`address`** — From/To matching against `MailDbService::build_client_email_map` (WP CPTs: client emails, people, invoice emails).
   3. **`manual`** — user-set via `PUT /emails/{id}`; survives wipe-resync via transient restore.
   - `recompute_client_assignments` deletes `folder` + `address` links and re-derives them; manual links are preserved.
-- **REST** (all `dls/v1`): `mailboxes.php` (mailbox CRUD, folder-entity assignments, IMAP health/test/list-folders, `folder-clients-overview`, **`POST /mailboxes/{id}/stella-chroma-index`** — batch Stella `emails_v3` upsert for imported messages), `mail-emails.php` (email list/get/update), `mail-sync.php` (quick sync, chunk sync start/step/cancel/status, wipe, recompute-metadata, clear-client-links), `mail-classification.php` (classification rules CRUD + reorder, POST classify).
+- **REST** (all `dls/v1`): `mailboxes.php` (mailbox CRUD, folder-entity assignments, IMAP health/test/list-folders, `folder-clients-overview`), `mail-emails.php` (email list/get/update), `mail-sync.php` (quick sync, chunk sync start/step/cancel/status, wipe, **`stella-chroma-index`** async job + `dls_mail_stella_index_run`, recompute-metadata, clear-client-links), `mail-classification.php` (classification rules CRUD + reorder, POST classify).
 - **UI:** `messages-page.js` (dark inbox card, `.client-data` tabs, `useDlsQuery` INBOX list, inbox skeletons, `MessagesFocusInboxRow`, `MessagesConversationSidebar`), `mail-admin-tab.js` (mailbox CRUD + classification rules), `mailbox-sync-controls.js` (quick/chunk/wipe sync + resume), `email-classification-labels.js` (token → German label maps), `mail-conversation-resolution.js` (thread helpers, avatar, reply builder). SCSS: `messages-page.scss`, `mail-admin-panel.scss`, `inbox.scss`, `chunk-sync.scss`, `conversation-layout.scss`, `skeleton.scss`, `client-card.scss` (tab-badge); `filter-bar.scss` is not used on the Nachrichten inbox screen.
 
 ## E-Mail-AI-Analysen (Ollama, Verwaltung → AI-Profile)

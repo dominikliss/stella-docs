@@ -42,8 +42,9 @@ flowchart LR
   subgraph wp [ddashboard_WordPress]
     IMAP[Mail_sync_IMAP]
     DB[(dls_mail_message_+_links)]
-    Q[queue_TBD]
-    CLIENT[HTTP_client_TBD]
+    RUN[dls_mail_stella_index_run]
+    JOB[MailStellaIndexJob_transient]
+    CLIENT[StellaEmailIndexService]
   end
   subgraph stella [Stella_server]
     API[stella-api_FastAPI]
@@ -51,17 +52,18 @@ flowchart LR
     CHR[ChromaDB_emails_v3]
   end
   IMAP --> DB
-  DB --> Q
-  Q --> CLIENT
+  DB --> JOB
+  JOB --> RUN
+  JOB --> CLIENT
   CLIENT -->|POST_emails_upsert| API
   API --> OLL
   API --> CHR
 ```
 
 1. IMAP sync persists rows in **`dls_mail_message`** and **`dls_mail_message_link`** (see theme mail docs).
-2. **[Planned]** When indexing is enabled, a queue or scheduler drains pending messages and calls **`POST /emails/upsert`** with the payload described in [`stella-api.md`](../stella-server/stella-api.md).
+2. **Verwaltung → Nachrichten (Chroma-Index):** `MailStellaIndexJob` stores progress in a **transient** and logs each run in **`dls_mail_stella_index_run`**; each **`POST /dls/v1/mailboxes/{id}/stella-chroma-index/step`** calls **`POST /emails/upsert`** per batch (see [`stella-api.md`](../stella-server/stella-api.md)).
 3. Stella embeds once per message and upserts **one Chroma document per link** (or a sentinel if there are no links).
-4. **[Planned]** On **`dls_mail_message` delete**, WordPress calls **`DELETE /emails/message/{message_id}`** so vectors do not linger.
+4. **[Planned]** On **`dls_mail_message` delete**, WordPress should call **`DELETE /emails/message/{message_id}`** so vectors do not linger.
 
 **Detail:** [`email-indexing.md`](email-indexing.md).
 
