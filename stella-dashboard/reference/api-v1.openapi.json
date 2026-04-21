@@ -1,0 +1,75 @@
+{
+  "openapi": "3.0.3",
+  "info": {
+    "title": "ddashboard REST — api/v1 (restricted)",
+    "version": "1.0.0",
+    "description": "IP-restricted + role-checked routes for external portal servers and client apps. Base: `{site}/wp-json/api/v1`. **Not** for browser dashboard JS — use `dls/v1`. Permission: `dls_ip_permission_check` or combined IP + customer role; see `inc/routes/authenticate.php`, `customer-data.php`."
+  },
+  "servers": [
+    {
+      "url": "/wp-json/api/v1"
+    }
+  ],
+  "tags": [
+    {
+      "name": "PortalServer"
+    },
+    {
+      "name": "PortalClient"
+    }
+  ],
+  "paths": {
+    "/generate-password-key": {
+      "post": {
+        "summary": "Request password reset key for email (server-to-server)",
+        "tags": [
+          "PortalServer"
+        ],
+        "responses": {
+          "200": {
+            "description": "JSON success + reset_key"
+          }
+        }
+      }
+    },
+    "/set-password": {
+      "post": {
+        "summary": "Set password using reset flow (server-to-server)",
+        "tags": [
+          "PortalServer"
+        ],
+        "responses": {
+          "200": {
+            "description": "JSON result"
+          }
+        }
+      }
+    },
+    "/customer-data": {
+      "get": {
+        "summary": "Client portal: customer payload for logged-in customer user",
+        "tags": [
+          "PortalClient"
+        ],
+        "responses": {
+          "200": {
+            "description": "Customer JSON"
+          }
+        }
+      }
+    },
+    "/accept-file": {
+      "post": {
+        "summary": "Client portal: accept/upload file handoff",
+        "tags": [
+          "PortalClient"
+        ],
+        "responses": {
+          "200": {
+            "description": "JSON result"
+          }
+        }
+      }
+    }
+  }
+}

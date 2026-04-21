@@ -16,7 +16,7 @@ Folder roles inside the submodule:
 
 | Folder | Use for |
 |--------|---------|
-| **`stella-dashboard/`** | Theme: capabilities, architecture, mail, TrackingTime, design docs, `cursor-rules/*.md` exports |
+| **`stella-dashboard/`** | Theme: capabilities, architecture, mail, TrackingTime, **`reference/`** (OpenAPI + DB overview), design docs, `cursor-rules/*.md` exports |
 | **`stella-server/`** | Stella host: infrastructure, Docker, Caddy, FastAPI (`stella-api`) |
 | **`integration/`** | Cross-cutting: WordPress ↔ Stella, email indexing pipeline |
 | **Root** | `README.md`, `open-gaps.md` |
@@ -31,7 +31,8 @@ When your change affects **how the system works** (not purely internal refactors
 
 | If you change… | Update in submodule (at minimum) |
 |----------------|----------------------------------|
-| REST routes, `dls/v1` contracts, auth | `stella-dashboard/architecture.md`, `CAPABILITIES.md` if user-visible |
+| REST routes, `dls/v1` / `api/v1` contracts, auth | `stella-dashboard/architecture.md`, `CAPABILITIES.md` if user-visible; **`stella-dashboard/reference/dls-v1.openapi.json`** and/or **`api-v1.openapi.json`** |
+| Custom table DDL / new `install-*-tables.php` | `stella-dashboard/reference/database-overview.md` |
 | WP options, cron hooks, install/migrations | `architecture.md`, `CAPABILITIES.md`; integration doc if Stella-related |
 | Mail/IMAP/spam/client linking | `stella-dashboard/mail-nachrichten.md`, `mail-cron-hosting.md` |
 | Email embed / Stella HTTP client / queue | `integration/email-indexing.md`, `integration/ddashboard-and-stella-server.md` |

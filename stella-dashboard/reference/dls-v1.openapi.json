@@ -1,0 +1,2614 @@
+{
+  "openapi": "3.0.3",
+  "info": {
+    "title": "ddashboard REST — dls/v1",
+    "version": "1.0.0",
+    "description": "Hand-maintained catalogue of browser-facing routes. Base path: `{site}/wp-json/dls/v1`. Authenticate with WordPress cookies + `X-WP-Nonce` (see localized `stella_options.nonce`). Update this file when changing `inc/routes/*.php`."
+  },
+  "servers": [
+    {
+      "url": "/wp-json/dls/v1",
+      "description": "Relative to WordPress site root"
+    }
+  ],
+  "tags": [
+    {
+      "name": "Session"
+    },
+    {
+      "name": "Accounting"
+    },
+    {
+      "name": "KSeF"
+    },
+    {
+      "name": "InvoicesAndFiles"
+    },
+    {
+      "name": "Referrals"
+    },
+    {
+      "name": "Integrations"
+    },
+    {
+      "name": "TrackingTime"
+    },
+    {
+      "name": "YouTube"
+    },
+    {
+      "name": "AI"
+    },
+    {
+      "name": "ProjectManagement"
+    },
+    {
+      "name": "Mail"
+    },
+    {
+      "name": "MailClassification"
+    }
+  ],
+  "components": {
+    "securitySchemes": {
+      "WPCookieAuth": {
+        "type": "apiKey",
+        "in": "header",
+        "name": "X-WP-Nonce",
+        "description": "WordPress REST API nonce for logged-in user; send with Cookie auth."
+      }
+    }
+  },
+  "paths": {
+    "/session/login": {
+      "post": {
+        "summary": "Cookie session login",
+        "tags": [
+          "Session"
+        ],
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "OK (JSON or binary; see route implementation in theme)"
+          }
+        }
+      }
+    },
+    "/nbp-rate": {
+      "get": {
+        "summary": "NBP EUR/PLN mid rate for `date` query",
+        "tags": [
+          "Accounting"
+        ],
+        "security": [
+          {
+            "WPCookieAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK (JSON or binary; see route implementation in theme)"
+          }
+        }
+      }
+    },
+    "/nbp-expense-rates": {
+      "get": {
+        "summary": "NBP rate bundle for expense entry form",
+        "tags": [
+          "Accounting"
+        ],
+        "security": [
+          {
+            "WPCookieAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK (JSON or binary; see route implementation in theme)"
+          }
+        }
+      }
+    },
+    "/bank-accounts": {
+      "get": {
+        "summary": "List bank accounts",
+        "tags": [
+          "Accounting"
+        ],
+        "security": [
+          {
+            "WPCookieAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK (JSON or binary; see route implementation in theme)"
+          }
+        }
+      },
+      "post": {
+        "summary": "Create bank account",
+        "tags": [
+          "Accounting"
+        ],
+        "security": [
+          {
+            "WPCookieAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK (JSON or binary; see route implementation in theme)"
+          }
+        }
+      }
+    },
+    "/bank-accounts/{id}": {
+      "put": {
+        "summary": "Update bank account",
+        "tags": [
+          "Accounting"
+        ],
+        "security": [
+          {
+            "WPCookieAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK (JSON or binary; see route implementation in theme)"
+          }
+        }
+      },
+      "delete": {
+        "summary": "Delete bank account",
+        "tags": [
+          "Accounting"
+        ],
+        "security": [
+          {
+            "WPCookieAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK (JSON or binary; see route implementation in theme)"
+          }
+        }
+      }
+    },
+    "/subscription-billing-run": {
+      "post": {
+        "summary": "Run subscription billing once (manual)",
+        "tags": [
+          "Accounting"
+        ],
+        "security": [
+          {
+            "WPCookieAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK (JSON or binary; see route implementation in theme)"
+          }
+        }
+      }
+    },
+    "/saldeo-export": {
+      "get": {
+        "summary": "Download Saldeo XLSX (query: from, to, type)",
+        "tags": [
+          "Accounting"
+        ],
+        "security": [
+          {
+            "WPCookieAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK (JSON or binary; see route implementation in theme)"
+          }
+        }
+      }
+    },
+    "/expense-receipt-import": {
+      "post": {
+        "summary": "Multipart upload receipts → Ausgabe transactions",
+        "tags": [
+          "Accounting"
+        ],
+        "security": [
+          {
+            "WPCookieAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK (JSON or binary; see route implementation in theme)"
+          }
+        }
+      }
+    },
+    "/expense-receipt/{id}": {
+      "get": {
+        "summary": "Stream private receipt file",
+        "tags": [
+          "Accounting"
+        ],
+        "security": [
+          {
+            "WPCookieAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK (JSON or binary; see route implementation in theme)"
+          }
+        }
+      }
+    },
+    "/ksef-import": {
+      "post": {
+        "summary": "Import KSeF purchases (fixed 3-month window)",
+        "tags": [
+          "KSeF"
+        ],
+        "security": [
+          {
+            "WPCookieAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK (JSON or binary; see route implementation in theme)"
+          }
+        }
+      }
+    },
+    "/ksef-test-connection": {
+      "post": {
+        "summary": "Test KSeF JWT authentication",
+        "tags": [
+          "KSeF"
+        ],
+        "security": [
+          {
+            "WPCookieAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK (JSON or binary; see route implementation in theme)"
+          }
+        }
+      }
+    },
+    "/ksef-send/{invoice_id}": {
+      "post": {
+        "summary": "Send invoice CPT to KSeF (FA XML)",
+        "tags": [
+          "KSeF"
+        ],
+        "security": [
+          {
+            "WPCookieAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK (JSON or binary; see route implementation in theme)"
+          }
+        }
+      }
+    },
+    "/ksef-send-status/{invoice_id}": {
+      "get": {
+        "summary": "Poll KSeF send status for invoice",
+        "tags": [
+          "KSeF"
+        ],
+        "security": [
+          {
+            "WPCookieAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK (JSON or binary; see route implementation in theme)"
+          }
+        }
+      }
+    },
+    "/invoice-pdf/{id}": {
+      "post": {
+        "summary": "Generate invoice PDF versions",
+        "tags": [
+          "InvoicesAndFiles"
+        ],
+        "security": [
+          {
+            "WPCookieAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK (JSON or binary; see route implementation in theme)"
+          }
+        }
+      }
+    },
+    "/invoice-download/{id}": {
+      "get": {
+        "summary": "Download invoice PDF",
+        "tags": [
+          "InvoicesAndFiles"
+        ],
+        "security": [
+          {
+            "WPCookieAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK (JSON or binary; see route implementation in theme)"
+          }
+        }
+      }
+    },
+    "/file-pdf/{id}": {
+      "post": {
+        "summary": "Generate file CPT PDF (proposal/contract)",
+        "tags": [
+          "InvoicesAndFiles"
+        ],
+        "security": [
+          {
+            "WPCookieAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK (JSON or binary; see route implementation in theme)"
+          }
+        }
+      }
+    },
+    "/send-email": {
+      "post": {
+        "summary": "Send email via wp_mail",
+        "tags": [
+          "InvoicesAndFiles"
+        ],
+        "security": [
+          {
+            "WPCookieAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK (JSON or binary; see route implementation in theme)"
+          }
+        }
+      }
+    },
+    "/referral-commission-report/{id}": {
+      "get": {
+        "summary": "Commission PDF for referrer client",
+        "tags": [
+          "Referrals"
+        ],
+        "security": [
+          {
+            "WPCookieAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK (JSON or binary; see route implementation in theme)"
+          }
+        }
+      }
+    },
+    "/referral-commission-report/{id}/{row}": {
+      "delete": {
+        "summary": "Delete commission report row / stored PDF",
+        "tags": [
+          "Referrals"
+        ],
+        "security": [
+          {
+            "WPCookieAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK (JSON or binary; see route implementation in theme)"
+          }
+        }
+      }
+    },
+    "/client-portal-user": {
+      "post": {
+        "summary": "Create portal WP user for client",
+        "tags": [
+          "Integrations"
+        ],
+        "security": [
+          {
+            "WPCookieAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK (JSON or binary; see route implementation in theme)"
+          }
+        }
+      },
+      "delete": {
+        "summary": "Revoke portal user (query client_id)",
+        "tags": [
+          "Integrations"
+        ],
+        "security": [
+          {
+            "WPCookieAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK (JSON or binary; see route implementation in theme)"
+          }
+        }
+      }
+    },
+    "/tracking-time/customers": {
+      "get": {
+        "summary": "TrackingTime customers proxy",
+        "tags": [
+          "TrackingTime"
+        ],
+        "security": [
+          {
+            "WPCookieAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK (JSON or binary; see route implementation in theme)"
+          }
+        }
+      }
+    },
+    "/tracking-time/projects": {
+      "get": {
+        "summary": "TrackingTime projects proxy",
+        "tags": [
+          "TrackingTime"
+        ],
+        "security": [
+          {
+            "WPCookieAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK (JSON or binary; see route implementation in theme)"
+          }
+        }
+      }
+    },
+    "/tracking-time/projects/{id}": {
+      "get": {
+        "summary": "Single TrackingTime project",
+        "tags": [
+          "TrackingTime"
+        ],
+        "security": [
+          {
+            "WPCookieAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK (JSON or binary; see route implementation in theme)"
+          }
+        }
+      }
+    },
+    "/tracking-time/events": {
+      "get": {
+        "summary": "Time events (from, to, project_id, …)",
+        "tags": [
+          "TrackingTime"
+        ],
+        "security": [
+          {
+            "WPCookieAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK (JSON or binary; see route implementation in theme)"
+          }
+        }
+      }
+    },
+    "/youtube/sync": {
+      "post": {
+        "summary": "Full YouTube Data API sync",
+        "tags": [
+          "YouTube"
+        ],
+        "security": [
+          {
+            "WPCookieAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK (JSON or binary; see route implementation in theme)"
+          }
+        }
+      }
+    },
+    "/youtube/status": {
+      "get": {
+        "summary": "Last YouTube sync metadata",
+        "tags": [
+          "YouTube"
+        ],
+        "security": [
+          {
+            "WPCookieAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK (JSON or binary; see route implementation in theme)"
+          }
+        }
+      }
+    },
+    "/youtube/marketing-overview": {
+      "get": {
+        "summary": "Marketing dashboard summary",
+        "tags": [
+          "YouTube"
+        ],
+        "security": [
+          {
+            "WPCookieAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK (JSON or binary; see route implementation in theme)"
+          }
+        }
+      }
+    },
+    "/youtube/videos": {
+      "get": {
+        "summary": "Paginated videos list",
+        "tags": [
+          "YouTube"
+        ],
+        "security": [
+          {
+            "WPCookieAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK (JSON or binary; see route implementation in theme)"
+          }
+        }
+      }
+    },
+    "/youtube/videos/metadata": {
+      "post": {
+        "summary": "Refresh video metadata batch",
+        "tags": [
+          "YouTube"
+        ],
+        "security": [
+          {
+            "WPCookieAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK (JSON or binary; see route implementation in theme)"
+          }
+        }
+      }
+    },
+    "/youtube/oauth/status": {
+      "get": {
+        "summary": "YouTube OAuth status",
+        "tags": [
+          "YouTube"
+        ],
+        "security": [
+          {
+            "WPCookieAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK (JSON or binary; see route implementation in theme)"
+          }
+        }
+      }
+    },
+    "/youtube/oauth/config": {
+      "post": {
+        "summary": "Store OAuth client id/secret",
+        "tags": [
+          "YouTube"
+        ],
+        "security": [
+          {
+            "WPCookieAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK (JSON or binary; see route implementation in theme)"
+          }
+        }
+      }
+    },
+    "/youtube/oauth/authorize-url": {
+      "get": {
+        "summary": "Google OAuth authorize URL",
+        "tags": [
+          "YouTube"
+        ],
+        "security": [
+          {
+            "WPCookieAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK (JSON or binary; see route implementation in theme)"
+          }
+        }
+      }
+    },
+    "/youtube/oauth/callback": {
+      "get": {
+        "summary": "OAuth redirect (public)",
+        "tags": [
+          "YouTube"
+        ],
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "OK (JSON or binary; see route implementation in theme)"
+          }
+        }
+      }
+    },
+    "/youtube/oauth/disconnect": {
+      "post": {
+        "summary": "Disconnect YouTube OAuth",
+        "tags": [
+          "YouTube"
+        ],
+        "security": [
+          {
+            "WPCookieAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK (JSON or binary; see route implementation in theme)"
+          }
+        }
+      }
+    },
+    "/youtube/analytics/sync": {
+      "post": {
+        "summary": "Sync YouTube Analytics metrics",
+        "tags": [
+          "YouTube"
+        ],
+        "security": [
+          {
+            "WPCookieAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK (JSON or binary; see route implementation in theme)"
+          }
+        }
+      }
+    },
+    "/youtube/analytics/status": {
+      "get": {
+        "summary": "Analytics sync status",
+        "tags": [
+          "YouTube"
+        ],
+        "security": [
+          {
+            "WPCookieAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK (JSON or binary; see route implementation in theme)"
+          }
+        }
+      }
+    },
+    "/imap-sync/config": {
+      "get": {
+        "summary": "Stella imap-sync base URL + health probe",
+        "tags": [
+          "Integrations"
+        ],
+        "security": [
+          {
+            "WPCookieAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK (JSON or binary; see route implementation in theme)"
+          }
+        }
+      }
+    },
+    "/imap-sync/health": {
+      "get": {
+        "summary": "Forward imap-sync /health",
+        "tags": [
+          "Integrations"
+        ],
+        "security": [
+          {
+            "WPCookieAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK (JSON or binary; see route implementation in theme)"
+          }
+        }
+      }
+    },
+    "/imap-sync/jobs": {
+      "get": {
+        "summary": "List imap-sync jobs",
+        "tags": [
+          "Integrations"
+        ],
+        "security": [
+          {
+            "WPCookieAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK (JSON or binary; see route implementation in theme)"
+          }
+        }
+      }
+    },
+    "/imap-sync/jobs/{id}": {
+      "delete": {
+        "summary": "Delete imap-sync job",
+        "tags": [
+          "Integrations"
+        ],
+        "security": [
+          {
+            "WPCookieAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK (JSON or binary; see route implementation in theme)"
+          }
+        }
+      }
+    },
+    "/imap-sync/start": {
+      "post": {
+        "summary": "Start imap-sync copy job",
+        "tags": [
+          "Integrations"
+        ],
+        "security": [
+          {
+            "WPCookieAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK (JSON or binary; see route implementation in theme)"
+          }
+        }
+      }
+    },
+    "/imap-sync/status/{id}": {
+      "get": {
+        "summary": "Job status",
+        "tags": [
+          "Integrations"
+        ],
+        "security": [
+          {
+            "WPCookieAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK (JSON or binary; see route implementation in theme)"
+          }
+        }
+      }
+    },
+    "/imap-sync/status/{id}/log": {
+      "get": {
+        "summary": "Job log",
+        "tags": [
+          "Integrations"
+        ],
+        "security": [
+          {
+            "WPCookieAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK (JSON or binary; see route implementation in theme)"
+          }
+        }
+      }
+    },
+    "/stella-api/test": {
+      "post": {
+        "summary": "Probe Stella email index HTTP",
+        "tags": [
+          "Integrations"
+        ],
+        "security": [
+          {
+            "WPCookieAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK (JSON or binary; see route implementation in theme)"
+          }
+        }
+      }
+    },
+    "/stella-api/system-health": {
+      "post": {
+        "summary": "Aggregate Stella health JSON",
+        "tags": [
+          "Integrations"
+        ],
+        "security": [
+          {
+            "WPCookieAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK (JSON or binary; see route implementation in theme)"
+          }
+        }
+      }
+    },
+    "/ollama/server-ip": {
+      "get": {
+        "summary": "Public outbound IP of WP host",
+        "tags": [
+          "AI"
+        ],
+        "security": [
+          {
+            "WPCookieAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK (JSON or binary; see route implementation in theme)"
+          }
+        }
+      }
+    },
+    "/ollama/diagnose": {
+      "get": {
+        "summary": "Ollama connectivity diagnose",
+        "tags": [
+          "AI"
+        ],
+        "security": [
+          {
+            "WPCookieAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK (JSON or binary; see route implementation in theme)"
+          }
+        }
+      }
+    },
+    "/ollama/models": {
+      "get": {
+        "summary": "List Ollama models (optional url query)",
+        "tags": [
+          "AI"
+        ],
+        "security": [
+          {
+            "WPCookieAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK (JSON or binary; see route implementation in theme)"
+          }
+        }
+      }
+    },
+    "/ai/agents": {
+      "get": {
+        "summary": "List AI chat agents",
+        "tags": [
+          "AI"
+        ],
+        "security": [
+          {
+            "WPCookieAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK (JSON or binary; see route implementation in theme)"
+          }
+        }
+      }
+    },
+    "/ai/config": {
+      "get": {
+        "summary": "Get AI provider config (masked)",
+        "tags": [
+          "AI"
+        ],
+        "security": [
+          {
+            "WPCookieAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK (JSON or binary; see route implementation in theme)"
+          }
+        }
+      },
+      "post": {
+        "summary": "Update AI provider / API keys",
+        "tags": [
+          "AI"
+        ],
+        "security": [
+          {
+            "WPCookieAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK (JSON or binary; see route implementation in theme)"
+          }
+        }
+      }
+    },
+    "/ai/chat/message": {
+      "post": {
+        "summary": "Chat completion (agent, message, session_id?)",
+        "tags": [
+          "AI"
+        ],
+        "security": [
+          {
+            "WPCookieAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK (JSON or binary; see route implementation in theme)"
+          }
+        }
+      }
+    },
+    "/ai/chat/sessions": {
+      "get": {
+        "summary": "List sessions (agent query required)",
+        "tags": [
+          "AI"
+        ],
+        "security": [
+          {
+            "WPCookieAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK (JSON or binary; see route implementation in theme)"
+          }
+        }
+      }
+    },
+    "/ai/chat/messages": {
+      "get": {
+        "summary": "Messages in session (session_id)",
+        "tags": [
+          "AI"
+        ],
+        "security": [
+          {
+            "WPCookieAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK (JSON or binary; see route implementation in theme)"
+          }
+        }
+      }
+    },
+    "/ai/chat/session/{id}": {
+      "delete": {
+        "summary": "Delete chat session",
+        "tags": [
+          "AI"
+        ],
+        "security": [
+          {
+            "WPCookieAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK (JSON or binary; see route implementation in theme)"
+          }
+        }
+      }
+    },
+    "/ai/layers/connectors": {
+      "get": {
+        "summary": "List AI connectors",
+        "tags": [
+          "AI"
+        ],
+        "security": [
+          {
+            "WPCookieAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK (JSON or binary; see route implementation in theme)"
+          }
+        }
+      },
+      "post": {
+        "summary": "Create connector",
+        "tags": [
+          "AI"
+        ],
+        "security": [
+          {
+            "WPCookieAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK (JSON or binary; see route implementation in theme)"
+          }
+        }
+      }
+    },
+    "/ai/layers/connectors/{id}": {
+      "patch": {
+        "summary": "Patch connector",
+        "tags": [
+          "AI"
+        ],
+        "security": [
+          {
+            "WPCookieAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK (JSON or binary; see route implementation in theme)"
+          }
+        }
+      },
+      "delete": {
+        "summary": "Delete connector",
+        "tags": [
+          "AI"
+        ],
+        "security": [
+          {
+            "WPCookieAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK (JSON or binary; see route implementation in theme)"
+          }
+        }
+      }
+    },
+    "/ai/layers/connectors/{id}/test": {
+      "post": {
+        "summary": "Test connector reachability",
+        "tags": [
+          "AI"
+        ],
+        "security": [
+          {
+            "WPCookieAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK (JSON or binary; see route implementation in theme)"
+          }
+        }
+      }
+    },
+    "/ai/layers/connectors/{id}/models": {
+      "get": {
+        "summary": "List models from connector",
+        "tags": [
+          "AI"
+        ],
+        "security": [
+          {
+            "WPCookieAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK (JSON or binary; see route implementation in theme)"
+          }
+        }
+      }
+    },
+    "/ai/layers/analysis-configs": {
+      "get": {
+        "summary": "List analysis configs",
+        "tags": [
+          "AI"
+        ],
+        "security": [
+          {
+            "WPCookieAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK (JSON or binary; see route implementation in theme)"
+          }
+        }
+      },
+      "post": {
+        "summary": "Create analysis config",
+        "tags": [
+          "AI"
+        ],
+        "security": [
+          {
+            "WPCookieAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK (JSON or binary; see route implementation in theme)"
+          }
+        }
+      }
+    },
+    "/ai/layers/analysis-configs/{id}": {
+      "patch": {
+        "summary": "Patch analysis config",
+        "tags": [
+          "AI"
+        ],
+        "security": [
+          {
+            "WPCookieAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK (JSON or binary; see route implementation in theme)"
+          }
+        }
+      },
+      "delete": {
+        "summary": "Delete analysis config",
+        "tags": [
+          "AI"
+        ],
+        "security": [
+          {
+            "WPCookieAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK (JSON or binary; see route implementation in theme)"
+          }
+        }
+      }
+    },
+    "/ai/layers/actions": {
+      "get": {
+        "summary": "List AI actions",
+        "tags": [
+          "AI"
+        ],
+        "security": [
+          {
+            "WPCookieAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK (JSON or binary; see route implementation in theme)"
+          }
+        }
+      },
+      "post": {
+        "summary": "Create AI action",
+        "tags": [
+          "AI"
+        ],
+        "security": [
+          {
+            "WPCookieAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK (JSON or binary; see route implementation in theme)"
+          }
+        }
+      }
+    },
+    "/ai/layers/actions/{id}": {
+      "patch": {
+        "summary": "Patch AI action",
+        "tags": [
+          "AI"
+        ],
+        "security": [
+          {
+            "WPCookieAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK (JSON or binary; see route implementation in theme)"
+          }
+        }
+      },
+      "delete": {
+        "summary": "Delete AI action",
+        "tags": [
+          "AI"
+        ],
+        "security": [
+          {
+            "WPCookieAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK (JSON or binary; see route implementation in theme)"
+          }
+        }
+      }
+    },
+    "/ai/layers/global": {
+      "get": {
+        "summary": "Global AI layer options",
+        "tags": [
+          "AI"
+        ],
+        "security": [
+          {
+            "WPCookieAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK (JSON or binary; see route implementation in theme)"
+          }
+        }
+      },
+      "patch": {
+        "summary": "Patch global options",
+        "tags": [
+          "AI"
+        ],
+        "security": [
+          {
+            "WPCookieAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK (JSON or binary; see route implementation in theme)"
+          }
+        }
+      }
+    },
+    "/ai/profiles": {
+      "get": {
+        "summary": "List AI profiles",
+        "tags": [
+          "AI"
+        ],
+        "security": [
+          {
+            "WPCookieAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK (JSON or binary; see route implementation in theme)"
+          }
+        }
+      }
+    },
+    "/ai/profiles/{id}": {
+      "get": {
+        "summary": "Get AI profile",
+        "tags": [
+          "AI"
+        ],
+        "security": [
+          {
+            "WPCookieAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK (JSON or binary; see route implementation in theme)"
+          }
+        }
+      },
+      "patch": {
+        "summary": "Update AI profile",
+        "tags": [
+          "AI"
+        ],
+        "security": [
+          {
+            "WPCookieAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK (JSON or binary; see route implementation in theme)"
+          }
+        }
+      }
+    },
+    "/ai/profiles/{id}/run": {
+      "post": {
+        "summary": "Start corpus analysis run",
+        "tags": [
+          "AI"
+        ],
+        "security": [
+          {
+            "WPCookieAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK (JSON or binary; see route implementation in theme)"
+          }
+        }
+      }
+    },
+    "/ai/profiles/{id}/preview": {
+      "get": {
+        "summary": "Preview corpus for profile",
+        "tags": [
+          "AI"
+        ],
+        "security": [
+          {
+            "WPCookieAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK (JSON or binary; see route implementation in theme)"
+          }
+        }
+      }
+    },
+    "/ai/profiles/runs/{id}/promote": {
+      "post": {
+        "summary": "Promote run output to grounding",
+        "tags": [
+          "AI"
+        ],
+        "security": [
+          {
+            "WPCookieAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK (JSON or binary; see route implementation in theme)"
+          }
+        }
+      }
+    },
+    "/ai/profiles/worker/stop": {
+      "post": {
+        "summary": "Stop AI profile worker",
+        "tags": [
+          "AI"
+        ],
+        "security": [
+          {
+            "WPCookieAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK (JSON or binary; see route implementation in theme)"
+          }
+        }
+      }
+    },
+    "/ai/writing-style-profile": {
+      "get": {
+        "summary": "Writing-style job status + profile text",
+        "tags": [
+          "AI"
+        ],
+        "security": [
+          {
+            "WPCookieAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK (JSON or binary; see route implementation in theme)"
+          }
+        }
+      }
+    },
+    "/ai/learn-writing-style": {
+      "post": {
+        "summary": "Start async writing-style analysis",
+        "tags": [
+          "AI"
+        ],
+        "security": [
+          {
+            "WPCookieAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK (JSON or binary; see route implementation in theme)"
+          }
+        }
+      }
+    },
+    "/ai/stop-writing-style": {
+      "post": {
+        "summary": "Stop writing-style job",
+        "tags": [
+          "AI"
+        ],
+        "security": [
+          {
+            "WPCookieAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK (JSON or binary; see route implementation in theme)"
+          }
+        }
+      }
+    },
+    "/ai/writing-style-final-grounding": {
+      "post": {
+        "summary": "Save edited grounding for AI prompts",
+        "tags": [
+          "AI"
+        ],
+        "security": [
+          {
+            "WPCookieAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK (JSON or binary; see route implementation in theme)"
+          }
+        }
+      }
+    },
+    "/ai/writing-style-history": {
+      "get": {
+        "summary": "List writing-style / analysis history rows",
+        "tags": [
+          "AI"
+        ],
+        "security": [
+          {
+            "WPCookieAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK (JSON or binary; see route implementation in theme)"
+          }
+        }
+      }
+    },
+    "/ai/writing-style-history/{id}": {
+      "get": {
+        "summary": "Single history row",
+        "tags": [
+          "AI"
+        ],
+        "security": [
+          {
+            "WPCookieAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK (JSON or binary; see route implementation in theme)"
+          }
+        }
+      }
+    },
+    "/pm/import-tracking-time-projects": {
+      "post": {
+        "summary": "Import TrackingTime projects into PM tables",
+        "tags": [
+          "ProjectManagement"
+        ],
+        "security": [
+          {
+            "WPCookieAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK (JSON or binary; see route implementation in theme)"
+          }
+        }
+      }
+    },
+    "/pm/projects": {
+      "get": {
+        "summary": "List PM projects",
+        "tags": [
+          "ProjectManagement"
+        ],
+        "security": [
+          {
+            "WPCookieAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK (JSON or binary; see route implementation in theme)"
+          }
+        }
+      },
+      "post": {
+        "summary": "Create PM project",
+        "tags": [
+          "ProjectManagement"
+        ],
+        "security": [
+          {
+            "WPCookieAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK (JSON or binary; see route implementation in theme)"
+          }
+        }
+      }
+    },
+    "/pm/projects/{id}": {
+      "get": {
+        "summary": "Get PM project",
+        "tags": [
+          "ProjectManagement"
+        ],
+        "security": [
+          {
+            "WPCookieAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK (JSON or binary; see route implementation in theme)"
+          }
+        }
+      },
+      "put": {
+        "summary": "Replace PM project",
+        "tags": [
+          "ProjectManagement"
+        ],
+        "security": [
+          {
+            "WPCookieAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK (JSON or binary; see route implementation in theme)"
+          }
+        }
+      },
+      "patch": {
+        "summary": "Patch PM project",
+        "tags": [
+          "ProjectManagement"
+        ],
+        "security": [
+          {
+            "WPCookieAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK (JSON or binary; see route implementation in theme)"
+          }
+        }
+      },
+      "delete": {
+        "summary": "Delete PM project",
+        "tags": [
+          "ProjectManagement"
+        ],
+        "security": [
+          {
+            "WPCookieAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK (JSON or binary; see route implementation in theme)"
+          }
+        }
+      }
+    },
+    "/pm/projects/{project_id}/task-lists": {
+      "get": {
+        "summary": "List task lists",
+        "tags": [
+          "ProjectManagement"
+        ],
+        "security": [
+          {
+            "WPCookieAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK (JSON or binary; see route implementation in theme)"
+          }
+        }
+      },
+      "post": {
+        "summary": "Create task list",
+        "tags": [
+          "ProjectManagement"
+        ],
+        "security": [
+          {
+            "WPCookieAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK (JSON or binary; see route implementation in theme)"
+          }
+        }
+      }
+    },
+    "/pm/projects/{project_id}/task-lists/{id}": {
+      "put": {
+        "summary": "Update task list",
+        "tags": [
+          "ProjectManagement"
+        ],
+        "security": [
+          {
+            "WPCookieAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK (JSON or binary; see route implementation in theme)"
+          }
+        }
+      },
+      "patch": {
+        "summary": "Patch task list",
+        "tags": [
+          "ProjectManagement"
+        ],
+        "security": [
+          {
+            "WPCookieAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK (JSON or binary; see route implementation in theme)"
+          }
+        }
+      },
+      "delete": {
+        "summary": "Delete task list",
+        "tags": [
+          "ProjectManagement"
+        ],
+        "security": [
+          {
+            "WPCookieAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK (JSON or binary; see route implementation in theme)"
+          }
+        }
+      }
+    },
+    "/pm/projects/{project_id}/tasks": {
+      "get": {
+        "summary": "All tasks in project",
+        "tags": [
+          "ProjectManagement"
+        ],
+        "security": [
+          {
+            "WPCookieAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK (JSON or binary; see route implementation in theme)"
+          }
+        }
+      }
+    },
+    "/pm/projects/{project_id}/task-lists/{list_id}/tasks": {
+      "get": {
+        "summary": "Tasks in list",
+        "tags": [
+          "ProjectManagement"
+        ],
+        "security": [
+          {
+            "WPCookieAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK (JSON or binary; see route implementation in theme)"
+          }
+        }
+      },
+      "post": {
+        "summary": "Create task",
+        "tags": [
+          "ProjectManagement"
+        ],
+        "security": [
+          {
+            "WPCookieAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK (JSON or binary; see route implementation in theme)"
+          }
+        }
+      }
+    },
+    "/pm/projects/{project_id}/tasks/{id}": {
+      "get": {
+        "summary": "Get task",
+        "tags": [
+          "ProjectManagement"
+        ],
+        "security": [
+          {
+            "WPCookieAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK (JSON or binary; see route implementation in theme)"
+          }
+        }
+      },
+      "put": {
+        "summary": "Update task",
+        "tags": [
+          "ProjectManagement"
+        ],
+        "security": [
+          {
+            "WPCookieAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK (JSON or binary; see route implementation in theme)"
+          }
+        }
+      },
+      "patch": {
+        "summary": "Patch task",
+        "tags": [
+          "ProjectManagement"
+        ],
+        "security": [
+          {
+            "WPCookieAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK (JSON or binary; see route implementation in theme)"
+          }
+        }
+      },
+      "delete": {
+        "summary": "Delete task",
+        "tags": [
+          "ProjectManagement"
+        ],
+        "security": [
+          {
+            "WPCookieAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK (JSON or binary; see route implementation in theme)"
+          }
+        }
+      }
+    },
+    "/pm/projects/{project_id}/tasks/{id}/assignees": {
+      "get": {
+        "summary": "Task assignees",
+        "tags": [
+          "ProjectManagement"
+        ],
+        "security": [
+          {
+            "WPCookieAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK (JSON or binary; see route implementation in theme)"
+          }
+        }
+      },
+      "put": {
+        "summary": "Replace assignees",
+        "tags": [
+          "ProjectManagement"
+        ],
+        "security": [
+          {
+            "WPCookieAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK (JSON or binary; see route implementation in theme)"
+          }
+        }
+      }
+    },
+    "/pm/projects/{project_id}/tasks/{id}/comments": {
+      "get": {
+        "summary": "List comments",
+        "tags": [
+          "ProjectManagement"
+        ],
+        "security": [
+          {
+            "WPCookieAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK (JSON or binary; see route implementation in theme)"
+          }
+        }
+      },
+      "post": {
+        "summary": "Add comment",
+        "tags": [
+          "ProjectManagement"
+        ],
+        "security": [
+          {
+            "WPCookieAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK (JSON or binary; see route implementation in theme)"
+          }
+        }
+      }
+    },
+    "/pm/projects/{project_id}/tasks/{id}/time-entries": {
+      "get": {
+        "summary": "Time entries on task",
+        "tags": [
+          "ProjectManagement"
+        ],
+        "security": [
+          {
+            "WPCookieAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK (JSON or binary; see route implementation in theme)"
+          }
+        }
+      },
+      "post": {
+        "summary": "Add time entry",
+        "tags": [
+          "ProjectManagement"
+        ],
+        "security": [
+          {
+            "WPCookieAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK (JSON or binary; see route implementation in theme)"
+          }
+        }
+      }
+    },
+    "/pm/time-entries": {
+      "get": {
+        "summary": "Recent time entries",
+        "tags": [
+          "ProjectManagement"
+        ],
+        "security": [
+          {
+            "WPCookieAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK (JSON or binary; see route implementation in theme)"
+          }
+        }
+      }
+    },
+    "/pm/time-entries/{entry_id}": {
+      "delete": {
+        "summary": "Delete time entry",
+        "tags": [
+          "ProjectManagement"
+        ],
+        "security": [
+          {
+            "WPCookieAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK (JSON or binary; see route implementation in theme)"
+          }
+        }
+      }
+    },
+    "/mailboxes": {
+      "get": {
+        "summary": "List IMAP mail accounts",
+        "tags": [
+          "Mail"
+        ],
+        "security": [
+          {
+            "WPCookieAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK (JSON or binary; see route implementation in theme)"
+          }
+        }
+      },
+      "post": {
+        "summary": "Create mail account",
+        "tags": [
+          "Mail"
+        ],
+        "security": [
+          {
+            "WPCookieAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK (JSON or binary; see route implementation in theme)"
+          }
+        }
+      }
+    },
+    "/mailboxes/test-imap": {
+      "post": {
+        "summary": "Test IMAP login (no persist)",
+        "tags": [
+          "Mail"
+        ],
+        "security": [
+          {
+            "WPCookieAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK (JSON or binary; see route implementation in theme)"
+          }
+        }
+      }
+    },
+    "/mailboxes/imap-health": {
+      "get": {
+        "summary": "IMAP health for all active accounts",
+        "tags": [
+          "Mail"
+        ],
+        "security": [
+          {
+            "WPCookieAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK (JSON or binary; see route implementation in theme)"
+          }
+        }
+      }
+    },
+    "/mailboxes/list-folders": {
+      "post": {
+        "summary": "List IMAP folder tree",
+        "tags": [
+          "Mail"
+        ],
+        "security": [
+          {
+            "WPCookieAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK (JSON or binary; see route implementation in theme)"
+          }
+        }
+      }
+    },
+    "/folder-clients-overview": {
+      "get": {
+        "summary": "All mailboxes: folder → entity overview",
+        "tags": [
+          "Mail"
+        ],
+        "security": [
+          {
+            "WPCookieAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK (JSON or binary; see route implementation in theme)"
+          }
+        }
+      }
+    },
+    "/mailboxes/{id}/folder-clients": {
+      "get": {
+        "summary": "Folder→entity rows for mailbox",
+        "tags": [
+          "Mail"
+        ],
+        "security": [
+          {
+            "WPCookieAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK (JSON or binary; see route implementation in theme)"
+          }
+        }
+      },
+      "post": {
+        "summary": "Add folder→entity mapping",
+        "tags": [
+          "Mail"
+        ],
+        "security": [
+          {
+            "WPCookieAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK (JSON or binary; see route implementation in theme)"
+          }
+        }
+      },
+      "delete": {
+        "summary": "Remove mapping (query imap_folder)",
+        "tags": [
+          "Mail"
+        ],
+        "security": [
+          {
+            "WPCookieAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK (JSON or binary; see route implementation in theme)"
+          }
+        }
+      }
+    },
+    "/mailboxes/{id}/email-folders": {
+      "get": {
+        "summary": "Distinct imported IMAP paths",
+        "tags": [
+          "Mail"
+        ],
+        "security": [
+          {
+            "WPCookieAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK (JSON or binary; see route implementation in theme)"
+          }
+        }
+      }
+    },
+    "/mailboxes/{id}": {
+      "get": {
+        "summary": "Get mail account",
+        "tags": [
+          "Mail"
+        ],
+        "security": [
+          {
+            "WPCookieAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK (JSON or binary; see route implementation in theme)"
+          }
+        }
+      },
+      "put": {
+        "summary": "Update mail account",
+        "tags": [
+          "Mail"
+        ],
+        "security": [
+          {
+            "WPCookieAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK (JSON or binary; see route implementation in theme)"
+          }
+        }
+      },
+      "delete": {
+        "summary": "Delete mail account",
+        "tags": [
+          "Mail"
+        ],
+        "security": [
+          {
+            "WPCookieAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK (JSON or binary; see route implementation in theme)"
+          }
+        }
+      }
+    },
+    "/mailboxes/{id}/sync": {
+      "post": {
+        "summary": "Quick IMAP sync (body limit optional)",
+        "tags": [
+          "Mail"
+        ],
+        "security": [
+          {
+            "WPCookieAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK (JSON or binary; see route implementation in theme)"
+          }
+        }
+      }
+    },
+    "/mailboxes/{id}/sync-chunk/start": {
+      "post": {
+        "summary": "Start chunk wipe-resync job",
+        "tags": [
+          "Mail"
+        ],
+        "security": [
+          {
+            "WPCookieAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK (JSON or binary; see route implementation in theme)"
+          }
+        }
+      }
+    },
+    "/mailboxes/{id}/sync-chunk/step": {
+      "post": {
+        "summary": "Process one chunk step",
+        "tags": [
+          "Mail"
+        ],
+        "security": [
+          {
+            "WPCookieAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK (JSON or binary; see route implementation in theme)"
+          }
+        }
+      }
+    },
+    "/mailboxes/{id}/sync-chunk": {
+      "get": {
+        "summary": "Chunk job status JSON",
+        "tags": [
+          "Mail"
+        ],
+        "security": [
+          {
+            "WPCookieAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK (JSON or binary; see route implementation in theme)"
+          }
+        }
+      },
+      "delete": {
+        "summary": "Cancel chunk job",
+        "tags": [
+          "Mail"
+        ],
+        "security": [
+          {
+            "WPCookieAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK (JSON or binary; see route implementation in theme)"
+          }
+        }
+      }
+    },
+    "/mailboxes/{id}/emails": {
+      "delete": {
+        "summary": "Delete all imported messages for mailbox",
+        "tags": [
+          "Mail"
+        ],
+        "security": [
+          {
+            "WPCookieAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK (JSON or binary; see route implementation in theme)"
+          }
+        }
+      }
+    },
+    "/emails": {
+      "get": {
+        "summary": "Paginated messages (mailbox_id, client_id, direction, thread_id, imap_folder, search, page, per_page)",
+        "tags": [
+          "Mail"
+        ],
+        "security": [
+          {
+            "WPCookieAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK (JSON or binary; see route implementation in theme)"
+          }
+        }
+      }
+    },
+    "/emails/{id}": {
+      "get": {
+        "summary": "Full message + body",
+        "tags": [
+          "Mail"
+        ],
+        "security": [
+          {
+            "WPCookieAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK (JSON or binary; see route implementation in theme)"
+          }
+        }
+      },
+      "put": {
+        "summary": "Update flags / client links",
+        "tags": [
+          "Mail"
+        ],
+        "security": [
+          {
+            "WPCookieAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK (JSON or binary; see route implementation in theme)"
+          }
+        }
+      }
+    },
+    "/emails/{id}/attachments": {
+      "get": {
+        "summary": "List attachment metadata",
+        "tags": [
+          "Mail"
+        ],
+        "security": [
+          {
+            "WPCookieAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK (JSON or binary; see route implementation in theme)"
+          }
+        }
+      }
+    },
+    "/emails/{id}/attachments/{att_id}/download": {
+      "get": {
+        "summary": "Download attachment bytes",
+        "tags": [
+          "Mail"
+        ],
+        "security": [
+          {
+            "WPCookieAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK (JSON or binary; see route implementation in theme)"
+          }
+        }
+      }
+    },
+    "/emails/recompute-metadata": {
+      "post": {
+        "summary": "Recompute thread_id and/or client links",
+        "tags": [
+          "Mail"
+        ],
+        "security": [
+          {
+            "WPCookieAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK (JSON or binary; see route implementation in theme)"
+          }
+        }
+      }
+    },
+    "/emails/clear-client-links": {
+      "post": {
+        "summary": "Clear address-sourced client links",
+        "tags": [
+          "Mail"
+        ],
+        "security": [
+          {
+            "WPCookieAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK (JSON or binary; see route implementation in theme)"
+          }
+        }
+      }
+    },
+    "/mail/classification-rules": {
+      "get": {
+        "summary": "List rules + taxonomy metadata",
+        "tags": [
+          "MailClassification"
+        ],
+        "security": [
+          {
+            "WPCookieAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK (JSON or binary; see route implementation in theme)"
+          }
+        }
+      },
+      "post": {
+        "summary": "Create classification rule",
+        "tags": [
+          "MailClassification"
+        ],
+        "security": [
+          {
+            "WPCookieAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK (JSON or binary; see route implementation in theme)"
+          }
+        }
+      }
+    },
+    "/mail/classification-rules/reorder": {
+      "post": {
+        "summary": "Reorder rules (ordered_ids)",
+        "tags": [
+          "MailClassification"
+        ],
+        "security": [
+          {
+            "WPCookieAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK (JSON or binary; see route implementation in theme)"
+          }
+        }
+      }
+    },
+    "/mail/classification-rules/{id}": {
+      "put": {
+        "summary": "Update rule",
+        "tags": [
+          "MailClassification"
+        ],
+        "security": [
+          {
+            "WPCookieAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK (JSON or binary; see route implementation in theme)"
+          }
+        }
+      },
+      "delete": {
+        "summary": "Delete rule",
+        "tags": [
+          "MailClassification"
+        ],
+        "security": [
+          {
+            "WPCookieAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK (JSON or binary; see route implementation in theme)"
+          }
+        }
+      }
+    },
+    "/mail/messages/{id}/classify": {
+      "post": {
+        "summary": "Run classification on one message",
+        "tags": [
+          "MailClassification"
+        ],
+        "security": [
+          {
+            "WPCookieAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK (JSON or binary; see route implementation in theme)"
+          }
+        }
+      }
+    }
+  }
+}

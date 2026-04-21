@@ -57,6 +57,10 @@
 
 New browser-facing endpoints MUST use `dls/v1` namespace. The `api/v1` namespace is blocked for all IPs except `194.126.177.181` and `23.88.90.12`.
 
+**OpenAPI (path catalogue):** [`reference/dls-v1.openapi.json`](reference/dls-v1.openapi.json) and [`reference/api-v1.openapi.json`](reference/api-v1.openapi.json) — hand-maintained summaries; update when adding routes. Index: [`reference/README.md`](reference/README.md).
+
+**Custom MySQL tables (overview):** [`reference/database-overview.md`](reference/database-overview.md).
+
 ## File Structure
 ```
 inc/
