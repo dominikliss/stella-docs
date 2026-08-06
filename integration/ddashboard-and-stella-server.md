@@ -1,13 +1,15 @@
 # ddashboard and Stella server — how they fit together
 
-This document describes the **roles**, **network paths**, **data flows**, and **operational boundaries** between the **ddashboard** WordPress theme (Hetzner managed hosting) and the **Stella** stack (Hetzner dedicated server: FastAPI, Ollama, ChromaDB, Caddy, optional **IMAP mailbox copy** service).
+This document describes the **roles**, **network paths**, **data flows**, and **operational boundaries** between the **ddashboard** WordPress theme (Hetzner managed hosting) and the **Stella** stack (Hetzner dedicated server: FastAPI, Ollama, Caddy, optional **IMAP mailbox copy** service).
+
+> **ChromaDB removed 2026-08-06.** ChromaDB, `nomic-embed-text`, and all `/emails/*` Stella routes no longer exist. Current `stella-api` scope is chat-only. See [`email-indexing.md`](email-indexing.md) for the decommission notice.
 
 **Related docs**
 
 - Server topology and ports: [`../stella-server/infrastructure.md`](../stella-server/infrastructure.md)
-- Stella HTTP API (FastAPI, **mail v3** indexing): [`../stella-server/stella-api.md`](../stella-server/stella-api.md)
+- Stella HTTP API (FastAPI, chat-only): [`../stella-server/stella-api.md`](../stella-server/stella-api.md)
 - Stella **imapsync** helper (Express on `:3001`): [`../stella-server/imap-sync-service.md`](../stella-server/imap-sync-service.md)
-- Email indexing end-to-end: [`email-indexing.md`](email-indexing.md)
+- Email indexing pipeline (decommissioned): [`email-indexing.md`](email-indexing.md)
 - WordPress theme architecture (long): [`../stella-dashboard/architecture.md`](../stella-dashboard/architecture.md)
 
 ---
@@ -16,73 +18,56 @@ This document describes the **roles**, **network paths**, **data flows**, and **
 
 | System | Role |
 |--------|------|
-| **ddashboard** | Custom WordPress theme: CRM, accounting, IMAP mail in MySQL (**v3** tables `dls_mail_*`), REST `dls/v1`, React SPA, Anthropic AI chat and Ollama mail analyses. **Source of truth** for message rows, links, clients, and WP options. |
-| **Stella** | Dedicated AI host: **Ollama** (LLM + embeddings), **ChromaDB** (v2 API), **stella-api** (FastAPI) — **`/emails/*`** targets collection **`emails_v3`** for vector search, **Caddy** on `:8080`. Optional **`imap-sync`**: Express + **`imapsync`** to copy mail between two IMAP accounts (**not** ddashboard’s DB import). |
+| **ddashboard** | Custom WordPress theme: CRM, accounting, IMAP mail in MySQL (**v3** tables `dls_mail_*`), REST `dls/v1`, React SPA, AI chat agents, Ollama mail analyses. **Source of truth** for message rows, links, clients, and WP options. |
+| **Stella** | Dedicated AI host: **Ollama** (LLM inference), **stella-api** (FastAPI) — **`/chat/*`** only, **Caddy** on `:8080`. Optional **`imap-sync`**: Express + **`imapsync`** to copy mail between two IMAP accounts (**not** ddashboard's DB import). ChromaDB has been uninstalled. |
 
-Neither system replaces the other: WordPress owns relational data and sessions; Stella owns **vector search** and heavy models next to Ollama/Chroma.
+Neither system replaces the other: WordPress owns relational data and sessions; Stella provides **streaming LLM inference** via `/chat/stream`.
 
 ---
 
 ## 2. Network and trust model
 
-- **Browser** talks only to **WordPress** (HTTPS). The browser **does not** call Stella for product features.
-- **WordPress (ddashboard)** makes **server-to-server** HTTP to Stella when indexing or tests are configured:
-  - **Email indexing:** `POST {base}/emails/upsert`, `DELETE {base}/emails/message/{message_id}`, `POST {base}/emails/query`, optional `GET …/emails/document/msg_*` / `GET …/emails/message/{id}` for debugging.
-  - **Health / tests:** `inc/routes/stella-api-test.php` (when present), e.g. `GET {base}/chat/health`.
-- **Base URL** — WordPress option **`dls_stella_email_index_url`**: full HTTP root including path prefix, **no** trailing slash in stored value (clients typically `rtrim` before concat). Example with Caddy: `http://<stella-host>:8080/stella` → `…/stella/emails/upsert`.
-- **Auth:** Stella’s **mail index API has no HTTP auth**; restrict ingress (UFW / known egress IP / VPN — see infrastructure doc). Optional **`dls_stella_email_index_key`** may be sent as **`X-Stella-Key`** from WordPress for forward compatibility; current Stella deploy does not require it.
-- **Embed toggles** — historical options such as `dls_email_embed_enabled` / batch size may apply once the **v3** queue client is reintroduced; see [`email-indexing.md`](email-indexing.md).
+- **Browser** talks only to **WordPress** (HTTPS). The browser **does not** call Stella directly.
+- **WordPress (ddashboard)** makes **server-to-server** HTTP to Stella for:
+  - **AI chat streaming:** `POST {base}/chat/stream` (SSE, tool-calling agent)
+  - **Health checks:** `GET {base}/chat/health` (`inc/routes/stella-api-test.php`)
+- **Base URL** — WordPress option **`dls_stella_email_index_url`** (reused for the chat base): full HTTP root including path prefix, **no** trailing slash. Example with Caddy: `http://<stella-host>:8080/stella`.
+- **Auth:** no HTTP auth on stella-api — restrict ingress at the network layer (UFW / known egress IP / VPN). Optional `dls_stella_email_index_key` may be sent as `X-Stella-Key` for future use.
 
 ---
 
-## 3. Data flow — email indexing (mail v3)
+## 3. Data flow — AI chat
 
-```mermaid
-flowchart LR
-  subgraph wp [ddashboard_WordPress]
-    IMAP[Mail_sync_IMAP]
-    DB[(dls_mail_message_+_links)]
-    RUN[dls_mail_stella_index_run]
-    JOB[MailStellaIndexJob_transient]
-    CLIENT[StellaEmailIndexService]
-  end
-  subgraph stella [Stella_server]
-    API[stella-api_FastAPI]
-    OLL[Ollama_embed]
-    CHR[ChromaDB_emails_v3]
-  end
-  IMAP --> DB
-  DB --> JOB
-  JOB --> RUN
-  JOB --> CLIENT
-  CLIENT -->|POST_emails_upsert| API
-  API --> OLL
-  API --> CHR
+```
+Browser
+  → POST /?dls_agent_stream=1   (SSE)
+  → WordPress: load history from MySQL, build messages + tool defs
+  → POST {stella_url}/chat/stream   (WordPress → Stella, curl SSE)
+      loop: tool calls → MySQL services (ClientDb, MailDb, PmDb)
+      until final content
+  → SSE chunks streamed back to browser
 ```
 
-1. IMAP sync persists rows in **`dls_mail_message`** and **`dls_mail_message_link`** (see theme mail docs).
-2. **Verwaltung → Nachrichten (Chroma-Index):** `MailStellaIndexJob` stores progress in a **transient** and logs each run in **`dls_mail_stella_index_run`**; each **`POST /dls/v1/mailboxes/{id}/stella-chroma-index/step`** calls **`POST /emails/upsert`** per batch (see [`stella-api.md`](../stella-server/stella-api.md)).
-3. Stella embeds once per message and upserts **one Chroma document per link** (or a sentinel if there are no links).
-4. **[Planned]** On **`dls_mail_message` delete**, WordPress should call **`DELETE /emails/message/{message_id}`** so vectors do not linger.
-
-**Detail:** [`email-indexing.md`](email-indexing.md).
+Non-streaming / non-tool agents call Ollama directly via `POST {ollama_base_url}/api/chat` or a configured Anthropic/OpenAI provider — Stella is not involved.
 
 ---
 
 ## 4. AI features — who calls whom
 
-| Feature | Where it runs | Typical backend |
-|---------|----------------|-----------------|
-| **AI chat (“Stella” / agents)** | Browser → WordPress `dls/v1/ai/chat` | **Anthropic** (`AnthropicChatService`) |
+| Feature | Where it runs | Backend |
+|---------|----------------|---------|
+| **AI chat — `general` agent (streaming)** | Browser → WordPress → Stella | **`POST /chat/stream`** on stella-api → Ollama |
+| **AI chat — `general` agent (non-streaming fallback)** | WordPress → Ollama | **`POST {ollama_url}/api/chat`** directly |
+| **AI chat — other agents** (accounting, clients, …) | WordPress → configured provider | Anthropic / OpenAI / Ollama per `ai_provider` setting |
 | **E-Mail-AI-Analysen** (writing style, classification) | WordPress async jobs / cron | **Ollama** on configured host; corpus from mail tables |
-| **Vector search / RAG over mail** | WordPress → Stella | **`POST /emails/query`** on stella-api; metadata `where` filters |
-| **Email embedding / index** | WordPress → Stella | **`POST /emails/upsert`** into **`emails_v3`** |
+| **Vector search / RAG over mail** | **REMOVED** | ChromaDB + `/emails/query` decommissioned 2026-08-06 |
+| **Email embedding / index** | **REMOVED** | `/emails/upsert` decommissioned 2026-08-06 |
 
 ---
 
 ## 4a. Stella `imap-sync` (mailbox copy)
 
-- **Purpose:** Operator **server-to-server IMAP copy** (`imapsync`), HTTP API for jobs/logs — not ddashboard’s MySQL mail import.
+- **Purpose:** Operator **server-to-server IMAP copy** (`imapsync`), HTTP API for jobs/logs — not ddashboard's MySQL mail import.
 - **WordPress:** Werkzeuge → E-Mail-Migration proxies **`/dls/v1/imap-sync/*`** to Stella (`inc/routes/imap-sync-proxy.php`).
 - **Contract:** [`../stella-server/imap-sync-service.md`](../stella-server/imap-sync-service.md).
 
@@ -92,9 +77,10 @@ flowchart LR
 
 | Area | Notes |
 |------|--------|
-| Mail CRUD / sync | `inc/routes/mail-*.php`, `MailSyncV2`, `MailDbService` — **source rows** for upsert payloads |
-| Stella health / query tests | `inc/routes/stella-api-test.php` (update paths for **`emails_v3`** / normalized query body when wiring) |
-| Options | `inc/services/option-service.php` — `dls_stella_email_index_url`, `dls_stella_email_index_key`, embed-related options |
+| Mail CRUD / sync | `inc/routes/mail-*.php`, `MailSyncV2`, `MailDbService` — MySQL only, no Stella calls |
+| AI chat streaming | `inc/routes/agent-chat-stream.php` → `AgentToolOrchestrator::run_streaming()` → `POST {stella}/chat/stream` |
+| Stella health check | `inc/routes/stella-api-test.php` — `GET /chat/health` only; `/emails/query` probe removed |
+| Options | `inc/services/option-service.php` — `dls_stella_email_index_url` (base URL), `dls_stella_email_index_key` |
 
 Paths use WordPress REST prefix `/wp-json/dls/v1/…`.
 
@@ -103,9 +89,8 @@ Paths use WordPress REST prefix `/wp-json/dls/v1/…`.
 ## 6. Security checklist
 
 1. **Revoke** any PAT accidentally committed; use SSH for private clones.
-2. **Do not** expose Ollama/Chroma/stella-api `:8001` publicly without controls; prefer Caddy + UFW.
+2. **Do not** expose Ollama or stella-api `:8001` publicly without controls; prefer Caddy + UFW.
 3. **Rotate** `dls_stella_email_index_key` if ever used as a shared secret; network restriction remains primary.
-4. **HTML mail** stays sandboxed in the browser; only **plain / sanitised** text should be sent in the `document` field for embeddings.
 
 ---
 
@@ -124,6 +109,6 @@ Paths use WordPress REST prefix `/wp-json/dls/v1/…`.
 |------|---------|
 | **ddashboard** | WordPress theme / product |
 | **Stella** | Dedicated server hosting AI services |
-| **stella-api** | FastAPI app — **`/chat/*`**, **`/emails/*`** ( **`emails_v3`** collection ) |
+| **stella-api** | FastAPI app — **`/chat/*`** only (email routes removed 2026-08-06) |
 | **imap-sync** | Express on Stella `:3001`; **`imapsync`** mailbox migration |
 | **gitlink** | Git submodule pointer SHA for `stella-docs` |
