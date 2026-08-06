@@ -23,6 +23,7 @@ Core Docker-managed services live at `/opt/services/docker-compose.yml`. Dev/sta
 | `caddy` | Docker (custom build, see below) | 8080, 443 (public) | Reverse proxy — routes `/ollama`, `/imap-sync`, `/stella`, and subdomain-based blocks for dev/staging apps |
 | `stella-api` | Docker (`network_mode: host`) | 8001 | FastAPI via uvicorn — chat-only (`/chat/health`, `/chat/stream`) |
 | `imap-sync` | Docker (Node.js) | 3001 | `imapsync` wrapper (Express) |
+| `deploy-api` | Docker (`edge` network, no host port) | — | SSH-signature-authenticated deploy trigger — [`deploy-api.md`](deploy-api.md) |
 | `ollama` | systemd | 11434 | LLM inference |
 
 ### Non-Docker systemd services
@@ -310,6 +311,22 @@ services:
     network_mode: host
     environment:
       - OLLAMA_URL=http://127.0.0.1:11434
+    restart: unless-stopped
+
+  deploy-api:
+    build: ./deploy-api
+    container_name: deploy-api
+    env_file:
+      - ./azure-deploy/.env
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - /opt/apps:/opt/apps
+      - /opt/services/azure-deploy:/opt/services/azure-deploy
+      - ./deploy-api/allowed_signers:/opt/services/deploy-api/allowed_signers:ro
+      - ./deploy-api/logs:/opt/services/deploy-api/logs
+      - /root/.ssh:/root/.ssh:ro
+    networks:
+      - edge
     restart: unless-stopped
 
 networks:
