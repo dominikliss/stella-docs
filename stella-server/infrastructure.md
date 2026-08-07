@@ -20,7 +20,7 @@ Core Docker-managed services live at `/opt/services/docker-compose.yml`. Dev/sta
 
 | Service | Runtime | Port | Notes |
 |---------|---------|------|-------|
-| `caddy` | Docker (custom build, see below) | 8080, 443 (public) | Reverse proxy — routes `/ollama`, `/imap-sync`, `/stella`, and subdomain-based blocks for dev/staging apps |
+| `caddy` | Docker (custom build, see below) | 443 (public); 8080 published but no longer routed | Reverse proxy — `stella.foxcraft.digital` block serves `/ollama`, `/imap-sync`, `/stella`; subdomain-based blocks for dev/staging apps |
 | `stella-api` | Docker (`network_mode: host`) | 8001 | FastAPI via uvicorn — chat-only (`/chat/health`, `/chat/stream`) |
 | `imap-sync` | Docker (Node.js) | 3001 | `imapsync` wrapper (Express) |
 | `deploy-api` | Docker (`edge` network, no host port) | — | SSH-signature-authenticated deploy trigger — [`deploy-api.md`](deploy-api.md) |
@@ -59,13 +59,23 @@ Token stored in `/opt/services/caddy/.env` (`chmod 600`), referenced in the Cadd
 
 ### Caddyfile structure
 
+**Updated 2026-08-07:** Ollama, imap-sync, and stella-api moved from a bare `:8080` block to a proper `stella.foxcraft.digital` subdomain with automatic HTTPS. The `:8080` block no longer exists in the Caddyfile; port 8080 is still published by the `caddy` container in `docker-compose.yml` but receives no traffic.
+
+Each site block now pins explicitly to Let's Encrypt only via a per-site `tls { issuer acme { ... } }` directive — see "Issue 3: ZeroSSL fallback hang" below for why.
+
 ```caddyfile
 {
     email projects@foxcraft.digital
     acme_dns hetzner {env.HETZNER_API_TOKEN}
 }
 
-:8080 {
+stella.foxcraft.digital {
+    tls {
+        issuer acme {
+            email projects@foxcraft.digital
+            dns hetzner {env.HETZNER_API_TOKEN}
+        }
+    }
     handle /ollama* {
         uri strip_prefix /ollama
         reverse_proxy 172.18.0.1:11434
@@ -81,11 +91,88 @@ Token stored in `/opt/services/caddy/.env` (`chmod 600`), referenced in the Cadd
 }
 
 advoapp.finditoo.foxcraft.digital {
+    tls {
+        issuer acme {
+            email projects@foxcraft.digital
+            dns hetzner {env.HETZNER_API_TOKEN}
+        }
+    }
     reverse_proxy advoapp.finditoo.foxcraft.digital:8080
+}
+
+stella-deployment-api.foxcraft.digital {
+    tls {
+        issuer acme {
+            email projects@foxcraft.digital
+            dns hetzner {env.HETZNER_API_TOKEN}
+        }
+    }
+    reverse_proxy deploy-api:8080
 }
 ```
 
 Each new subdomain gets its own block at the bottom, reverse-proxying to a container name on the `edge` network — Caddy handles TLS automatically via DNS-01, no manual cert management needed.
+
+**Open follow-up:** `172.18.0.1:11434` (Ollama) and `172.18.0.1:8001` (stella-api) still use the Docker bridge gateway IP rather than container-name routing used by `imap-sync:3001` and `deploy-api:8080`. Functionally fine, but inconsistent with the `edge` network pattern. Low priority.
+
+---
+
+### Caddy / cert issuance operational notes
+
+Three issues hit during the 2026-08-07 `stella.foxcraft.digital` migration — worth knowing on sight to avoid repeating the debug cycle.
+
+#### Issue 1 — `env_file` changes don't take effect with `docker compose restart`
+
+`docker compose restart <service>` restarts the existing container process; it does **not** re-read `env_file`. Compose only re-evaluates `env_file` when the container is actually recreated.
+
+**Fix:** after any `.env` change for a Compose service:
+```bash
+docker compose up -d --force-recreate <service>
+# or for services with a build context:
+docker compose down <service> && docker compose up -d --build <service>
+```
+This applies to any service using `env_file:` — not just Caddy. Verify the env is live inside the container with `docker exec <container> printenv <VAR>`.
+
+#### Issue 2 — Stale TXT records cause DNS-01 failures across retry attempts
+
+Two failure patterns observed:
+
+- `NXDOMAIN looking up TXT for _acme-challenge.<name>` — validator queried before TXT record propagated (normal on first attempt, resolves on retry).
+- `Incorrect TXT record "<value>" found` — validator found a **stale** TXT value from a previous interrupted attempt. Hetzner's `rrsets` API rejects writing a second value under an existing name as `duplicate value`, so every subsequent attempt fails outright rather than overwriting.
+
+**Root cause of the duplicates:** manually interrupting Caddy mid-attempt (`docker compose restart`, `down`, `--force-recreate`) kills the process before Caddy's own cleanup step runs, leaving a stale `_acme-challenge` TXT record for the next attempt to trip over.
+
+**Correct procedure:**
+1. Before retrying after an interrupted attempt, delete any leftover TXT record:
+   ```bash
+   source /opt/services/caddy/.env
+   curl -s -X DELETE \
+     "https://api.hetzner.cloud/v1/zones/567656/rrsets/_acme-challenge.<name>/TXT" \
+     -H "Authorization: Bearer $HETZNER_API_TOKEN"
+   ```
+2. Start Caddy and **do not interrupt it** — let its backoff/retry cycle run unmodified. A clean first attempt typically resolves in 15–30 s once DNS has propagated; first-ever issuance for a new subdomain may take a few minutes across a few retries.
+3. If still failing after ~10 minutes of uninterrupted operation, query the authoritative nameserver directly to confirm the TXT record is actually live, bypassing resolver caching:
+   ```bash
+   dig @ns1.your-server.de _acme-challenge.<name> TXT +short
+   ```
+
+**What was ruled out:** concurrent issuance across multiple domains (tested `stella.foxcraft.digital` in isolation — same NXDOMAIN pattern, so it's not a cross-domain race); UFW / IP whitelist (DNS-01 validation is purely outbound from Caddy to Hetzner's API, no inbound traffic involved).
+
+#### Issue 3 — ZeroSSL fallback can hang indefinitely on a single attempt
+
+One dns-01 attempt via ZeroSSL (Caddy's automatic fallback after a Let's Encrypt failure) produced no log output for 5+ minutes — no success, no failure, no retry-scheduled line. The DNS TXT record was correctly live the entire time, so this was not a propagation issue; the ZeroSSL ACME call itself never returned.
+
+**Fix applied:** pinned all site blocks to Let's Encrypt only using per-site `tls { issuer acme { ... } }` (see Caddyfile above). With ZeroSSL out of the picture, all subsequent retries went through Let's Encrypt and completed normally.
+
+**Open question:** whether this was a one-off (network hiccup, ZeroSSL-side issue) or a recurring interaction between `caddy-dns/hetzner/v2` and ZeroSSL's ACME flow isn't established — observed once. If it recurs, worth checking whether it's module-specific or a general Caddy/ZeroSSL problem.
+
+#### Automatic Let's Encrypt staging fallback
+
+After repeated fast failures for the same identifiers within a short window, Caddy automatically escalated to Let's Encrypt's **staging** CA (`acme-staging-v02.api.letsencrypt.org`) to avoid exhausting production rate limits. **Staging certificates are not trusted by browsers.**
+
+In the 2026-08-07 session the staging round succeeded (proving the dns-01 pipeline worked end-to-end), then Caddy automatically retried production shortly after — confirmed by `issuer: acme-v02.api.letsencrypt.org-directory` (not `acme-staging-v02`) in the final log lines for both `advoapp.finditoo.foxcraft.digital` and `stella.foxcraft.digital`.
+
+**Takeaway:** if you see `acme-staging-v02` in the logs, don't intervene — it's Caddy's own rate-limit protection, and it should return to production once a validation path is proven. If a staging cert ends up being served long-term (check with `curl -v` → inspect the issuer in the cert chain), something is still wrong and needs a closer look.
 
 ---
 
@@ -173,7 +260,7 @@ curl -s -X POST "https://api.hetzner.cloud/v1/zones/567656/rrsets" \
 
 ### Worked example: `advoapp.finditoo.foxcraft.digital`
 
-.NET 10 app (`finditoo-advoapp`), no database, deployed 2026-08-06 following the exact pattern above. Verified working end-to-end: valid TLS cert (ZeroSSL via DNS-01), correct app response through Caddy, and — critically — verified as **actually IP-restricted** by testing from both a whitelisted IP (succeeds) and an unauthorized IP with VPN off (times out). See Security section for why that verification mattered.
+.NET 10 app (`finditoo-advoapp`), no database, deployed 2026-08-06 following the exact pattern above. Verified working end-to-end: valid TLS cert (Let's Encrypt via DNS-01 — originally issued via ZeroSSL fallback on 2026-08-06, then re-issued against Let's Encrypt production on 2026-08-07 when per-site `tls { issuer acme }` pinning was applied), correct app response through Caddy, and — critically — verified as **actually IP-restricted** by testing from both a whitelisted IP (succeeds) and an unauthorized IP with VPN off (times out). See Security section for why that verification mattered.
 
 ---
 
@@ -215,11 +302,13 @@ Fully decommissioned. See git history / prior doc versions if a vector search fe
 
 ## Security
 
-### Current state (verified 2026-08-06)
+### Current state (verified 2026-08-06; ports updated 2026-08-07)
 
 - **UFW** — active, default-deny incoming. Ports 22, 8001, 11434, 443 restricted to `194.126.177.181` and `23.88.90.12`. Port 8001 additionally allows `172.18.0.0/16` (Docker bridge subnet) for Caddy's internal proxy calls.
 - **fail2ban** — running
 - **Docker-published ports (8080, 3001, 443)** — protected via a custom `DOCKER-USER` iptables chain (details below)
+
+**Note:** port 8080 DOCKER-USER rules are now stale — the `:8080` Caddyfile block was removed on 2026-08-07 (traffic moved to `stella.foxcraft.digital:443`). Port 8080 is still published by the Caddy container but nothing routes to it. The DOCKER-USER rules blocking unauthorized access to 8080 are harmless to leave in place and serve as defense-in-depth; they can be removed in a future cleanup pass if desired.
 
 ### ⚠️ Docker-published ports bypass UFW entirely
 

@@ -6,9 +6,9 @@ Small **Node.js + Express** helper on the Stella server that runs **`imapsync`**
 
 - **Compose service:** `imap-sync` (build context `./imap-sync`) — see [`infrastructure.md`](infrastructure.md)
 - **Listen port (container):** `3001`
-- **Public entry:** Caddy on `:8080` under **`/imap-sync*`** → `imap-sync:3001`
+- **Public entry:** `https://stella.foxcraft.digital/imap-sync` (Caddy strips the `/imap-sync` prefix before forwarding to `imap-sync:3001`)
 
-**Caddy / path note:** Express registers routes at the **app root** (`/health`, `/start`, `/status/…`, `/jobs`, …). The reverse proxy must forward to the container so those paths hit the app (typically **strip** the `/imap-sync` prefix). Example: `http://<stella-host>:8080/imap-sync/start` → upstream `/start`.
+**Caddy / path note:** Express registers routes at the **app root** (`/health`, `/start`, `/status/…`, `/jobs`, …). The reverse proxy strips the `/imap-sync` prefix before forwarding. Example: `https://stella.foxcraft.digital/imap-sync/start` → upstream `/start`.
 
 **Related**
 
@@ -20,6 +20,8 @@ Small **Node.js + Express** helper on the Stella server that runs **`imapsync`**
 ## ddashboard proxy (WordPress)
 
 The theme exposes logged-in **`dls/v1/imap-sync/*`** routes that forward to this service (`dls_imap_sync_base_url` — WordPress does not persist migration passwords). Proxied paths include **`/health`**, **`POST /start`**, **`GET /jobs`**, **`GET /status/{id}`**, **`GET /status/{id}/log`**, **`DELETE /jobs/{id}`**. The Werkzeuge UI uses **`GET /jobs`** for the live list and **`DELETE /jobs/{id}`** to cancel a running job.
+
+**⚠️ Follow-up outstanding (2026-08-07):** `dls_imap_sync_base_url` (and any other WordPress option referencing the old `http://<ip>:8080/...` base URL) must be updated to `https://stella.foxcraft.digital/imap-sync`. Until this is done the Werkzeuge → E-Mail-Migration UI in ddashboard will keep hitting the dead port-8080 route rather than the new subdomain.
 
 ---
 

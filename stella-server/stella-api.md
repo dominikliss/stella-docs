@@ -4,13 +4,13 @@ FastAPI application running on Stella server.
 
 - **Location:** `/opt/services/stella-api/`
 - **Runtime:** Docker container (`network_mode: host`)
-- **Port:** 8001 (direct) / accessible via Caddy at `:8080/stella`
+- **Port:** 8001 (direct) / accessible via Caddy at `https://stella.foxcraft.digital/stella`
 - **Process:** `uvicorn app.main:app`
 - **Scope as of 2026-08-06: chat-only.** The `/emails/*` routes and ChromaDB integration were removed — see below.
 
 **Sibling service (same host, different app):** IMAP mailbox migration via **`imapsync`** + Express on port **3001** — [`imap-sync-service.md`](imap-sync-service.md). ddashboard **Werkzeuge → E-Mail-Migration** calls it through **`inc/routes/imap-sync-proxy.php`** (not FastAPI).
 
-ddashboard option **`dls_stella_email_index_url`** holds the base URL (option name is a legacy artefact from the email indexing era). No trailing slash in stored value.
+ddashboard option **`dls_stella_email_index_url`** holds the base URL (option name is a legacy artefact from the email indexing era). No trailing slash in stored value. **⚠️ Follow-up outstanding (2026-08-07):** this option still points at the old `http://<ip>:8080/stella` URL and must be updated to `https://stella.foxcraft.digital/stella`.
 
 **Auth:** none on the API — access is restricted at the network layer (UFW / known egress IP). Optional `dls_stella_email_index_key` may be sent as `X-Stella-Key`; current Stella deploy does not require it.
 
