@@ -174,9 +174,17 @@ First cert request for this subdomain failed once on Let's Encrypt with `NXDOMAI
 
 ---
 
-## End-to-end test (confirmed working 2026-08-06)
+## End-to-end tests
 
+**2026-08-06 — initial wiring**
 From ddashboard, using its existing `~/.ssh/id_ed25519`:
 1. Signed and POSTed a deploy request → received a `job_id`, confirming signature verification passed
 2. Initial `git pull` failed (`Host key verification failed`) — fixed by mounting `/root/.ssh` into the container
 3. Re-ran → `git pull`, `dotnet publish`, zip, and Azure deploy all progressed correctly through the SSE stream in real time, ending in a successful Azure deployment
+
+**2026-08-07 — full Atlas integration confirmed**
+From Atlas (dev.atlas.foxcraft.digital), using the SSH key configured in Settings → GitHub:
+1. `POST /apps` (signed `list-apps`) → returned `{"apps":["advoapp-production"]}` ✓
+2. Atlas form populated the app dropdown from the live list ✓
+3. Deploy triggered via Atlas UI → Stella queued it, polled to completion, `commit_sha` and `commit_message` captured and stored on the run record ✓
+4. History row in Atlas showed correct commit SHA, duration, and Success status ✓
