@@ -162,15 +162,24 @@ Example job response once populated:
 ## Caddy block
 ```caddyfile
 stella-deployment-api.foxcraft.digital {
+    tls {
+        issuer acme {
+            email projects@foxcraft.digital
+            dir https://acme-v02.api.letsencrypt.org/directory
+            dns hetzner {env.HETZNER_API_TOKEN}
+        }
+    }
     reverse_proxy deploy-api:8080
 }
 ```
 
 **Gotcha hit during setup:** after editing the Caddyfile, `docker compose up -d caddy` alone did **not** pick up the change — Compose only restarts a container if it detects a change to the service's own definition (image, env, etc.), not a bind-mounted file's content. Use `docker compose restart caddy` after any Caddyfile edit.
 
+**Issuer pin:** always include `dir https://acme-v02.api.letsencrypt.org/directory` — without it Caddy can fall back to ZeroSSL or Let's Encrypt staging. Staging certs are not trusted. See [`infrastructure.md`](infrastructure.md) Issue 3.
+
 ## DNS / cert issuance note
 
-First cert request for this subdomain failed once on Let's Encrypt with `NXDOMAIN` during "secondary validation" — one of Let's Encrypt's multiple DNS vantage points hit a stale negative cache for the brand-new `_acme-challenge` TXT record, even though the record was already correctly live (confirmed via an independent external DNS checker). **Caddy's built-in automatic fallback to ZeroSSL** retried and succeeded about 40 seconds later without manual intervention. Expected/normal for a freshly created subdomain — let the full retry cycle run rather than assuming a first failure means something is broken.
+First cert request for this subdomain failed once on Let's Encrypt with `NXDOMAIN` during "secondary validation" — one of Let's Encrypt's multiple DNS vantage points hit a stale negative cache for the brand-new `_acme-challenge` TXT record, even though the record was already correctly live (confirmed via an independent external DNS checker). With the production `dir` pin in place, let Caddy's Let's Encrypt retry cycle run; do **not** rely on ZeroSSL/staging fallback. If retries stick on `Incorrect TXT record` / Hetzner `duplicate value`, delete the stale `_acme-challenge` TXT and restart Caddy (infrastructure Issue 2).
 
 ---
 

@@ -61,7 +61,7 @@ Token stored in `/opt/services/caddy/.env` (`chmod 600`), referenced in the Cadd
 
 **Updated 2026-08-07:** Ollama, imap-sync, and stella-api moved from a bare `:8080` block to a proper `stella.foxcraft.digital` subdomain with automatic HTTPS. The `:8080` block no longer exists in the Caddyfile; port 8080 is still published by the `caddy` container in `docker-compose.yml` but receives no traffic.
 
-Each site block now pins explicitly to Let's Encrypt only via a per-site `tls { issuer acme { ... } }` directive — see "Issue 3: ZeroSSL fallback hang" below for why.
+Each site block must pin Let's Encrypt **production** via a per-site `tls { issuer acme { ... } }` block that includes an explicit `dir` — see "Issue 3 / staging fallback" below for why a bare `issuer acme` (or a global `acme_dns` alone) is not enough.
 
 ```caddyfile
 {
@@ -73,6 +73,7 @@ stella.foxcraft.digital {
     tls {
         issuer acme {
             email projects@foxcraft.digital
+            dir https://acme-v02.api.letsencrypt.org/directory
             dns hetzner {env.HETZNER_API_TOKEN}
         }
     }
@@ -94,6 +95,7 @@ advoapp.finditoo.foxcraft.digital {
     tls {
         issuer acme {
             email projects@foxcraft.digital
+            dir https://acme-v02.api.letsencrypt.org/directory
             dns hetzner {env.HETZNER_API_TOKEN}
         }
     }
@@ -104,14 +106,47 @@ stella-deployment-api.foxcraft.digital {
     tls {
         issuer acme {
             email projects@foxcraft.digital
+            dir https://acme-v02.api.letsencrypt.org/directory
             dns hetzner {env.HETZNER_API_TOKEN}
         }
     }
     reverse_proxy deploy-api:8080
 }
+
+osgar.datahub.foxcraft.digital {
+    tls {
+        issuer acme {
+            email projects@foxcraft.digital
+            dir https://acme-v02.api.letsencrypt.org/directory
+            dns hetzner {env.HETZNER_API_TOKEN}
+        }
+    }
+    reverse_proxy osgar.datahub.foxcraft.digital:8080
+}
 ```
 
+**Required template for every new domain block** (copy as-is; only change hostname + upstream):
+
+```caddyfile
+<subdomain>.foxcraft.digital {
+    tls {
+        issuer acme {
+            email projects@foxcraft.digital
+            dir https://acme-v02.api.letsencrypt.org/directory
+            dns hetzner {env.HETZNER_API_TOKEN}
+        }
+    }
+    reverse_proxy <container-name>:8080
+}
+```
+
+The `dir` line is decisive — without it, Caddy can still fall back internally to `acme-staging-v02.api.letsencrypt.org` even with `issuer acme` set. A global `acme_dns hetzner {env.HETZNER_API_TOKEN}` alone also does **not** lock the issuer.
+
+**Already pinned with `dir`:** `advoapp.finditoo.foxcraft.digital`, `stella-deployment-api.foxcraft.digital`, `osgar.datahub.foxcraft.digital`.
+
 Each new subdomain gets its own block at the bottom, reverse-proxying to a container name on the `edge` network — Caddy handles TLS automatically via DNS-01, no manual cert management needed.
+
+**After any Caddyfile edit:** `docker compose restart caddy` is required (not `up -d` alone — Compose does not recreate/reload on bind-mounted file content changes). Restart mid-retry is fine; Caddy simply restarts the attempt for the affected domain.
 
 **Open follow-up:** `172.18.0.1:11434` (Ollama) and `172.18.0.1:8001` (stella-api) still use the Docker bridge gateway IP rather than container-name routing used by `imap-sync:3001` and `deploy-api:8080`. Functionally fine, but inconsistent with the `edge` network pattern. Low priority.
 
@@ -133,46 +168,61 @@ docker compose down <service> && docker compose up -d --build <service>
 ```
 This applies to any service using `env_file:` — not just Caddy. Verify the env is live inside the container with `docker exec <container> printenv <VAR>`.
 
-#### Issue 2 — Stale TXT records cause DNS-01 failures across retry attempts
+#### Issue 2 — Stale `_acme-challenge` TXT records cause DNS-01 failures across retry attempts
 
-Two failure patterns observed:
+Caddy deletes the `_acme-challenge` TXT record after an attempt **only when that attempt fully succeeds**. On every failure (NXDOMAIN timing, SERVFAIL, wrong issuer, interrupt), the record with the **old** token stays. The next attempt generates a **new** token — Let's Encrypt then either sees the old value (`Incorrect TXT record ... found`) or writing the new value fails at the Hetzner API with `duplicate value`.
+
+Failure patterns:
 
 - `NXDOMAIN looking up TXT for _acme-challenge.<name>` — validator queried before TXT record propagated (normal on first attempt, resolves on retry).
-- `Incorrect TXT record "<value>" found` — validator found a **stale** TXT value from a previous interrupted attempt. Hetzner's `rrsets` API rejects writing a second value under an existing name as `duplicate value`, so every subsequent attempt fails outright rather than overwriting.
+- `Incorrect TXT record "<value>" found` — validator found a **stale** TXT value from a previous failed/interrupted attempt.
+- Hetzner `duplicate value` — Caddy tried to write a new token while the old one still exists under the same name.
 
-**Root cause of the duplicates:** manually interrupting Caddy mid-attempt (`docker compose restart`, `down`, `--force-recreate`) kills the process before Caddy's own cleanup step runs, leaving a stale `_acme-challenge` TXT record for the next attempt to trip over.
+**Root cause:** any incomplete attempt leaves the TXT behind — not only a manual interrupt (`docker compose restart` / `down` / `--force-recreate` mid-attempt), but also natural ACME failures (timing, wrong CA).
 
-**Correct procedure:**
-1. Before retrying after an interrupted attempt, delete any leftover TXT record:
-   ```bash
-   source /opt/services/caddy/.env
-   curl -s -X DELETE \
-     "https://api.hetzner.cloud/v1/zones/567656/rrsets/_acme-challenge.<name>/TXT" \
-     -H "Authorization: Bearer $HETZNER_API_TOKEN"
-   ```
-2. Start Caddy and **do not interrupt it** — let its backoff/retry cycle run unmodified. A clean first attempt typically resolves in 15–30 s once DNS has propagated; first-ever issuance for a new subdomain may take a few minutes across a few retries.
-3. If still failing after ~10 minutes of uninterrupted operation, query the authoritative nameserver directly to confirm the TXT record is actually live, bypassing resolver caching:
-   ```bash
-   dig @ns1.your-server.de _acme-challenge.<name> TXT +short
-   ```
+**Diagnose** (look for leftover challenge records for the subdomain):
+```bash
+source /opt/services/caddy/.env
+curl -s -X GET "https://api.hetzner.cloud/v1/zones/567656/rrsets" \
+  -H "Authorization: Bearer $HETZNER_API_TOKEN" | python3 -m json.tool | grep -B2 -A6 "_acme-challenge.<subdomain>"
+```
+
+**Fix — delete the record, then restart Caddy:**
+```bash
+source /opt/services/caddy/.env
+curl -s -X DELETE \
+  "https://api.hetzner.cloud/v1/zones/567656/rrsets/_acme-challenge.<subdomain>/TXT" \
+  -H "Authorization: Bearer $HETZNER_API_TOKEN"
+
+cd /opt/services
+docker compose restart caddy
+docker compose logs -f --since 1m caddy | grep -i "<subdomain>"
+```
+
+If DELETE returns `"not_found"`: fine — Caddy already cleaned up on the last successful (or partially cleaned) attempt.
+
+Optional: confirm the record is actually live on the authoritative nameserver (bypasses resolver cache):
+```bash
+dig @ns1.your-server.de _acme-challenge.<subdomain> TXT +short
+```
+
+A clean first attempt typically resolves in 15–30 s once DNS has propagated; first-ever issuance for a new subdomain may take a few minutes across a few retries. Prefer letting an uninterrupted backoff cycle run; only delete + restart when stuck on stale/duplicate TXT errors.
 
 **What was ruled out:** concurrent issuance across multiple domains (tested `stella.foxcraft.digital` in isolation — same NXDOMAIN pattern, so it's not a cross-domain race); UFW / IP whitelist (DNS-01 validation is purely outbound from Caddy to Hetzner's API, no inbound traffic involved).
 
-#### Issue 3 — ZeroSSL fallback can hang indefinitely on a single attempt
+#### Issue 3 — ZeroSSL / Let's Encrypt staging fallback (must pin `dir`)
 
-One dns-01 attempt via ZeroSSL (Caddy's automatic fallback after a Let's Encrypt failure) produced no log output for 5+ minutes — no success, no failure, no retry-scheduled line. The DNS TXT record was correctly live the entire time, so this was not a propagation issue; the ZeroSSL ACME call itself never returned.
+**Problem:** A Caddyfile block without an explicit `tls { issuer acme { ... dir ... } }` pin can, after failed attempts, automatically fall back to ZeroSSL or Let's Encrypt **staging**. Staging certificates are not browser-trusted and never become valid — the domain block stays effectively broken, without that being obvious on a first glance at the logs.
 
-**Fix applied:** pinned all site blocks to Let's Encrypt only using per-site `tls { issuer acme { ... } }` (see Caddyfile above). With ZeroSSL out of the picture, all subsequent retries went through Let's Encrypt and completed normally.
+**Root cause:** A global `acme_dns hetzner {env.HETZNER_API_TOKEN}` alone does **not** lock the issuer. Even `tls { issuer acme { dns hetzner ... } }` **without** an explicit `dir` still allows Caddy to switch between production and staging endpoints.
 
-**Open question:** whether this was a one-off (network hiccup, ZeroSSL-side issue) or a recurring interaction between `caddy-dns/hetzner/v2` and ZeroSSL's ACME flow isn't established — observed once. If it recurs, worth checking whether it's module-specific or a general Caddy/ZeroSSL problem.
+Observed history:
+- ZeroSSL fallback after a Let's Encrypt failure once hung with no log output for 5+ minutes (TXT was correctly live — not a propagation issue).
+- After repeated fast failures, Caddy escalated to `acme-staging-v02.api.letsencrypt.org`. Staging may succeed (proving dns-01 works) while production stays broken if the block remains unpinned.
 
-#### Automatic Let's Encrypt staging fallback
+**Fix — every new domain block from day one** (see Caddyfile template above): include `dir https://acme-v02.api.letsencrypt.org/directory` inside `issuer acme { ... }`. That line is what prevents the internal staging fallback.
 
-After repeated fast failures for the same identifiers within a short window, Caddy automatically escalated to Let's Encrypt's **staging** CA (`acme-staging-v02.api.letsencrypt.org`) to avoid exhausting production rate limits. **Staging certificates are not trusted by browsers.**
-
-In the 2026-08-07 session the staging round succeeded (proving the dns-01 pipeline worked end-to-end), then Caddy automatically retried production shortly after — confirmed by `issuer: acme-v02.api.letsencrypt.org-directory` (not `acme-staging-v02`) in the final log lines for both `advoapp.finditoo.foxcraft.digital` and `stella.foxcraft.digital`.
-
-**Takeaway:** if you see `acme-staging-v02` in the logs, don't intervene — it's Caddy's own rate-limit protection, and it should return to production once a validation path is proven. If a staging cert ends up being served long-term (check with `curl -v` → inspect the issuer in the cert chain), something is still wrong and needs a closer look.
+**Do not** treat `acme-staging-v02` in the logs as harmless rate-limit protection to ignore — if staging is in play, the site is at risk of serving an untrusted cert. Pin `dir`, clean any stale `_acme-challenge` TXT, restart Caddy, and confirm the final issuer is `acme-v02.api.letsencrypt.org-directory` (or inspect the served chain with `curl -v`).
 
 ---
 
@@ -228,8 +278,9 @@ networks:
 3. Write a `Dockerfile` appropriate to the stack (see `finditoo-advoapp` for a .NET example)
 4. Write `docker-compose.yml` per the template above — **no `ports:` block**
 5. Create the DNS A record via Hetzner Cloud API (see below)
-6. Add a Caddy block for the subdomain, restart Caddy
-7. `docker compose build && docker compose up -d`
+6. Add a Caddy block with explicit `dir` pin (see Caddyfile template above), then `docker compose restart caddy`
+7. Check / clear stale `_acme-challenge` TXT if issuance sticks (Issue 2)
+8. `docker compose build && docker compose up -d` (or `docker-compose.dev.yml` for .NET hot-reload — see [`dotnet-app-deployment.md`](dotnet-app-deployment.md))
 
 No UFW or `DOCKER-USER` changes needed for any of this — that's the entire point of routing everything through Caddy on the `edge` network.
 

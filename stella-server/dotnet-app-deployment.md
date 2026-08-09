@@ -216,3 +216,31 @@ Takes several minutes end-to-end — `dotnet publish` inside Docker, then Azure'
 ### Remote trigger
 
 See [`deploy-api.md`](deploy-api.md) — ddashboard can trigger this same script via an authenticated HTTP API instead of SSHing in manually.
+
+---
+
+## New .NET-dev domain — full checklist
+
+Reference run: `osgar.datahub.foxcraft.digital` (Blazor Server, .NET 10). Complements the patterns above and the Caddy notes in [`infrastructure.md`](infrastructure.md).
+
+1. **App folder + source** under `/opt/apps/dotnet/<subdomain>/src` — clone the repo, or for an empty repo: `dotnet new blazor -n <Name> --interactivity Server`
+2. **`Dockerfile.dev` + `docker-compose.dev.yml`** after the `advoapp-dev` pattern above. Adjust the host port if `5080` is already taken (e.g. `127.0.0.1:5081:8080`)
+3. **DNS A-Record** via Hetzner Cloud API (see [`infrastructure.md`](infrastructure.md) — zone `567656`)
+4. **Caddy block** with explicit Let's Encrypt production `dir` pin:
+   ```caddyfile
+   <subdomain>.foxcraft.digital {
+       tls {
+           issuer acme {
+               email projects@foxcraft.digital
+               dir https://acme-v02.api.letsencrypt.org/directory
+               dns hetzner {env.HETZNER_API_TOKEN}
+           }
+       }
+       reverse_proxy <container-name>:8080
+   }
+   ```
+5. **`docker compose restart caddy`** from `/opt/services` (not `up -d` alone). Watch issuance logs; if stuck, diagnose/delete stale `_acme-challenge` TXT per infrastructure Issue 2, then restart again
+6. **`docker compose -f docker-compose.dev.yml up -d`** in the app folder
+7. **`curl -sI https://<subdomain>`** — `502` for the first seconds/minutes after start is normal while `dotnet watch` restores/builds
+
+Do **not** omit `dir` — without it Caddy can fall back to ZeroSSL or Let's Encrypt staging; staging certs are untrusted and leave the domain effectively broken (details in infrastructure Issue 3).
