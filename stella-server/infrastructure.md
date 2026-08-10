@@ -24,12 +24,14 @@ Core Docker-managed services live at `/opt/services/docker-compose.yml`. Dev/sta
 | `stella-api` | Docker (`network_mode: host`) | 8001 | FastAPI via uvicorn — chat-only (`/chat/health`, `/chat/stream`) |
 | `imap-sync` | Docker (Node.js) | 3001 | `imapsync` wrapper (Express) |
 | `deploy-api` | Docker (`edge` network, no host port) | — | SSH-signature-authenticated deploy trigger — [`deploy-api.md`](deploy-api.md) |
-| `ollama` | systemd | 11434 | LLM inference |
+| `ollama` | Docker (`edge` network) | 11434 (published to `127.0.0.1` only) | LLM inference — containerized 2026-08-10, see below |
+| `health-api` | Docker (`edge` network, no host port) | — | System status endpoint for Atlas — [`health-api.md`](health-api.md) |
 
 ### Non-Docker systemd services
-- `ollama.service`
 - `fail2ban.service`
 - `docker-user-firewall.service` — reapplies `DOCKER-USER` iptables rules after every boot (see Security)
+
+**`ollama.service` retired 2026-08-10** — Ollama moved to a Docker container (see "Ollama" section below). The systemd unit is stopped and disabled, not deleted — kept as an emergency fallback (`systemctl start ollama`) but should not come back on its own after a reboot.
 
 **Removed 2026-08-06:** `chromadb.service`, `chromadb` pip package, `github-runner` container (never successfully registered — 404 on GitHub's runner-registration endpoint, confirmed zero configured runners via GitHub UI, no dependent workflows).
 
@@ -79,7 +81,7 @@ stella.foxcraft.digital {
     }
     handle /ollama* {
         uri strip_prefix /ollama
-        reverse_proxy 172.18.0.1:11434
+        reverse_proxy ollama:11434
     }
     handle /imap-sync* {
         uri strip_prefix /imap-sync
@@ -99,7 +101,7 @@ advoapp.finditoo.foxcraft.digital {
             dns hetzner {env.HETZNER_API_TOKEN}
         }
     }
-    reverse_proxy advoapp.finditoo.foxcraft.digital:8080
+    reverse_proxy advoapp-dev:8080
 }
 
 stella-deployment-api.foxcraft.digital {
@@ -142,13 +144,15 @@ osgar.datahub.foxcraft.digital {
 
 The `dir` line is decisive — without it, Caddy can still fall back internally to `acme-staging-v02.api.letsencrypt.org` even with `issuer acme` set. A global `acme_dns hetzner {env.HETZNER_API_TOKEN}` alone also does **not** lock the issuer.
 
-**Already pinned with `dir`:** `advoapp.finditoo.foxcraft.digital`, `stella-deployment-api.foxcraft.digital`, `osgar.datahub.foxcraft.digital`.
+**Already pinned with `dir`:** `stella.foxcraft.digital`, `advoapp.finditoo.foxcraft.digital`, `stella-deployment-api.foxcraft.digital`, `osgar.datahub.foxcraft.digital` (all four re-verified/fixed 2026-08-10).
 
 Each new subdomain gets its own block at the bottom, reverse-proxying to a container name on the `edge` network — Caddy handles TLS automatically via DNS-01, no manual cert management needed.
 
 **After any Caddyfile edit:** `docker compose restart caddy` is required (not `up -d` alone — Compose does not recreate/reload on bind-mounted file content changes). Restart mid-retry is fine; Caddy simply restarts the attempt for the affected domain.
 
-**Open follow-up:** `172.18.0.1:11434` (Ollama) and `172.18.0.1:8001` (stella-api) still use the Docker bridge gateway IP rather than container-name routing used by `imap-sync:3001` and `deploy-api:8080`. Functionally fine, but inconsistent with the `edge` network pattern. Low priority.
+**Resolved 2026-08-10:** Ollama's Caddy route now uses `ollama:11434` container-name routing, consistent with `imap-sync:3001` and `deploy-api:8080`. `stella-api` still uses `172.18.0.1:8001` (the `services_default` gateway) since it runs `network_mode: host` and isn't reachable by container name — this one is a structural constraint of that networking mode, not an inconsistency to fix.
+
+**New gotcha found while building `health-api`:** any *new* container that needs to reach `stella-api` must use the gateway IP of **its own** Docker network, not necessarily `172.18.0.1`. `health-api` (on `edge`) needed `172.20.0.1` — `edge`'s own gateway — not `services_default`'s. Using the wrong gateway doesn't error, it just times out silently, easily mistaken for a firewall block. Additionally, UFW must explicitly whitelist whatever subnet the calling container's network uses (see Security section below) — this was missed for `edge` on port `8001` until `health-api` surfaced it.
 
 ---
 
@@ -284,6 +288,16 @@ networks:
 
 No UFW or `DOCKER-USER` changes needed for any of this — that's the entire point of routing everything through Caddy on the `edge` network.
 
+### Gateway IP depends on which Docker network the caller is on
+
+Every Docker bridge network has its own gateway IP. A container on `edge` and a container on `services_default` will get different gateway addresses even though both ultimately reach the same host. When a container needs to reach a `network_mode: host` service (like `stella-api`) via its gateway IP, always check *that specific container's* network membership and gateway — don't assume a gateway IP that worked from one network will work from another:
+
+```bash
+docker inspect <container> --format '{{range $net, $conf := .NetworkSettings.Networks}}{{$net}}: {{$conf.Gateway}}{{"\n"}}{{end}}'
+```
+
+Combine this with a UFW check on the destination port — Docker network membership does not imply firewall access. Both must be correct, and a mismatch on either one produces the same symptom (a silent timeout), making them easy to conflate during debugging.
+
 ### Git/SSH access for cloning private repos
 
 A general-purpose SSH key was generated on Stella (`~/.ssh/id_ed25519`, default path/name, no passphrase — needs to work unattended) and added to Dominik's **personal GitHub account** (not a repo-specific deploy key, not a machine user — deliberate choice for simplicity; consider migrating to a dedicated machine-user GitHub account later if broader/more permanent server-level access is wanted, since this key currently inherits access to everything the personal account can see).
@@ -315,33 +329,42 @@ curl -s -X POST "https://api.hetzner.cloud/v1/zones/567656/rrsets" \
 
 ---
 
-## Ollama
+## Ollama — containerized 2026-08-10
 
-- **Binary:** `/usr/local/bin/ollama`
-- **Listens:** `*:11434` (all interfaces)
-- **Config note:** `OLLAMA_HOST` must be set explicitly in shell (`OLLAMA_HOST=127.0.0.1:11434 ollama list`)
+Moved from a native systemd service to a Docker container, for three reasons: consistency with every other service on the `edge` network pattern, proper CPU resource limiting (the systemd `CPUQuota`/`AllowedCPUs` settings documented in an earlier version of this doc were never actually applied — confirmed via `systemctl cat ollama.service` returning empty for both), and to fix the gateway-IP routing inconsistency flagged as an open follow-up (Caddy's `/ollama` route now uses `ollama:11434` container-name routing instead of the `172.18.0.1` bridge gateway workaround).
 
-### Loaded Models (current as of 2026-08-06)
+```yaml
+# /opt/services/docker-compose.yml (relevant service)
+ollama:
+  image: ollama/ollama:latest
+  container_name: ollama
+  volumes:
+    - ollama-models:/root/.ollama
+  environment:
+    - OLLAMA_KEEP_ALIVE=-1
+  ports:
+    - "127.0.0.1:11434:11434"
+  deploy:
+    resources:
+      limits:
+        cpus: "6"
+  cpuset: "0-5"
+  networks:
+    - edge
+  restart: unless-stopped
+```
 
-| Model | Size | Notes |
-|-------|------|-------|
-| `llama3.3:70b` | 42 GB | Primary — email drafts, high-quality generation |
-| `qwen2.5:72b` | 47 GB | Under evaluation as a possible replacement for `llama3.3:70b` — better documented multilingual support (Polish not in Llama 3.3's officially supported list). Comparison on real DE/PL output still pending. |
-| `qwen3:30b` | 18 GB | Kept, not in active routing |
-| `gemma4:26b` | 17 GB | Kept — CPU inference is slow for this size |
-| `gemma4:e4b` | 9.6 GB | Kept, not in active routing |
-| `qwen2.5-coder:14b` | 9.0 GB | Kept — candidate for `code` agent (unassigned since `qwen3-coder-next` removal) |
-| `qwen2.5:14b` | 9.0 GB | Classification, Slack replies |
-| `gemma4:e2b` | 7.2 GB | Vision candidate for invoice/receipt extraction — not yet tested |
-| `deepseek-r1:8b` | 5.2 GB | Kept, not in active routing |
-| `qwen2.5-coder:7b` | 4.7 GB | Kept, not in active routing |
-| `phi4-mini:latest` | 2.5 GB | Fast classification, preloaded |
-| `qwen2.5:1.5b` | 986 MB | Kept, not in active routing |
-| `gemma3:1b` | 815 MB | Kept, not in active routing |
+**Resource limits:** capped at half the machine — `cpus: "6"` (Docker's `cpus` is in units of full cores, not threads; the i7-8700 has 6 cores / 12 threads, confirmed via `nproc`) and `cpuset: "0-5"` pins to the first 6 threads specifically. Both were previously intended at the systemd level but never actually enforced — this is the first time a real limit has existed.
 
-**Removed 2026-08-06:** `nomic-embed-text` (only use was ChromaDB embeddings, pipeline gone), `qwen3-coder-next` (51 GB, was the `code` agent model — **removed without a replacement assigned**, open decision).
+**`OLLAMA_KEEP_ALIVE=-1`** replaces the old "preloaded permanently via systemd" approach — keeps any loaded model resident indefinitely once loaded. Note this doesn't load a model automatically on container start; the always-warm models (`llama3.3:70b`, `phi4-mini`) still need to be explicitly invoked once after startup to get resident in memory.
 
-**Preloaded permanently (systemd):** `llama3.3:70b`, `phi4-mini`
+**Port binding:** `127.0.0.1:11434:11434` — published only to localhost, since `stella-api` (which runs `network_mode: host`) needs to reach it via `127.0.0.1`. Everything else reaches it via `ollama:11434` container-name routing on `edge`.
+
+**Models are not backed up.** The `ollama-models` Docker volume holds ~172GB of blobs, fully re-downloadable via `ollama pull`. Excluded from the restic backup scope by design — same principle as before containerization, just a different storage location. The volume also contains an auto-generated SSH keypair (`id_ed25519`/`.pub`) used for Ollama's own registry/cloud auth — not user-configured, regenerates automatically, not worth preserving.
+
+**Migration note:** models were re-pulled fresh into the new container rather than migrating the old systemd-managed blob directory — simpler, and the recovery story (re-pull on demand) was already the plan either way. Old host-side model files can be safely deleted once `docker exec ollama ollama list` confirms all expected models are present in the container.
+
+**UFW:** the old rules for port `11434` (whitelisted to the two static IPs) are no longer needed once the systemd service is confirmed fully retired, since nothing needs to reach Ollama directly from outside the Docker network anymore — remove via `ufw status numbered | grep 11434` then `ufw delete <rule number>`.
 
 ---
 
@@ -355,7 +378,7 @@ Fully decommissioned. See git history / prior doc versions if a vector search fe
 
 ### Current state (verified 2026-08-06; ports updated 2026-08-07)
 
-- **UFW** — active, default-deny incoming. Ports 22, 8001, 11434, 443 restricted to `194.126.177.181` and `23.88.90.12`. Port 8001 additionally allows `172.18.0.0/16` (Docker bridge subnet) for Caddy's internal proxy calls.
+- **UFW** — active, default-deny incoming. Ports 22, 443 restricted to `194.126.177.181` and `23.88.90.12`. Port 8001 additionally allows `172.18.0.0/16` (`services_default` bridge subnet) for Caddy's internal proxy calls, **and `172.20.0.0/16` (`edge` bridge subnet, added 2026-08-10)** for `health-api`'s stella-api check. Port 11434's direct-access rules removed 2026-08-10 once Ollama moved fully behind the `edge` network / Caddy — no longer needs a host-level UFW allowance for the old static-IP whitelist.
 - **fail2ban** — running
 - **Docker-published ports (8080, 3001, 443)** — protected via a custom `DOCKER-USER` iptables chain (details below)
 
@@ -469,7 +492,39 @@ services:
       - edge
     restart: unless-stopped
 
+  ollama:
+    image: ollama/ollama:latest
+    container_name: ollama
+    volumes:
+      - ollama-models:/root/.ollama
+    environment:
+      - OLLAMA_KEEP_ALIVE=-1
+    ports:
+      - "127.0.0.1:11434:11434"
+    deploy:
+      resources:
+        limits:
+          cpus: "6"
+    cpuset: "0-5"
+    networks:
+      - edge
+    restart: unless-stopped
+
+  health-api:
+    build: ./health-api
+    container_name: health-api
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - ./deploy-api/allowed_signers:/opt/services/health-api/allowed_signers:ro
+      - /:/hostroot:ro
+    networks:
+      - edge
+    restart: unless-stopped
+
 networks:
   edge:
     external: true
+
+volumes:
+  ollama-models:
 ```

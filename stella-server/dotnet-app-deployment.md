@@ -7,10 +7,10 @@ Established 2026-08-06 with `finditoo-advoapp` (`advoapp`) as the first implemen
 | Environment | Where | How | URL |
 |---|---|---|---|
 | **Dev** | Stella, Docker | `dotnet watch` hot-reload, bind-mounted source | `advoapp.finditoo.foxcraft.digital` (currently — see note below) |
-| **Staging** | Stella, Docker | Built image, manual/triggered rebuild | not currently wired to a subdomain — see note below |
+| **Staging** | — | Removed 2026-08-10 (was built but never Caddy-routed) | — |
 | **Production** | Azure App Service | Clean checkout → `dotnet publish` → zip → `az webapp deploy` | Azure-assigned `*.azurewebsites.net` (custom domain not yet configured) |
 
-**⚠️ Current state note:** The original plan was dev + staging as two separate Docker containers, with staging (the built, non-watching container) exposed at `advoapp.finditoo.foxcraft.digital`. In practice, Dominik asked for that public subdomain to show the **live dev container** instead, since "the production URL is completely different" (i.e., Azure is production, so the Stella subdomain only ever needs to reflect current dev work). As of now, the Caddyfile routes `advoapp.finditoo.foxcraft.digital` → `advoapp-dev:8080`. The originally-built plain staging container (`docker-compose.yml`, no hot-reload) still exists and can be rebuilt with `docker compose build && up -d` in its folder, but nothing on the public internet points to it currently.
+**⚠️ Current state note:** The original plan was dev + staging as two separate Docker containers, with staging (the built, non-watching container) exposed at `advoapp.finditoo.foxcraft.digital`. In practice, Dominik asked for that public subdomain to show the **live dev container** instead, since "the production URL is completely different" (i.e., Azure is production, so the Stella subdomain only ever needs to reflect current dev work). As of now, the Caddyfile routes `advoapp.finditoo.foxcraft.digital` → `advoapp-dev:8080`. The unused staging container/files were removed 2026-08-10 (see below).
 
 ---
 
@@ -18,10 +18,8 @@ Established 2026-08-06 with `finditoo-advoapp` (`advoapp`) as the first implemen
 
 ```
 /opt/apps/dotnet/
-  ├── advoapp.finditoo.foxcraft.digital/            ← dev + "staging" container definitions
+  ├── advoapp.finditoo.foxcraft.digital/            ← dev container definition
   │     ├── src/                                     ← git clone, live-edited via Cursor/SSH
-  │     ├── Dockerfile                                ← staging build (dotnet publish, runtime image)
-  │     ├── docker-compose.yml                         ← staging container def (not currently exposed via Caddy)
   │     ├── Dockerfile.dev                             ← dev build (SDK image only, no publish)
   │     └── docker-compose.dev.yml                     ← dev container def (bind-mounts src/, dotnet watch)
   │
@@ -60,6 +58,7 @@ services:
       - ASPNETCORE_ENVIRONMENT=Development
       - DOTNET_USE_POLLING_FILE_WATCHER=1
     command: ["dotnet", "watch", "run", "--urls", "http://+:8080"]
+    restart: unless-stopped
     networks:
       - edge
       - default
@@ -75,47 +74,19 @@ Key details:
 - To view live changes: edit in Cursor (connected via Remote-SSH to Stella) → save → `dotnet watch` recompiles/hot-patches automatically within a couple seconds → refresh browser at `https://advoapp.finditoo.foxcraft.digital`.
 - Harmless log line to ignore: `dotnet watch ❌ Failed to launch ... Unable to launch the browser` — `dotnet watch` tries to auto-open a browser on the host, which doesn't exist inside the container. Not an error affecting the app itself.
 - Start it: `docker compose -f docker-compose.dev.yml up -d`
+- **`restart: unless-stopped` added 2026-08-10.** Originally missing — `advoapp-dev` was killed by a Docker daemon restart on 2026-08-07 (unrelated troubleshooting elsewhere on the server) and, with no restart policy, silently stayed down for **3 days** before being noticed. Nothing was monitoring it at the time. Root cause confirmed via `docker inspect --format '{{.State.FinishedAt}}'` cross-referenced against `journalctl -u docker` daemon-restart timestamps — not an OOM kill (`OOMKilled: false`, no kernel log entry), just a daemon bounce with no policy to bring the container back. This exact scenario is now also caught automatically by [`health-api`](health-api.md), Atlas polling permitting.
 
 Run manually (start it, view logs): `docker compose -f docker-compose.dev.yml up`
 
 ---
 
-## Staging container (built, not currently exposed)
+## Staging container — removed 2026-08-10
 
-`Dockerfile`:
-```dockerfile
-FROM mcr.microsoft.com/dotnet/sdk:10.0 AS build
-WORKDIR /src
-COPY src/ .
-RUN dotnet restore
-RUN dotnet publish -c Release -o /app
+Previously existed as a second Dockerfile/compose pair in the same folder as the dev container (`Dockerfile` + `docker-compose.yml`, vs. dev's `Dockerfile.dev` + `docker-compose.dev.yml`). Built during initial setup per the original three-environment plan, but never actually routed to by Caddy after the decision to point the public subdomain at the live dev container instead (see the "Current state note" above). Confirmed unused — not in `docker ps -a`, no Caddy block referenced it, and the production deploy pipeline (`deploy-advoapp.sh`) builds independently from a separate clean checkout, never touching this container at all.
 
-FROM mcr.microsoft.com/dotnet/aspnet:10.0 AS runtime
-WORKDIR /app
-COPY --from=build /app .
-EXPOSE 8080
-ENTRYPOINT ["dotnet", "finditoo.advoapp.dll"]
-```
+Removed entirely: container, built image, and both defining files (`Dockerfile`, `docker-compose.yml`). The `advoapp.finditoo.foxcraft.digital` folder now contains only `Dockerfile.dev`, `docker-compose.dev.yml`, and `src/` — matching what's actually deployed, closing the "folder holds two purposes" ambiguity this used to create.
 
-`docker-compose.yml`:
-```yaml
-services:
-  advoapp.finditoo.foxcraft.digital:
-    build: .
-    container_name: advoapp.finditoo.foxcraft.digital
-    environment:
-      - ASPNETCORE_URLS=http://+:8080
-      - ASPNETCORE_ENVIRONMENT=Development
-    networks:
-      - edge
-    restart: unless-stopped
-
-networks:
-  edge:
-    external: true
-```
-
-Rebuild manually: `docker compose build && docker compose up -d` from this folder.
+If a genuine pre-deploy build-sanity-check is ever wanted, it should get its own subdomain and Caddy route rather than being silently built-but-unrouted — otherwise it becomes indistinguishable from dead weight, as it did here.
 
 ---
 
@@ -244,3 +215,7 @@ Reference run: `osgar.datahub.foxcraft.digital` (Blazor Server, .NET 10). Comple
 7. **`curl -sI https://<subdomain>`** — `502` for the first seconds/minutes after start is normal while `dotnet watch` restores/builds
 
 Do **not** omit `dir` — without it Caddy can fall back to ZeroSSL or Let's Encrypt staging; staging certs are untrusted and leave the domain effectively broken (details in infrastructure Issue 3).
+
+### Checklist addition — restart policy is not optional
+
+Every service in every `docker-compose*.yml` on this server should have `restart: unless-stopped` unless there's a specific reason not to (e.g. a genuinely one-shot job). This was missed on both `advoapp-dev` and `osgar-datahub-dev` when they were first created — both used the same template, both had the same gap, and the first one went unnoticed for 3 days. Check for this explicitly in step-by-step reviews of any new `.dev.yml`.

@@ -11,7 +11,7 @@ This repository is consumed as a **Git submodule** at `docs/stella-docs` inside 
 | Folder                                     | Contents                                                                                                                        |
 | ------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------- |
 | [**atlas/**](atlas/)                       | Atlas deployment platform: architecture, deploy pipeline, .NET → Azure integration                                              |
-| [**stella-server/**](stella-server/)       | Stella machine: infrastructure, Docker, Caddy, **Stella API** (FastAPI), **IMAP sync** (Express + `imapsync`)                    |
+| [**stella-server/**](stella-server/)       | Stella machine: infrastructure, Docker, Caddy, **Stella API** (FastAPI), **IMAP sync**, **health-api**, Ollama                  |
 | [**stella-dashboard/**](stella-dashboard/) | WordPress theme: capabilities, architecture, mail, TrackingTime, design system, **OpenAPI + DB reference** ([`reference/`](stella-dashboard/reference/)), **exported Cursor rules** (`cursor-rules/*.md`) |
 | [**integration/**](integration/)           | Cross-cutting: **ddashboard ↔ Stella**, email indexing pipeline                                                                |
 
@@ -24,9 +24,12 @@ This repository is consumed as a **Git submodule** at `docs/stella-docs` inside 
 | [atlas/README.md](atlas/README.md)                                                         | Atlas deployment platform — overview, architecture, API reference  |
 | [integration/ddashboard-and-stella-server.md](integration/ddashboard-and-stella-server.md) | How both systems connect: network, queues, AI split, security, ops |
 | [integration/email-indexing.md](integration/email-indexing.md)                             | Mail v3 → Stella **`emails_v3`** / ChromaDB (contract + WordPress backlog) |
-| [stella-server/infrastructure.md](stella-server/infrastructure.md)                         | Servers, ports, Docker, Ollama, Chroma                             |
+| [stella-server/infrastructure.md](stella-server/infrastructure.md)                         | Servers, ports, Docker, Ollama, Caddy                              |
 | [stella-server/stella-api.md](stella-server/stella-api.md)                                 | FastAPI routes and behaviour                                       |
 | [stella-server/imap-sync-service.md](stella-server/imap-sync-service.md)                   | Express + `imapsync` job API (mailbox copy on Stella)              |
+| [stella-server/health-api.md](stella-server/health-api.md)                                 | Signed system-status endpoint for Atlas (containers, TLS, disk)    |
+| [stella-server/deploy-api.md](stella-server/deploy-api.md)                                 | SSH-signature deploy trigger API                                   |
+| [stella-server/dotnet-app-deployment.md](stella-server/dotnet-app-deployment.md)           | .NET app pattern on Stella (dev containers → Azure production)     |
 | [stella-dashboard/architecture.md](stella-dashboard/architecture.md)                       | Full theme architecture (CPTs, REST, mail, PM, PDF, …)             |
 | [stella-dashboard/CAPABILITIES.md](stella-dashboard/CAPABILITIES.md)                       | Product / module overview                                          |
 | [stella-dashboard/reference/README.md](stella-dashboard/reference/README.md)                 | **OpenAPI 3** (`dls/v1`, `api/v1`) + **custom DB tables** overview |
