@@ -20,7 +20,7 @@ Last updated: 2026-08-10
   - finditoo (5 consumer repos + contracts)
 - [ ] **stella-api in git** — `/opt/services/stella-api` is not version controlled yet
 - [ ] **Daily connectivity tests** — automated login/fetch/update tests for contract sync with failure notifications (stack not finalized)
-- [ ] **Atlas-side health polling job** — `health-api` (Stella-side endpoint) is built and confirmed working; Atlas needs a scheduled job to sign and poll it, plus a status-grid view. See [`stella-server/health-api.md`](stella-server/health-api.md#what-atlas-still-needs-to-build).
+- [ ] **Atlas health-api: render newer payload keys** — `docker_daemon`, `ollama_resource_usage`, `cpu_ram` (added later 2026-08-10). Polling + dashboard already live against `STELLA_HEALTH_API_URL`. See [`stella-server/health-api.md`](stella-server/health-api.md).
 - [ ] **Remove now-unneeded UFW rules for port 11434** — Ollama no longer needs direct host-level access now that it's fully behind `edge`/Caddy. Rules for the two static-IP whitelist entries can be deleted once the retired systemd `ollama.service` is confirmed not coming back.
 - [ ] **Old host-side Ollama model files** — can be deleted once `docker exec ollama ollama list` confirms all 13 models are present in the new container volume. Not yet verified as of 2026-08-10 (pull was still in progress — 10/13 confirmed present at last check).
 
@@ -34,6 +34,8 @@ Last updated: 2026-08-10
 - **Ollama had no enforced CPU limit** — documented `CPUQuota`/`AllowedCPUs` systemd settings were never actually applied (confirmed empty via `systemctl cat`). Now enforced at the Docker level (`cpus: "6"`, `cpuset: "0-5"`) as part of containerization.
 - **Unused `advoapp` staging container** — built during initial setup, never routed, silently sat unused. Removed.
 - **19GB of stale Docker build cache, an orphaned `/opt/github-runners` folder** — cleaned up.
+- **`health-api` public subdomain** — `stella-health-api.foxcraft.digital` via Caddy (Atlas cannot reach edge-internal hosts). Signature still required for `/system/health`. See [`stella-server/health-api.md`](stella-server/health-api.md).
+- **Atlas-side health polling** — scheduled job + DB history + dashboard status grid against `STELLA_HEALTH_API_URL` (remaining gap: render newer payload keys above).
 
 ---
 

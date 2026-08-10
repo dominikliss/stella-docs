@@ -25,7 +25,7 @@ Core Docker-managed services live at `/opt/services/docker-compose.yml`. Dev/sta
 | `imap-sync` | Docker (Node.js) | 3001 | `imapsync` wrapper (Express) |
 | `deploy-api` | Docker (`edge` network, no host port) | — | SSH-signature-authenticated deploy trigger — [`deploy-api.md`](deploy-api.md) |
 | `ollama` | Docker (`edge` network) | 11434 (published to `127.0.0.1` only) | LLM inference — containerized 2026-08-10, see below |
-| `health-api` | Docker (`edge` network, no host port) | — | System status endpoint for Atlas — [`health-api.md`](health-api.md) |
+| `health-api` | Docker (`edge` network) | 443 via Caddy (`stella-health-api.foxcraft.digital`) | System status endpoint for Atlas — [`health-api.md`](health-api.md) |
 
 ### Non-Docker systemd services
 - `fail2ban.service`
@@ -115,6 +115,17 @@ stella-deployment-api.foxcraft.digital {
     reverse_proxy deploy-api:8080
 }
 
+stella-health-api.foxcraft.digital {
+    tls {
+        issuer acme {
+            email projects@foxcraft.digital
+            dir https://acme-v02.api.letsencrypt.org/directory
+            dns hetzner {env.HETZNER_API_TOKEN}
+        }
+    }
+    reverse_proxy health-api:8080
+}
+
 osgar.datahub.foxcraft.digital {
     tls {
         issuer acme {
@@ -144,7 +155,7 @@ osgar.datahub.foxcraft.digital {
 
 The `dir` line is decisive — without it, Caddy can still fall back internally to `acme-staging-v02.api.letsencrypt.org` even with `issuer acme` set. A global `acme_dns hetzner {env.HETZNER_API_TOKEN}` alone also does **not** lock the issuer.
 
-**Already pinned with `dir`:** `stella.foxcraft.digital`, `advoapp.finditoo.foxcraft.digital`, `stella-deployment-api.foxcraft.digital`, `osgar.datahub.foxcraft.digital` (all four re-verified/fixed 2026-08-10).
+**Already pinned with `dir`:** `stella.foxcraft.digital`, `advoapp.finditoo.foxcraft.digital`, `stella-deployment-api.foxcraft.digital`, `stella-health-api.foxcraft.digital`, `osgar.datahub.foxcraft.digital`.
 
 Each new subdomain gets its own block at the bottom, reverse-proxying to a container name on the `edge` network — Caddy handles TLS automatically via DNS-01, no manual cert management needed.
 
@@ -227,6 +238,8 @@ Observed history:
 **Fix — every new domain block from day one** (see Caddyfile template above): include `dir https://acme-v02.api.letsencrypt.org/directory` inside `issuer acme { ... }`. That line is what prevents the internal staging fallback.
 
 **Do not** treat `acme-staging-v02` in the logs as harmless rate-limit protection to ignore — if staging is in play, the site is at risk of serving an untrusted cert. Pin `dir`, clean any stale `_acme-challenge` TXT, restart Caddy, and confirm the final issuer is `acme-v02.api.letsencrypt.org-directory` (or inspect the served chain with `curl -v`).
+
+**Follow-up (2026-08-10, `stella-health-api.foxcraft.digital`):** staging fallback was also observed **with a correct `dir` pin already present**, on Caddy's own ~60s internal retry after an initial NXDOMAIN — not a config-reload restart. Waiting it out was not enough; a full `docker compose restart caddy` after DNS had propagated landed on production LE. See [`health-api.md`](health-api.md). If this recurs: confirm DNS live, then force a Caddy restart rather than relying on internal retries alone.
 
 ---
 

@@ -2,7 +2,9 @@
 
 **Purpose:** gives Atlas (or any other trusted caller) a single signed endpoint to poll for the live status of every container, HTTP service, TLS cert, and disk on Stella — closes the gap exposed on 2026-08-10 when `advoapp-dev` silently died and stayed down for 3 days with nothing monitoring it.
 
-**Live at:** internal only — `health-api:8080` on the `edge` Docker network. No published host port, no public subdomain (unlike `deploy-api`, this has no reason to be internet-facing; Atlas reaches it the same way it would reach any other `edge`-network service, or via a future Caddy route if external polling is ever needed).
+**Live at:** `https://stella-health-api.foxcraft.digital` — given its own subdomain 2026-08-10, same day as initial build, once it became clear Atlas (running on a separate host, `dev.atlas.foxcraft.digital`) can't reach an internal Docker network IP on Stella directly. Routed through Caddy like every other public-facing service; still no host port published by the container itself — Caddy is the only thing with a route to it.
+
+**`STELLA_HEALTH_API_URL=https://stella-health-api.foxcraft.digital`**
 
 ---
 
@@ -63,6 +65,29 @@ EXPOSE 8080
 CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8080"]
 ```
 
+### Public Caddy route
+
+```caddyfile
+stella-health-api.foxcraft.digital {
+    tls {
+        issuer acme {
+            email projects@foxcraft.digital
+            dir https://acme-v02.api.letsencrypt.org/directory
+            dns hetzner {env.HETZNER_API_TOKEN}
+        }
+    }
+    reverse_proxy health-api:8080
+}
+```
+
+**First cert issuance for this subdomain hit two things worth knowing:**
+
+1. **Initial NXDOMAIN on the `_acme-challenge` TXT lookup** — expected, per Issue 2 in `infrastructure.md`: the A record was created only moments before Caddy attempted validation, and Let's Encrypt's validator hit propagation delay.
+
+2. **Caddy fell back to the staging CA on its automatic retry, despite the `dir` pin being correctly present in the Caddyfile the whole time.** This is new — previously, "no `dir` pin" was the only known cause of staging fallback (Issue 3). Here the pin was verified present via `awk`/`grep` before and after, ruling that out. The retry that fell to staging happened ~60 seconds after the first failure, on Caddy's own internal retry cycle — not a config-reload restart. **A full `docker compose restart caddy` (not just waiting out Caddy's internal retry) after confirming DNS had fully propagated resolved it on the next attempt, landing correctly on `acme-v02.api.letsencrypt.org`.** Cause not fully confirmed — possibly stale internal retry state that a full restart clears but an internal retry doesn't. If this recurs on a future subdomain, don't just wait it out — force a restart once DNS is confirmed live.
+
+**No new UFW rules for the public subdomain.** `stella-health-api.foxcraft.digital` routes through Caddy on port 443, which is already whitelisted for the two static IPs — no new UFW rule was needed for the public route itself. The earlier UFW fix (`172.20.0.0/16` on port 8001) was a separate, internal concern — `health-api` reaching `stella-api` directly — unrelated to Atlas's external access path through Caddy.
+
 ---
 
 ## Auth — identical mechanism to `deploy-api`
@@ -84,9 +109,9 @@ echo -n "$PAYLOAD" > /tmp/payload.txt
 ssh-keygen -Y sign -f ~/.ssh/id_ed25519 -n deploy /tmp/payload.txt
 ```
 
-**Sending it:**
+**Sending it** (from Atlas / any external trusted host):
 ```bash
-curl -s -X POST http://health-api:8080/system/health \
+curl -s -X POST https://stella-health-api.foxcraft.digital/system/health \
   -H "Content-Type: application/json" \
   -d "$(python3 -c "
 import json
@@ -96,7 +121,9 @@ print(json.dumps({'payload': payload, 'signature': sig}))
 ")"
 ```
 
-**Response can take longer than a typical API call** — the full check suite (8 container inspects, 2 HTTP probes, 4 TLS handshakes, one `docker exec ollama ollama list`) can run 10-20+ seconds depending on load, especially if Ollama is busy. Set client timeouts to at least 60s, not the usual 5-15s default.
+Internal edge-network callers can still use `http://health-api:8080/system/health`.
+
+**Response can take longer than a typical API call** — the full check suite (Docker daemon, 8 container inspects, 2 HTTP probes, TLS handshakes for each cert domain including this subdomain, `docker exec ollama ollama list`, `docker stats`, host CPU/RAM/disk) can run 10-20+ seconds depending on load, especially if Ollama is busy. Set client timeouts to at least 60s, not the usual 5-15s default.
 
 ---
 
@@ -104,10 +131,13 @@ print(json.dumps({'payload': payload, 'signature': sig}))
 
 | Category | How | Notes |
 |---|---|---|
+| **Docker daemon** | `docker info` | Reported separately from container checks — if the daemon itself is down/restarting (the actual root cause of the Aug 7 `advoapp-dev` outage), this shows the real cause distinctly instead of all 8 container checks failing with the same generic "missing" error and no indication of *why*. |
 | **Container status** | `docker inspect <name>` via mounted socket | Status, `StartedAt`, `RestartCount` for all 8 core/app containers |
 | **HTTP health** | `stella-api` and `ollama` endpoints | See addressing notes below — neither is reachable via naive `127.0.0.1` |
-| **TLS cert expiry** | Raw `ssl`/`socket`, connects to `caddy:443` with SNI for each domain | See hairpin NAT note below — connecting to the public domain/IP directly times out |
+| **TLS cert expiry** | Raw `ssl`/`socket`, connects to `caddy:443` with SNI for each domain | Domains include `stella.foxcraft.digital`, `advoapp.finditoo.foxcraft.digital`, `stella-deployment-api.foxcraft.digital`, `osgar.datahub.foxcraft.digital`, and **`stella-health-api.foxcraft.digital`** (self). See hairpin NAT note below — connecting to the public domain/IP directly times out |
 | **Ollama model count** | `docker exec ollama ollama list`, compares against `EXPECTED_OLLAMA_MODELS = 13` | Flags `incomplete` if fewer than expected — catches a partial/broken pull |
+| **Ollama resource usage** | `docker stats ollama --no-stream` | Live CPU%/memory usage for the Ollama container specifically — the actionable number given the CPU cap added the same day (`cpus: "6"`). Host-wide load average (below) doesn't tell you whether Ollama itself is the thing near its ceiling. |
+| **Host CPU load / RAM** | Reads `/proc/loadavg` and `/proc/meminfo` through the `/hostroot` mount already used for disk stats | `load_1m` near `12.0` on this 12-thread box means fully saturated. No new mount required — same `/:/hostroot:ro` volume already in place. |
 | **Disk usage** | `os.statvfs` on `/hostroot` (mounted read-only host root) | Total/free/used% |
 
 ### Addressing gotchas hit during build — know these before adding new checks
@@ -137,6 +167,7 @@ print(json.dumps({'payload': payload, 'signature': sig}))
 ```json
 {
   "timestamp": "2026-08-10T22:38:09.747340+00:00",
+  "docker_daemon": {"status": "up", "version": "29.7.2"},
   "containers": {
     "caddy": {"status": "up", "started_at": "2026-08-10T21:14:36Z", "restart_count": 0},
     "advoapp-dev": {"status": "up", "started_at": "2026-08-10T21:11:38Z", "restart_count": 0}
@@ -146,10 +177,13 @@ print(json.dumps({'payload': payload, 'signature': sig}))
     "ollama": {"status": "up", "code": 200}
   },
   "certs": {
-    "stella.foxcraft.digital": {"expires": "Nov  5 15:56:46 2026 GMT", "days_left": 86, "status": "ok"}
+    "stella.foxcraft.digital": {"expires": "Nov  5 15:56:46 2026 GMT", "days_left": 86, "status": "ok"},
+    "stella-health-api.foxcraft.digital": {"expires": "Nov  8 12:00:00 2026 GMT", "days_left": 89, "status": "ok"}
   },
-  "ollama_models": {"count": 10, "expected": 13, "status": "incomplete"},
-  "disk": {"total_gb": 1001.6, "free_gb": 645.7, "used_pct": 35.5}
+  "ollama_models": {"count": 13, "expected": 13, "status": "ok"},
+  "ollama_resource_usage": {"cpu_pct": "412.30%", "mem_usage": "38.2GiB / 62GiB", "mem_pct": "61.61%"},
+  "disk": {"total_gb": 1001.6, "free_gb": 645.7, "used_pct": 35.5},
+  "cpu_ram": {"load_1m": 4.2, "load_5m": 3.8, "load_15m": 3.1, "ram_total_gb": 124.0, "ram_available_gb": 78.3, "ram_used_pct": 36.9}
 }
 ```
 
@@ -159,12 +193,13 @@ print(json.dumps({'payload': payload, 'signature': sig}))
 
 ## What Atlas still needs to build
 
-Not yet implemented — this doc covers the Stella-side endpoint only. Atlas needs:
+Stella-side endpoint is live. Atlas (`dev.atlas.foxcraft.digital`) should:
 
-1. A scheduled job (same `flock` + cron pattern as `queue-deployments.sh`, see [`../atlas/README.md`](../atlas/README.md#queue-worker)) that signs a `system-health:<timestamp>` payload and POSTs it to `health-api` every few minutes.
+1. A scheduled job that signs a `system-health:<timestamp>` payload and POSTs it to `https://stella-health-api.foxcraft.digital/system/health` every few minutes (`STELLA_HEALTH_API_URL`).
 2. Storage for the latest snapshot per server (or a small history) — a new model, or reuse of an existing pattern.
 3. A status grid view — green/red per container and check, surfaced somewhere visible (dashboard home, or a dedicated health page).
 4. Timeout tuned to at least 60s given the response-time note above.
+5. Render the newer top-level keys (`docker_daemon`, `ollama_resource_usage`, `cpu_ram`) once they appear in the payload.
 
 ---
 
@@ -172,3 +207,4 @@ Not yet implemented — this doc covers the Stella-side endpoint only. Atlas nee
 
 - **No UFW status check.** Reading `ufw status` requires host network-namespace access a properly-isolated container doesn't have without `--privileged` or `--pid=host` — deliberately not granted, to keep this service's privilege minimal. If UFW status is ever wanted here, the clean approach is a small host-level cron job that writes `ufw status` output to a file, which this container then reads — not a live syscall from inside the container.
 - **`EXPECTED_OLLAMA_MODELS = 13` is hardcoded.** Update this constant in `health.py` if the intended model list changes, or the check will falsely flag `incomplete` after a deliberate model removal.
+- **`ollama_resource_usage` is specific to the `ollama` container only.** If CPU/memory checks are ever wanted for other containers, `check_ollama_resource_usage()` would need generalizing into a parameterized version (`check_container_resource_usage(name)`), same pattern as `check_container`.
