@@ -36,6 +36,7 @@ Last updated: 2026-08-10
 - **19GB of stale Docker build cache, an orphaned `/opt/github-runners` folder** — cleaned up.
 - **`health-api` public subdomain** — `stella-health-api.foxcraft.digital` via Caddy (Atlas cannot reach edge-internal hosts). Signature still required for `/system/health`. See [`stella-server/health-api.md`](stella-server/health-api.md).
 - **Atlas-side health polling** — scheduled job + DB history + dashboard status grid against `STELLA_HEALTH_API_URL` (remaining gap: render newer payload keys above).
+- **Ollama `OLLAMA_KEEP_ALIVE` changed from `-1` to `30m`** — the initial containerization set models to never unload, mirroring the old "preloaded permanently" systemd framing. Reconsidered same day: judged not worth holding 40GB+ RAM resident indefinitely regardless of actual use, especially now under a hard CPU cap shared with the rest of the box. `llama3.3:70b` and `phi4-mini` explicitly unloaded (`ollama stop`); no model is now treated as always-warm by default.
 
 ---
 

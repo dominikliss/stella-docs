@@ -354,7 +354,7 @@ ollama:
   volumes:
     - ollama-models:/root/.ollama
   environment:
-    - OLLAMA_KEEP_ALIVE=-1
+    - OLLAMA_KEEP_ALIVE=30m
   ports:
     - "127.0.0.1:11434:11434"
   deploy:
@@ -369,7 +369,11 @@ ollama:
 
 **Resource limits:** capped at half the machine — `cpus: "6"` (Docker's `cpus` is in units of full cores, not threads; the i7-8700 has 6 cores / 12 threads, confirmed via `nproc`) and `cpuset: "0-5"` pins to the first 6 threads specifically. Both were previously intended at the systemd level but never actually enforced — this is the first time a real limit has existed.
 
-**`OLLAMA_KEEP_ALIVE=-1`** replaces the old "preloaded permanently via systemd" approach — keeps any loaded model resident indefinitely once loaded. Note this doesn't load a model automatically on container start; the always-warm models (`llama3.3:70b`, `phi4-mini`) still need to be explicitly invoked once after startup to get resident in memory.
+**`OLLAMA_KEEP_ALIVE=30m`** — a loaded model stays resident for 30 minutes after its last use, then unloads automatically. Deliberately *not* set to `-1` (unload-never) despite that being tried first: an always-resident 42GB+ model regardless of actual use was judged not worth permanently holding that much RAM hostage, especially now that Ollama shares the box with everything else under a hard 6-core CPU cap (see below) rather than running unconstrained as it did before containerization.
+
+**No model loads automatically on container start** — this was true under both the old `-1` setting and the current `30m` one. Whatever's needed gets loaded on first request (or via a manual `ollama run <model> ""` warm-up) and then follows the 30-minute idle-unload policy from that point.
+
+**Superseded "always-warm" plan:** an earlier version of this doc (and the original systemd-era setup) described `llama3.3:70b` and `phi4-mini` as "preloaded permanently." That framing no longer applies — both were explicitly unloaded (`ollama stop`) once `OLLAMA_KEEP_ALIVE` was changed to `30m`, and neither is treated as special/always-resident going forward. If a future need for a genuinely always-warm model reappears, the fix is model-specific `keep_alive` values in the actual API calls (Ollama supports per-request overrides), not a blanket container-wide `-1`.
 
 **Port binding:** `127.0.0.1:11434:11434` — published only to localhost, since `stella-api` (which runs `network_mode: host`) needs to reach it via `127.0.0.1`. Everything else reaches it via `ollama:11434` container-name routing on `edge`.
 
@@ -511,7 +515,7 @@ services:
     volumes:
       - ollama-models:/root/.ollama
     environment:
-      - OLLAMA_KEEP_ALIVE=-1
+      - OLLAMA_KEEP_ALIVE=30m
     ports:
       - "127.0.0.1:11434:11434"
     deploy:
