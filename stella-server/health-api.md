@@ -8,6 +8,30 @@
 
 ---
 
+## Verification status
+
+**Fully confirmed, tested directly:**
+- `GET /health` — basic liveness, tested both internally (container IP) and via the public route. Returns `{"status":"ok"}`.
+- `POST /system/health` — full signed request/response cycle, tested via internal container IP with a temporary test principal (`stella-local`, since removed). Returned complete, correct JSON covering all checks active at that point: 8 container statuses, 2 HTTP checks, 4 TLS certs, disk, Ollama model count.
+- **Auth correctly rejects invalid signatures** — confirmed when a request signed with Stella's own untrusted key (`stella-server`, not in `allowed_signers`) was correctly rejected with `401 signature verification failed`. This is the production-correct behavior: only `ddashboard` (Atlas's principal) should ever pass.
+- Public subdomain `stella-health-api.foxcraft.digital` — live, valid Let's Encrypt production cert (not staging), reachable.
+
+**Not yet re-verified through a full signed round-trip:**
+- `check_docker_daemon()` and `check_ollama_resource_usage()` — added after the last full signed-response test (which used the temporary `stella-local` key, since removed to restore production-correct auth). Both are simple, isolated functions using the same subprocess pattern already proven working elsewhere in `health.py`, and the container rebuilt cleanly with no errors — but they haven't been observed returning real data through an actual end-to-end request.
+
+**Fastest way to close this gap without reopening the temporary-key dance again** — call the two new functions directly inside the container, bypassing auth entirely (auth isn't what's in question, just the check logic itself):
+```bash
+docker exec health-api python3 -c "from health import check_docker_daemon, check_ollama_resource_usage; import json; print(json.dumps(check_docker_daemon())); print(json.dumps(check_ollama_resource_usage()))"
+```
+
+Once run, record the result here:
+```
+docker_daemon: <paste result>
+ollama_resource_usage: <paste result>
+```
+
+---
+
 ## Why a separate service from `deploy-api`
 
 Originally built as a route bolted onto `deploy-api` (`POST /system/health`), then split out deliberately:
