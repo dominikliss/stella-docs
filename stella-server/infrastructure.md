@@ -81,7 +81,12 @@ stella.foxcraft.digital {
     }
     handle /ollama* {
         uri strip_prefix /ollama
-        reverse_proxy ollama:11434
+        reverse_proxy ollama:11434 {
+            transport http {
+                response_header_timeout 30m
+                dial_timeout 30s
+            }
+        }
     }
     handle /imap-sync* {
         uri strip_prefix /imap-sync
@@ -162,6 +167,8 @@ Each new subdomain gets its own block at the bottom, reverse-proxying to a conta
 **After any Caddyfile edit:** `docker compose restart caddy` is required (not `up -d` alone — Compose does not recreate/reload on bind-mounted file content changes). Restart mid-retry is fine; Caddy simply restarts the attempt for the affected domain.
 
 **Resolved 2026-08-10:** Ollama's Caddy route now uses `ollama:11434` container-name routing, consistent with `imap-sync:3001` and `deploy-api:8080`. `stella-api` still uses `172.18.0.1:8001` (the `services_default` gateway) since it runs `network_mode: host` and isn't reachable by container name — this one is a structural constraint of that networking mode, not an inconsistency to fix.
+
+**Gotcha 2026-08-17:** The live Caddyfile still had `172.18.0.1:11434` for the Ollama route (the old bridge-gateway address) despite the doc saying `ollama:11434`. Ollama only listens on `127.0.0.1:11434` (not on bridge interfaces), so every `POST /ollama/api/chat` hit an i/o timeout and Caddy returned 502. Fixed by updating the Caddyfile to `ollama:11434` and adding an explicit transport block (`response_header_timeout 30m`, `dial_timeout 30s`) to handle slow model cold-starts.
 
 **New gotcha found while building `health-api`:** any *new* container that needs to reach `stella-api` must use the gateway IP of **its own** Docker network, not necessarily `172.18.0.1`. `health-api` (on `edge`) needed `172.20.0.1` — `edge`'s own gateway — not `services_default`'s. Using the wrong gateway doesn't error, it just times out silently, easily mistaken for a firewall block. Additionally, UFW must explicitly whitelist whatever subnet the calling container's network uses (see Security section below) — this was missed for `edge` on port `8001` until `health-api` surfaced it.
 
