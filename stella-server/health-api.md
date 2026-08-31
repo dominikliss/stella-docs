@@ -164,6 +164,7 @@ Internal edge-network callers can still use `http://health-api:8080/system/healt
 | **Host CPU load / RAM** | Reads `/proc/loadavg` and `/proc/meminfo` through the `/hostroot` mount already used for disk stats | `load_1m` near `12.0` on this 12-thread box means fully saturated. No new mount required — same `/:/hostroot:ro` volume already in place. |
 | **Disk usage** | `os.statvfs` on `/hostroot` (mounted read-only host root) | Total/free/used% |
 | **Backup status** | Reads `/opt/services/backup/last-run.json` (mounted read-only) | Flags `stale` if last successful run >26h old, `failed` if last run's status wasn't success, `unknown` if the file has never been written — see [`backup.md`](backup.md) |
+| **Backup history** | Reads `/opt/services/backup/history.jsonl` (mounted read-only) | `get_backup_history()` returns the last 30 runs most-recent-first as `backup_history` in the response payload — same `{status, duration_seconds, timestamp}` shape as `last-run.json` |
 
 ### Addressing gotchas hit during build — know these before adding new checks
 

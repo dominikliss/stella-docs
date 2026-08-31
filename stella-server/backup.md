@@ -80,7 +80,7 @@ backup:
 2. Runs each container's `backup.predump` command first (if set) via `docker exec` — aborts the whole run if any predump fails (status written as `predump_failed`, no partial/inconsistent backup taken)
 3. `restic backup --files-from <include-list> --exclude ollama-models --exclude '*/logs' --exclude '*/node_modules' --exclude '*/__pycache__' --exclude '*/.git' --exclude '*/venv'`
 4. `restic forget --keep-daily 7 --keep-weekly 4 --keep-monthly 6 --prune`
-5. Writes `/opt/services/backup/last-run.json` — `{"status": "success"|"failed", "duration_seconds": N, "timestamp": "..."}`
+5. Writes `/opt/services/backup/last-run.json` — `{"status": "success"|"failed", "duration_seconds": N, "timestamp": "..."}` — and **appends** the same object as one line to `/opt/services/backup/history.jsonl` (one JSON line per run, unbounded — pruning is health-api's concern)
 
 **No third-party monitoring service** (deliberately — avoided Healthchecks.io per preference). `health-api` reads `last-run.json` directly instead — see below.
 
@@ -88,13 +88,17 @@ backup:
 
 ## Monitoring — via health-api, not a third party
 
-`health-api` mounts `/opt/services/backup:/opt/services/backup:ro` and exposes a `check_backup_status()` in its `/system/health` response:
+`health-api` mounts `/opt/services/backup:/opt/services/backup:ro` and exposes two functions in its `/system/health` response:
+
+**`backup` — current status** (from `last-run.json`):
 - `ok` — last run succeeded, within 26h (nightly + 2h grace)
 - `stale` — last successful run older than 26h (backup job stopped running, even if it hasn't explicitly failed)
 - `failed` — last run's status wasn't `success` (predump or restic failure)
 - `unknown` — no `last-run.json` yet (first run hasn't happened)
 
-Atlas polls this the same way it already polls every other `health-api` field — one more card on the existing dashboard.
+**`backup_history` — last 30 runs** (from `history.jsonl`): `get_backup_history()` reads the file, returns the 30 most recent entries in reverse-chronological order. Lets Atlas show a trend/history view rather than just current status. Each entry has the same shape as `last-run.json`: `{"status": "...", "duration_seconds": N, "timestamp": "..."}`.
+
+Atlas polls both the same way it already polls every other `health-api` field.
 
 ---
 
