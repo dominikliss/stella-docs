@@ -15,9 +15,19 @@
 
 ---
 
-## Label-based service discovery
+## Backup scope
 
-No static include-list to maintain. Any container with `backup.enable=true` is picked up automatically by the discovery script:
+### `/opt/services` — recursive, zero-maintenance
+
+The entire `/opt/services` tree is backed up unconditionally. Every Dockerfile, `main.py`/`health.py`/etc. source file, `.env`, `allowed_signers`, and `docker-compose.yml` under `/opt/services` is covered the moment it exists on disk — no changes to `run.sh` needed when a new service is added here.
+
+**Excluded via restic `--exclude`:** `ollama-models` (re-pullable), `*/logs`, `*/node_modules`, `*/__pycache__`, `*/.git`, `*/venv` (Python virtualenvs — fully reproducible via `pip install -r requirements.txt`).
+
+### `/opt/apps` — label-driven, data only
+
+Unlike `/opt/services`, only *data* under `/opt/apps` is backed up — not `src/` (git-clonable) or build artifacts. This is opt-in via `backup.enable=true` + `backup.volumes` labels on the relevant containers, since blanket-including all of `/opt/apps` would pull in every dev container's live source tree.
+
+Any container with `backup.enable=true` is picked up automatically:
 
 ```yaml
 some-service:
@@ -30,27 +40,12 @@ some-service:
 Adding a new service to the backup scope = adding these labels to its compose definition. No script edits required.
 
 **Currently labeled:**
-- `osgar-datahub-db` — `backup.predump=/usr/local/bin/backup-mssql.sh` (dumps all user DBs via `sqlcmd BACKUP DATABASE ... WITH COMPRESSION` to `/dumps`, mounted host-side at `.../osgar.datahub.foxcraft.digital/dumps`), `backup.volumes=/dumps`
+- `osgar-datahub-db` — `backup.predump=/usr/local/bin/backup-mssql.sh` (dumps all user DBs via `sqlcmd BACKUP DATABASE ... WITH COMPRESSION`), `backup.volumes=/dumps`
 - `osgar-datahub-dev` — `backup.volumes=/store-server-excel,/store-server-excel-backup,/temp_api` (real data folders; `src/` deliberately excluded — git-clonable)
 
-**Not labeled (deliberately):**
-- `advoapp-dev` — `src/` only, no real data, git-clonable
-- `ollama` — models volume excluded by design, re-pullable via `ollama pull` (same principle as pre-backup-system days)
+**Not labeled (deliberately):** `advoapp-dev` (`src/` only, git-clonable), `ollama` (models excluded, re-pullable).
 
 **MSSQL note:** raw volume copy of a live MSSQL data directory is unreliable — the `backup-mssql.sh` predump script runs `sqlcmd` inside the container first to produce a consistent `.bak`, which is what actually gets backed up. The raw `osgar-datahub-mssql-data` volume itself is **not** in the backup scope.
-
----
-
-## Static infra paths (always included, not label-driven)
-
-Config/secrets that aren't per-container:
-- `/opt/services/docker-compose.yml`
-- `/opt/services/caddy/Caddyfile`
-- `/opt/services/deploy-api/allowed_signers`
-- `/opt/services/deploy-api/logs`
-- `/opt/services/backup/.env`
-- Every `/opt/apps/*/.env` and `/opt/apps/*/docker-compose*.yml` (found via `find -maxdepth 2`)
-- Every `/opt/services/*/.env`
 
 ---
 
@@ -81,9 +76,9 @@ backup:
 **Schedule:** `/etc/cron.d/backup-cron` inside the image — `0 3 * * * /opt/services/backup/run.sh`.
 
 **Script:** `/opt/services/backup/run.sh` (bind-mounted via `/opt/services`, not baked into the image — lets it be edited without a rebuild):
-1. Builds an include list: static paths + `find` results for per-app configs + resolved host paths from every `backup.enable=true` container's `backup.volumes` label
+1. Builds an include list: `/opt/services` (entire tree) + resolved host paths from every `backup.enable=true` container's `backup.volumes` label
 2. Runs each container's `backup.predump` command first (if set) via `docker exec` — aborts the whole run if any predump fails (status written as `predump_failed`, no partial/inconsistent backup taken)
-3. `restic backup --files-from <include-list> --exclude ollama-models`
+3. `restic backup --files-from <include-list> --exclude ollama-models --exclude '*/logs' --exclude '*/node_modules' --exclude '*/__pycache__' --exclude '*/.git' --exclude '*/venv'`
 4. `restic forget --keep-daily 7 --keep-weekly 4 --keep-monthly 6 --prune`
 5. Writes `/opt/services/backup/last-run.json` — `{"status": "success"|"failed", "duration_seconds": N, "timestamp": "..."}`
 
