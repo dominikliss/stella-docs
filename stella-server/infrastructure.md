@@ -26,6 +26,9 @@ Core Docker-managed services live at `/opt/services/docker-compose.yml`. Dev/sta
 | `deploy-api` | Docker (`edge` network, no host port) | — | SSH-signature-authenticated deploy trigger — [`deploy-api.md`](deploy-api.md) |
 | `ollama` | Docker (`edge` network) | 11434 (published to `127.0.0.1` only) | LLM inference — containerized 2026-08-10, see below |
 | `health-api` | Docker (`edge` network) | 443 via Caddy (`stella-health-api.foxcraft.digital`) | System status endpoint for Atlas — [`health-api.md`](health-api.md) |
+| `backup` | Docker (`edge` network, no host port) | — | Nightly restic backup to Hetzner Storage Box — see [`backup.md`](backup.md) |
+| `osgar-datahub-dev` | Docker (.NET dev, hot-reload) | 5081→8080 (localhost) | `.NET` app, same pattern as `advoapp-dev` — `Dockerfile.dev` + bind-mounted `src`; compose file at `/opt/apps/dotnet/osgar.datahub.foxcraft.digital/docker-compose.dev.yml` |
+| `osgar-datahub-db` | Docker (MSSQL 2022) | — (internal only) | `mcr.microsoft.com/mssql/server:2022-latest`, data volume `osgar-datahub-mssql-data`; same compose file as `osgar-datahub-dev` |
 
 ### Non-Docker systemd services
 - `fail2ban.service`

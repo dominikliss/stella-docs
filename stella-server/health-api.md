@@ -163,6 +163,7 @@ Internal edge-network callers can still use `http://health-api:8080/system/healt
 | **Ollama resource usage** | `docker stats ollama --no-stream` | Live CPU%/memory usage for the Ollama container specifically — the actionable number given the CPU cap added the same day (`cpus: "6"`). Host-wide load average (below) doesn't tell you whether Ollama itself is the thing near its ceiling. |
 | **Host CPU load / RAM** | Reads `/proc/loadavg` and `/proc/meminfo` through the `/hostroot` mount already used for disk stats | `load_1m` near `12.0` on this 12-thread box means fully saturated. No new mount required — same `/:/hostroot:ro` volume already in place. |
 | **Disk usage** | `os.statvfs` on `/hostroot` (mounted read-only host root) | Total/free/used% |
+| **Backup status** | Reads `/opt/services/backup/last-run.json` (mounted read-only) | Flags `stale` if last successful run >26h old, `failed` if last run's status wasn't success, `unknown` if the file has never been written — see [`backup.md`](backup.md) |
 
 ### Addressing gotchas hit during build — know these before adding new checks
 
