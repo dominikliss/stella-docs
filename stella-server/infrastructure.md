@@ -20,15 +20,17 @@ Core Docker-managed services live at `/opt/services/docker-compose.yml`. Dev/sta
 
 | Service | Runtime | Port | Notes |
 |---------|---------|------|-------|
-| `caddy` | Docker (custom build, see below) | 443 (public); 8080 published but no longer routed | Reverse proxy — `stella.foxcraft.digital` block serves `/ollama`, `/imap-sync`, `/stella`; subdomain-based blocks for dev/staging apps |
+| `caddy` | Docker (custom build, see below) | 443 (public) | Reverse proxy — `stella.foxcraft.digital` block serves `/ollama`, `/imap-sync`, `/stella`; subdomain-based blocks for dev/staging apps. ACME data in named volume `caddy-data`. Direct `8080:8080` publish removed 2026-09-01 |
 | `stella-api` | Docker (`network_mode: host`) | 8001 | FastAPI via uvicorn — chat-only (`/chat/health`, `/chat/stream`) |
-| `imap-sync` | Docker (Node.js) | 3001 | `imapsync` wrapper (Express) |
+| `imap-sync` | Docker (Node.js) | — (Caddy `/imap-sync` only) | `imapsync` wrapper (Express). Direct `3001:3001` publish removed 2026-09-01 — already fully served via Caddy |
 | `deploy-api` | Docker (`edge` network, no host port) | — | SSH-signature-authenticated deploy trigger — [`deploy-api.md`](deploy-api.md) |
 | `ollama` | Docker (`edge` network) | 11434 (published to `127.0.0.1` only) | LLM inference — containerized 2026-08-10, see below |
 | `health-api` | Docker (`edge` network) | 443 via Caddy (`stella-health-api.foxcraft.digital`) | System status endpoint for Atlas — [`health-api.md`](health-api.md) |
 | `backup` | Docker (`edge` network, no host port) | — | Nightly restic backup to Hetzner Storage Box — see [`backup.md`](backup.md) |
 | `osgar-datahub-dev` | Docker (.NET dev, hot-reload) | 5081→8080 (localhost) | `.NET` app, same pattern as `advoapp-dev` — `Dockerfile.dev` + bind-mounted `src`; compose file at `/opt/apps/dotnet/osgar.datahub.foxcraft.digital/docker-compose.dev.yml` |
 | `osgar-datahub-db` | Docker (MSSQL 2022) | — (internal only) | `mcr.microsoft.com/mssql/server:2022-latest`, data volume `osgar-datahub-mssql-data`; same compose file as `osgar-datahub-dev` |
+| `osgar-datahub-ssh` | Docker (sshd in SDK image) | 2201 | Per-app Cursor Remote-SSH — [`dev-ssh-access.md`](dev-ssh-access.md). **Must not** join `edge` |
+| `advoapp-ssh` | Docker (sshd in SDK image) | 2202 | Same pattern for finditoo advoapp — [`dev-ssh-access.md`](dev-ssh-access.md) |
 
 ### Non-Docker systemd services
 - `fail2ban.service`
@@ -64,7 +66,9 @@ Token stored in `/opt/services/caddy/.env` (`chmod 600`), referenced in the Cadd
 
 ### Caddyfile structure
 
-**Updated 2026-08-07:** Ollama, imap-sync, and stella-api moved from a bare `:8080` block to a proper `stella.foxcraft.digital` subdomain with automatic HTTPS. The `:8080` block no longer exists in the Caddyfile; port 8080 is still published by the `caddy` container in `docker-compose.yml` but receives no traffic.
+**Updated 2026-08-07:** Ollama, imap-sync, and stella-api moved from a bare `:8080` block to a proper `stella.foxcraft.digital` subdomain with automatic HTTPS. The `:8080` Caddyfile block no longer exists.
+
+**Updated 2026-09-01:** Caddy's leftover `8080:8080` port publish was removed (the Caddyfile block was already gone; the compose `ports:` line was leftover). `imap-sync`'s leftover `3001:3001` publish was removed the same day — it is fully served via `stella.foxcraft.digital/imap-sync`. Both corresponding `DOCKER-USER` rules are now dead and can be removed in a future cleanup (kept for now, harmless). Caddy now mounts a persistent `caddy-data` volume at `/data` so ACME certificates survive container recreate.
 
 Each site block must pin Let's Encrypt **production** via a per-site `tls { issuer acme { ... } }` block that includes an explicit `dir` — see "Issue 3 / staging fallback" below for why a bare `issuer acme` (or a global `acme_dns` alone) is not enough.
 
@@ -169,6 +173,8 @@ Each new subdomain gets its own block at the bottom, reverse-proxying to a conta
 
 **After any Caddyfile edit:** `docker compose restart caddy` is required (not `up -d` alone — Compose does not recreate/reload on bind-mounted file content changes). Restart mid-retry is fine; Caddy simply restarts the attempt for the affected domain.
 
+**`caddy-data` volume (added 2026-09-01):** Caddy stores ACME certificates under `/data`. Before this volume existed, every `docker compose up -d --force-recreate caddy` (or `down`/`up`) wiped all certs and forced a full re-issuance across every domain. That is what happened when the leftover `8080`/`3001` port publishes were removed — a multi-domain recert storm, including a transient Let's Encrypt staging fallback on `stella-deployment-api.foxcraft.digital` (resolved after clearing one stale `_acme-challenge` TXT record and waiting out normal DNS-01 retries — same Issue 2/3 pattern, no new failure mode). The named volume is declared next to `ollama-models` under the top-level `volumes:` key. **This should prevent the whole-fleet-recert issue from recurring on any future Caddy recreate.** The volume lives outside `/opt/services`, so restic does not currently back it up — see [`backup.md`](backup.md).
+
 **Resolved 2026-08-10:** Ollama's Caddy route now uses `ollama:11434` container-name routing, consistent with `imap-sync:3001` and `deploy-api:8080`. `stella-api` still uses `172.18.0.1:8001` (the `services_default` gateway) since it runs `network_mode: host` and isn't reachable by container name — this one is a structural constraint of that networking mode, not an inconsistency to fix.
 
 **Gotcha 2026-08-17:** The live Caddyfile still had `172.18.0.1:11434` for the Ollama route (the old bridge-gateway address) despite the doc saying `ollama:11434`. Ollama only listens on `127.0.0.1:11434` (not on bridge interfaces), so every `POST /ollama/api/chat` hit an i/o timeout and Caddy returned 502. Fixed by updating the Caddyfile to `ollama:11434` and adding an explicit transport block (`response_header_timeout 30m`, `dial_timeout 30s`) to handle slow model cold-starts.
@@ -271,9 +277,11 @@ Folders are named by subdomain, for easy visual mapping:
 /opt/apps/
   ├── dotnet/
   │     └── advoapp.finditoo.foxcraft.digital/
-  │           ├── src/              ← git clone of the app repo
-  │           ├── Dockerfile
-  │           └── docker-compose.yml
+  │           ├── src/                   ← git clone of the app repo
+  │           ├── Dockerfile.dev
+  │           ├── Dockerfile.ssh         ← per-app Cursor Remote-SSH (see [`dev-ssh-access.md`](dev-ssh-access.md))
+  │           ├── authorized_keys
+  │           └── docker-compose.dev.yml
   └── wp-staging/
         └── <subdomain>/
               └── docker-compose.yml
@@ -309,7 +317,7 @@ networks:
 7. Check / clear stale `_acme-challenge` TXT if issuance sticks (Issue 2)
 8. `docker compose build && docker compose up -d` (or `docker-compose.dev.yml` for .NET hot-reload — see [`dotnet-app-deployment.md`](dotnet-app-deployment.md))
 
-No UFW or `DOCKER-USER` changes needed for any of this — that's the entire point of routing everything through Caddy on the `edge` network.
+No UFW or `DOCKER-USER` changes needed for Caddy-routed HTTP apps — that's the entire point of routing everything through Caddy on the `edge` network. **Exception:** per-app `-ssh` containers publish a host port (`22XX:22`) and **must** get matching `DOCKER-USER` rules. They must **not** join `edge`. See [`dev-ssh-access.md`](dev-ssh-access.md).
 
 ### Gateway IP depends on which Docker network the caller is on
 
@@ -328,6 +336,8 @@ A general-purpose SSH key was generated on Stella (`~/.ssh/id_ed25519`, default 
 ```bash
 git clone git@github.com:foxcraftdigital/finditoo-advoapp.git src
 ```
+
+This host key is **not** how Pawel (or Dominik-from-Cursor) edits app source. Per-app Cursor Remote-SSH uses isolated `-ssh` containers — see [`dev-ssh-access.md`](dev-ssh-access.md). Root SSH on the host remains Dominik-only.
 
 ### Creating a DNS record via the Hetzner Cloud API
 
@@ -403,17 +413,17 @@ Fully decommissioned. See git history / prior doc versions if a vector search fe
 
 ## Security
 
-### Current state (verified 2026-08-06; ports updated 2026-08-07)
+### Current state (verified 2026-08-06; ports updated 2026-08-07 and 2026-09-01)
 
-- **UFW** — active, default-deny incoming. Ports 22, 443 restricted to `194.126.177.181` and `23.88.90.12`. Port 8001 additionally allows `172.18.0.0/16` (`services_default` bridge subnet) for Caddy's internal proxy calls, **and `172.20.0.0/16` (`edge` bridge subnet, added 2026-08-10)** for `health-api`'s stella-api check. Port 11434's direct-access rules removed 2026-08-10 once Ollama moved fully behind the `edge` network / Caddy — no longer needs a host-level UFW allowance for the old static-IP whitelist.
+- **UFW** — active, default-deny incoming. Ports 22, 443 restricted to `194.126.177.181` and `23.88.90.12`. Port 8001 additionally allows `172.18.0.0/16` (`services_default` bridge subnet) for Caddy's internal proxy calls, **and `172.20.0.0/16` (`edge` bridge subnet, added 2026-08-10)** for `health-api`'s stella-api check. Port 11434's direct-access rules removed 2026-08-10 once Ollama moved fully behind the `edge` network / Caddy — no longer needs a host-level UFW allowance for the old static-IP whitelist. Host SSH (port 22) remains Dominik-only; per-app Cursor SSH uses Docker-published `22XX` ports — [`dev-ssh-access.md`](dev-ssh-access.md).
 - **fail2ban** — running
-- **Docker-published ports (8080, 3001, 443)** — protected via a custom `DOCKER-USER` iptables chain (details below)
+- **Docker-published ports (443, 2201, 2202)** — protected via a custom `DOCKER-USER` iptables chain (details below). Per-app SSH containers add a new `22XX` as they are created.
 
-**Note:** port 8080 DOCKER-USER rules are now stale — the `:8080` Caddyfile block was removed on 2026-08-07 (traffic moved to `stella.foxcraft.digital:443`). Port 8080 is still published by the Caddy container but nothing routes to it. The DOCKER-USER rules blocking unauthorized access to 8080 are harmless to leave in place and serve as defense-in-depth; they can be removed in a future cleanup pass if desired.
+**Note (2026-09-01):** `imap-sync` no longer publishes `3001`, and `caddy` no longer publishes `8080`. The `DOCKER-USER` rules for those two ports are now dead (the packets never arrive) and can be removed in a future cleanup; they are kept for now, harmless. The `:8080` Caddyfile block was already removed on 2026-08-07.
 
 ### ⚠️ Docker-published ports bypass UFW entirely
 
-Any port published via `docker-compose.yml` (`ports: ["X:X"]`) is handled by Docker's own iptables NAT/FORWARD rules, evaluated **before** UFW's INPUT chain. Plain `ufw allow`/`deny` on these ports has **zero effect**, regardless of what `ufw status` reports. This applies to `caddy` (8080, 443) and `imap-sync` (3001).
+Any port published via `docker-compose.yml` (`ports: ["X:X"]`) is handled by Docker's own iptables NAT/FORWARD rules, evaluated **before** UFW's INPUT chain. Plain `ufw allow`/`deny` on these ports has **zero effect**, regardless of what `ufw status` reports. This applies to `caddy` (443) and every per-app `-ssh` container (`22XX`). `imap-sync` and Caddy `:8080` used to publish here; those publishes are gone as of 2026-09-01.
 
 ### The DOCKER-USER fix — three iterations, document all of them
 
@@ -443,7 +453,18 @@ iptables -A DOCKER-USER -i $WAN_IF -p tcp --dport 8080 -j DROP
 iptables -A DOCKER-USER -i $WAN_IF -s 194.126.177.181 -p tcp --dport 443 -j ACCEPT
 iptables -A DOCKER-USER -i $WAN_IF -s 23.88.90.12 -p tcp --dport 443 -j ACCEPT
 iptables -A DOCKER-USER -i $WAN_IF -p tcp --dport 443 -j DROP
+
+# Per-app SSH containers (see dev-ssh-access.md). Next app gets 2203.
+iptables -A DOCKER-USER -i $WAN_IF -s 194.126.177.181 -p tcp --dport 2201 -j ACCEPT
+iptables -A DOCKER-USER -i $WAN_IF -s 23.88.90.12 -p tcp --dport 2201 -j ACCEPT
+iptables -A DOCKER-USER -i $WAN_IF -p tcp --dport 2201 -j DROP
+
+iptables -A DOCKER-USER -i $WAN_IF -s 194.126.177.181 -p tcp --dport 2202 -j ACCEPT
+iptables -A DOCKER-USER -i $WAN_IF -s 23.88.90.12 -p tcp --dport 2202 -j ACCEPT
+iptables -A DOCKER-USER -i $WAN_IF -p tcp --dport 2202 -j DROP
 ```
+
+Port 3001 / 8080 rules above are leftovers from retired publishes (`imap-sync` and Caddy `:8080`, removed 2026-09-01). Harmless; delete in a future cleanup. **Do not** delete 443 or any `22XX` rule that still has a live `-ssh` container.
 
 - Applied by: `docker-user-firewall.service` (systemd oneshot, `After=docker.service`, `WantedBy=multi-user.target`, enabled — survives reboot)
 - **Verified working 2026-08-06** in both directions:
@@ -479,10 +500,10 @@ services:
     env_file:
       - ./caddy/.env
     ports:
-      - "8080:8080"
       - "443:443"
     volumes:
       - ./caddy/Caddyfile:/etc/caddy/Caddyfile
+      - caddy-data:/data
     extra_hosts:
       - "host.docker.internal:host-gateway"
     networks:
@@ -493,8 +514,6 @@ services:
   imap-sync:
     build: ./imap-sync
     restart: unless-stopped
-    ports:
-      - "3001:3001"
 
   stella-api:
     build: ./stella-api
@@ -554,4 +573,5 @@ networks:
 
 volumes:
   ollama-models:
+  caddy-data:
 ```

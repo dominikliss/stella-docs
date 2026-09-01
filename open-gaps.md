@@ -1,6 +1,6 @@
 # Open Gaps & Next Steps
 
-Last updated: 2026-08-10
+Last updated: 2026-09-01
 
 **Cross-system overview:** [integration/ddashboard-and-stella-server.md](integration/ddashboard-and-stella-server.md)
 
@@ -23,6 +23,14 @@ Last updated: 2026-08-10
 - [ ] **Atlas health-api: render newer payload keys** — `docker_daemon`, `ollama_resource_usage`, `cpu_ram` (added later 2026-08-10). Polling + dashboard already live against `STELLA_HEALTH_API_URL`. See [`stella-server/health-api.md`](stella-server/health-api.md).
 - [ ] **Remove now-unneeded UFW rules for port 11434** — Ollama no longer needs direct host-level access now that it's fully behind `edge`/Caddy. Rules for the two static-IP whitelist entries can be deleted once the retired systemd `ollama.service` is confirmed not coming back.
 - [ ] **Old host-side Ollama model files** — can be deleted once `docker exec ollama ollama list` confirms all 13 models are present in the new container volume. Not yet verified as of 2026-08-10 (pull was still in progress — 10/13 confirmed present at last check).
+- [ ] **Remove dead `DOCKER-USER` rules for ports 3001 and 8080** — those publishes were deleted 2026-09-01 (`imap-sync` via Caddy only; Caddy `:8080` already unused). Rules kept as harmless leftovers. See [`stella-server/infrastructure.md`](stella-server/infrastructure.md).
+
+---
+
+## Closed 2026-09-01
+
+- **User-based SSH access on Stella** — implemented as per-app `-ssh` containers (`osgar-datahub` :2201, `advoapp` :2202) instead of host Linux users. Isolation is filesystem + Compose-project network, not per-dev identity inside one app. Root SSH remains Dominik-only. See [`stella-server/dev-ssh-access.md`](stella-server/dev-ssh-access.md).
+- **Retired leftover Docker port publishes** — `imap-sync` `3001:3001` and Caddy `8080:8080` removed. Caddy now has a persistent `caddy-data` volume so ACME certs survive recreate.
 
 ---
 

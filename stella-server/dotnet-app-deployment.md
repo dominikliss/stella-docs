@@ -19,9 +19,11 @@ Established 2026-08-06 with `finditoo-advoapp` (`advoapp`) as the first implemen
 ```
 /opt/apps/dotnet/
   ├── advoapp.finditoo.foxcraft.digital/            ← dev container definition
-  │     ├── src/                                     ← git clone, live-edited via Cursor/SSH
+  │     ├── src/                                     ← git clone; live-edited via the `-ssh` container (see [`dev-ssh-access.md`](dev-ssh-access.md))
   │     ├── Dockerfile.dev                             ← dev build (SDK image only, no publish)
-  │     └── docker-compose.dev.yml                     ← dev container def (bind-mounts src/, dotnet watch)
+  │     ├── Dockerfile.ssh                             ← sshd for Cursor Remote-SSH
+  │     ├── authorized_keys                            ← both devs' public keys
+  │     └── docker-compose.dev.yml                     ← `-dev` + `-ssh` services (bind-mounts src/)
   │
   └── advoapp-production.finditoo.foxcraft.digital/  ← clean checkout for Azure deploys only
         └── src/                                       ← git clone, branch `master`, reset --hard on every deploy
@@ -63,6 +65,19 @@ services:
       - edge
       - default
 
+  advoapp-ssh:
+    build:
+      context: .
+      dockerfile: Dockerfile.ssh
+    container_name: advoapp-ssh
+    volumes:
+      - ./src:/home/dominik/app
+      - ./src:/home/pawel/app
+    ports:
+      - "2202:22"
+    restart: unless-stopped
+    # No networks: key — must stay off `edge`. See dev-ssh-access.md.
+
 networks:
   edge:
     external: true
@@ -71,7 +86,7 @@ networks:
 Key details:
 - `DOTNET_USE_POLLING_FILE_WATCHER=1` — required. Native filesystem events (inotify) don't reliably cross into containers via bind mounts on this setup; without polling, `dotnet watch` silently never notices saved changes.
 - `127.0.0.1:5080` binding kept for direct Cursor port-forwarding as a fallback, in addition to the Caddy route.
-- To view live changes: edit in Cursor (connected via Remote-SSH to Stella) → save → `dotnet watch` recompiles/hot-patches automatically within a couple seconds → refresh browser at `https://advoapp.finditoo.foxcraft.digital`.
+- To view live changes: edit in Cursor (connected via Remote-SSH to the **app's `-ssh` container**, not the Stella host — see [`dev-ssh-access.md`](dev-ssh-access.md)) → save → `dotnet watch` in the `-dev` container recompiles/hot-patches automatically within a couple seconds → refresh browser at `https://advoapp.finditoo.foxcraft.digital`.
 - Harmless log line to ignore: `dotnet watch ❌ Failed to launch ... Unable to launch the browser` — `dotnet watch` tries to auto-open a browser on the host, which doesn't exist inside the container. Not an error affecting the app itself.
 - Start it: `docker compose -f docker-compose.dev.yml up -d`
 - **`restart: unless-stopped` added 2026-08-10.** Originally missing — `advoapp-dev` was killed by a Docker daemon restart on 2026-08-07 (unrelated troubleshooting elsewhere on the server) and, with no restart policy, silently stayed down for **3 days** before being noticed. Nothing was monitoring it at the time. Root cause confirmed via `docker inspect --format '{{.State.FinishedAt}}'` cross-referenced against `journalctl -u docker` daemon-restart timestamps — not an OOM kill (`OOMKilled: false`, no kernel log entry), just a daemon bounce with no policy to bring the container back. This exact scenario is now also caught automatically by [`health-api`](health-api.md), Atlas polling permitting.
@@ -84,7 +99,7 @@ Run manually (start it, view logs): `docker compose -f docker-compose.dev.yml up
 
 Previously existed as a second Dockerfile/compose pair in the same folder as the dev container (`Dockerfile` + `docker-compose.yml`, vs. dev's `Dockerfile.dev` + `docker-compose.dev.yml`). Built during initial setup per the original three-environment plan, but never actually routed to by Caddy after the decision to point the public subdomain at the live dev container instead (see the "Current state note" above). Confirmed unused — not in `docker ps -a`, no Caddy block referenced it, and the production deploy pipeline (`deploy-advoapp.sh`) builds independently from a separate clean checkout, never touching this container at all.
 
-Removed entirely: container, built image, and both defining files (`Dockerfile`, `docker-compose.yml`). The `advoapp.finditoo.foxcraft.digital` folder now contains only `Dockerfile.dev`, `docker-compose.dev.yml`, and `src/` — matching what's actually deployed, closing the "folder holds two purposes" ambiguity this used to create.
+Removed entirely: container, built image, and both defining files (`Dockerfile`, `docker-compose.yml`). The `advoapp.finditoo.foxcraft.digital` folder now contains `Dockerfile.dev`, `Dockerfile.ssh`, `authorized_keys`, `docker-compose.dev.yml`, and `src/` — matching what's actually deployed.
 
 If a genuine pre-deploy build-sanity-check is ever wanted, it should get its own subdomain and Caddy route rather than being silently built-but-unrouted — otherwise it becomes indistinguishable from dead weight, as it did here.
 
@@ -196,8 +211,9 @@ Reference run: `osgar.datahub.foxcraft.digital` (Blazor Server, .NET 10). Comple
 
 1. **App folder + source** under `/opt/apps/dotnet/<subdomain>/src` — clone the repo, or for an empty repo: `dotnet new blazor -n <Name> --interactivity Server`
 2. **`Dockerfile.dev` + `docker-compose.dev.yml`** after the `advoapp-dev` pattern above. Adjust the host port if `5080` is already taken (e.g. `127.0.0.1:5081:8080`)
-3. **DNS A-Record** via Hetzner Cloud API (see [`infrastructure.md`](infrastructure.md) — zone `567656`)
-4. **Caddy block** with explicit Let's Encrypt production `dir` pin:
+3. **Per-app `-ssh` container** — `Dockerfile.ssh`, `authorized_keys`, compose service with **no `networks:` key**, next free `22XX` port, `DOCKER-USER` rules, host `src/` group perms. Full checklist: [`dev-ssh-access.md`](dev-ssh-access.md)
+4. **DNS A-Record** via Hetzner Cloud API (see [`infrastructure.md`](infrastructure.md) — zone `567656`)
+5. **Caddy block** with explicit Let's Encrypt production `dir` pin:
    ```caddyfile
    <subdomain>.foxcraft.digital {
        tls {
@@ -210,9 +226,9 @@ Reference run: `osgar.datahub.foxcraft.digital` (Blazor Server, .NET 10). Comple
        reverse_proxy <container-name>:8080
    }
    ```
-5. **`docker compose restart caddy`** from `/opt/services` (not `up -d` alone). Watch issuance logs; if stuck, diagnose/delete stale `_acme-challenge` TXT per infrastructure Issue 2, then restart again
-6. **`docker compose -f docker-compose.dev.yml up -d`** in the app folder
-7. **`curl -sI https://<subdomain>`** — `502` for the first seconds/minutes after start is normal while `dotnet watch` restores/builds
+6. **`docker compose restart caddy`** from `/opt/services` (not `up -d` alone). Watch issuance logs; if stuck, diagnose/delete stale `_acme-challenge` TXT per infrastructure Issue 2, then restart again
+7. **`docker compose -f docker-compose.dev.yml up -d`** in the app folder
+8. **`curl -sI https://<subdomain>`** — `502` for the first seconds/minutes after start is normal while `dotnet watch` restores/builds
 
 Do **not** omit `dir` — without it Caddy can fall back to ZeroSSL or Let's Encrypt staging; staging certs are untrusted and leave the domain effectively broken (details in infrastructure Issue 3).
 

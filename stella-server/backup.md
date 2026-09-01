@@ -23,6 +23,8 @@ The entire `/opt/services` tree is backed up unconditionally. Every Dockerfile, 
 
 **Excluded via restic `--exclude`:** `ollama-models` (re-pullable), `*/logs`, `*/node_modules`, `*/__pycache__`, `*/.git`, `*/venv` (Python virtualenvs — fully reproducible via `pip install -r requirements.txt`).
 
+**Not in this tree:** Caddy ACME certificates live in the named Docker volume `caddy-data` (mounted at `/data` in the `caddy` container — added 2026-09-01). That volume is outside `/opt/services`, so restic does not currently back it up. Losing the volume still forces a full recert; the volume only survives Caddy *container* recreate. See [`infrastructure.md`](infrastructure.md).
+
 ### `/opt/apps` — label-driven, data only
 
 Unlike `/opt/services`, only *data* under `/opt/apps` is backed up — not `src/` (git-clonable) or build artifacts. This is opt-in via `backup.enable=true` + `backup.volumes` labels on the relevant containers, since blanket-including all of `/opt/apps` would pull in every dev container's live source tree.

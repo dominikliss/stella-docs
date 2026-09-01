@@ -7,6 +7,7 @@ Small **Node.js + Express** helper on the Stella server that runs **`imapsync`**
 - **Compose service:** `imap-sync` (build context `./imap-sync`) — see [`infrastructure.md`](infrastructure.md)
 - **Listen port (container):** `3001`
 - **Public entry:** `https://stella.foxcraft.digital/imap-sync` (Caddy strips the `/imap-sync` prefix before forwarding to `imap-sync:3001`)
+- **No host port publish** as of 2026-09-01 — leftover `ports: ["3001:3001"]` removed; Caddy on `edge` is the only ingress. Matching `DOCKER-USER` rules for 3001 are now dead (kept for now, harmless). See [`infrastructure.md`](infrastructure.md).
 
 **Caddy / path note:** Express registers routes at the **app root** (`/health`, `/start`, `/status/…`, `/jobs`, …). The reverse proxy strips the `/imap-sync` prefix before forwarding. Example: `https://stella.foxcraft.digital/imap-sync/start` → upstream `/start`.
 

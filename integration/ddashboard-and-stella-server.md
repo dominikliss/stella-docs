@@ -8,7 +8,7 @@ This document describes the **roles**, **network paths**, **data flows**, and **
 
 - Server topology and ports: [`../stella-server/infrastructure.md`](../stella-server/infrastructure.md)
 - Stella HTTP API (FastAPI, chat-only): [`../stella-server/stella-api.md`](../stella-server/stella-api.md)
-- Stella **imapsync** helper (Express on `:3001`): [`../stella-server/imap-sync-service.md`](../stella-server/imap-sync-service.md)
+- Stella **imapsync** helper (Express via Caddy `/imap-sync`): [`../stella-server/imap-sync-service.md`](../stella-server/imap-sync-service.md)
 - Email indexing pipeline (decommissioned): [`email-indexing.md`](email-indexing.md)
 - WordPress theme architecture (long): [`../stella-dashboard/architecture.md`](../stella-dashboard/architecture.md)
 
@@ -19,7 +19,7 @@ This document describes the **roles**, **network paths**, **data flows**, and **
 | System | Role |
 |--------|------|
 | **ddashboard** | Custom WordPress theme: CRM, accounting, IMAP mail in MySQL (**v3** tables `dls_mail_*`), REST `dls/v1`, React SPA, AI chat agents, Ollama mail analyses. **Source of truth** for message rows, links, clients, and WP options. |
-| **Stella** | Dedicated AI host: **Ollama** (LLM inference), **stella-api** (FastAPI) — **`/chat/*`** only, **Caddy** on `:8080`. Optional **`imap-sync`**: Express + **`imapsync`** to copy mail between two IMAP accounts (**not** ddashboard's DB import). ChromaDB has been uninstalled. |
+| **Stella** | Dedicated AI host: **Ollama** (LLM inference), **stella-api** (FastAPI) — **`/chat/*`** only, **Caddy** on **443**. Optional **`imap-sync`**: Express + **`imapsync`** to copy mail between two IMAP accounts (**not** ddashboard's DB import), reached only via `https://stella.foxcraft.digital/imap-sync`. ChromaDB has been uninstalled. |
 
 Neither system replaces the other: WordPress owns relational data and sessions; Stella provides **streaming LLM inference** via `/chat/stream`.
 
@@ -110,5 +110,5 @@ Paths use WordPress REST prefix `/wp-json/dls/v1/…`.
 | **ddashboard** | WordPress theme / product |
 | **Stella** | Dedicated server hosting AI services |
 | **stella-api** | FastAPI app — **`/chat/*`** only (email routes removed 2026-08-06) |
-| **imap-sync** | Express on Stella `:3001`; **`imapsync`** mailbox migration |
+| **imap-sync** | Express on Stella; **`imapsync`** mailbox migration; public entry `https://stella.foxcraft.digital/imap-sync` (no host port as of 2026-09-01) |
 | **gitlink** | Git submodule pointer SHA for `stella-docs` |

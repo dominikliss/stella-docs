@@ -17,7 +17,7 @@ Folder roles inside the submodule:
 | Folder | Use for |
 |--------|---------|
 | **`stella-dashboard/`** | Theme: capabilities, architecture, mail, TrackingTime, **`reference/`** (OpenAPI + DB overview), design docs, `cursor-rules/*.md` exports |
-| **`stella-server/`** | Stella host: infrastructure, Docker, Caddy, FastAPI (`stella-api`) |
+| **`stella-server/`** | Stella host: infrastructure, Docker, Caddy, FastAPI (`stella-api`), per-app SSH |
 | **`integration/`** | Cross-cutting: WordPress ↔ Stella, email indexing pipeline |
 | **Root** | `README.md`, `open-gaps.md` |
 
@@ -36,7 +36,7 @@ When your change affects **how the system works** (not purely internal refactors
 | WP options, cron hooks, install/migrations | `architecture.md`, `CAPABILITIES.md`; integration doc if Stella-related |
 | Mail/IMAP/spam/client linking | `stella-dashboard/mail-nachrichten.md`, `mail-cron-hosting.md` |
 | Email embed / Stella HTTP client / queue | `integration/email-indexing.md`, `integration/ddashboard-and-stella-server.md` |
-| Stella server, compose, API behaviour | `stella-server/infrastructure.md`, `stella-server/stella-api.md` |
+| Stella server, compose, API behaviour | `stella-server/infrastructure.md`, `stella-server/stella-api.md`; SSH access: `stella-server/dev-ssh-access.md` |
 | ACF fields / REST field shapes | `stella-dashboard/cursor-rules/acf-field-map.md` **and** this repo’s `acf-field-map.mdc` |
 | Known gaps / roadmap items | `open-gaps.md` |
 | **Substantive** edits to any `.cursor/rules/*.mdc` | Same meaning in **`stella-dashboard/cursor-rules/<name>.md`** (export body + header note) |
