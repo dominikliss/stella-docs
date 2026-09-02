@@ -18,11 +18,9 @@ Small **Node.js + Express** helper on the Stella server that runs **`imapsync`**
 
 ---
 
-## ddashboard proxy (WordPress)
+## ddashboard proxy (removed 2026-09-02)
 
-The theme exposes logged-in **`dls/v1/imap-sync/*`** routes that forward to this service (`dls_imap_sync_base_url` — WordPress does not persist migration passwords). Proxied paths include **`/health`**, **`POST /start`**, **`GET /jobs`**, **`GET /status/{id}`**, **`GET /status/{id}/log`**, **`DELETE /jobs/{id}`**. The Werkzeuge UI uses **`GET /jobs`** for the live list and **`DELETE /jobs/{id}`** to cancel a running job.
-
-**⚠️ Follow-up outstanding (2026-08-07):** `dls_imap_sync_base_url` (and any other WordPress option referencing the old `http://<ip>:8080/...` base URL) must be updated to `https://stella.foxcraft.digital/imap-sync`. Until this is done the Werkzeuge → E-Mail-Migration UI in ddashboard will keep hitting the dead port-8080 route rather than the new subdomain.
+The `dls/v1/imap-sync/*` WordPress proxy (`inc/routes/imap-sync-proxy.php`) and the Werkzeuge E-Mail-Migration UI have been removed. Deployment, E-Mail-Migration, and WordPress-Seiten are now managed by Atlas. Call the `imap-sync` service directly at `https://stella.foxcraft.digital/imap-sync`.
 
 ---
 

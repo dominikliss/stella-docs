@@ -346,7 +346,7 @@ The `api/v1` namespace is IP-restricted to two addresses (`194.126.177.181`, `23
 
 | Table group | Tables | Purpose |
 |---|---|---|
-| Mail v3 (IMAP) | `dls_mail_account`, `dls_mail_folder`, `dls_mail_message`, `dls_mail_message_link`, `dls_mail_folder_link`, `dls_mail_attachment`, classification/sync audit tables | Inbox + Stella **`emails_v3`** payload source (indexing client TBD) |
+| Mail v3 (IMAP) | `dls_mail_account`, `dls_mail_folder`, `dls_mail_message`, `dls_mail_message_link`, `dls_mail_folder_link`, `dls_mail_attachment`, classification/sync audit tables | All synced messages (every folder, inbound/outbound) → Stella **`emails_v3`**; client/project links optional |
 | PM | `dls_pm_project`, `dls_pm_task_list`, `dls_pm_task`, `dls_pm_task_assignee`, `dls_pm_comment`, `dls_pm_time_entry` | Project management |
 | AI chat | `dls_ai_chat_session`, `dls_ai_chat_message` | AI assistant sessions and history |
 | YouTube | `dls_youtube_*` (video data + analytics) | YouTube channel metrics |

@@ -68,7 +68,7 @@ Non-streaming / non-tool agents call Ollama directly via `POST {ollama_base_url}
 ## 4a. Stella `imap-sync` (mailbox copy)
 
 - **Purpose:** Operator **server-to-server IMAP copy** (`imapsync`), HTTP API for jobs/logs — not ddashboard's MySQL mail import.
-- **WordPress:** Werkzeuge → E-Mail-Migration proxies **`/dls/v1/imap-sync/*`** to Stella (`inc/routes/imap-sync-proxy.php`).
+- **WordPress proxy removed (2026-09-02):** `inc/routes/imap-sync-proxy.php` and the Werkzeuge E-Mail-Migration UI have been removed. The `imap-sync` service is now called directly (e.g. from Atlas or CLI).
 - **Contract:** [`../stella-server/imap-sync-service.md`](../stella-server/imap-sync-service.md).
 
 ---

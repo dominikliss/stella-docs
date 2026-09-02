@@ -786,7 +786,7 @@ Each page = one WordPress post with a shortcode that mounts a React app into an 
 | Page slug | Shortcode | Purpose |
 |---|---|---|
 | `/buchhaltung` | `[stella_accounting]` | Main accounting: date filter, line chart, income/expense transaction table with KSeF import |
-| `/kunden` | `[stella_clients]` | Client list → expand row → client card (tabs: data / contacts / files / reports / portal) |
+| `/clients` | virtual route | Client list (`<div class="dls-clients">`) → expand row → client card (tabs: data / contacts / files / reports / portal); per-client editor at `/client/<id>/edit/` and `/client/new/` |
 | `/rechnungen` | `[stella_invoices]` | Invoice list with PDF generation, download, preview, send email |
 | `/offene-rechnungen` | `[stella_open_invoices]` | Invoices with no payment date yet |
 | `/produkte` | `[stella_products]` | Product cards, sidebar create/edit form |
@@ -800,10 +800,12 @@ Each page = one WordPress post with a shortcode that mounts a React app into an 
 
 ## DATA MODEL (Custom Post Types)
 
+> `client` and `person` are **not real CPTs** anymore — rows live in `dls_client*` / `dls_person`. The `register_post_type()` calls only stay so `/wp/v2/client` and `/wp/v2/person` keep serving React via custom controllers. See `architecture.md` → "Client + Person — WordPress-independent storage".
+
 | Post Type | Purpose | Key fields |
 |---|---|---|
-| `client` | Business clients | `official_name`, `email`, `invoice_emails[]`, `address`, `vat_number`, `people[]` (linked persons), `status` (active/lead/inactive), `website`, `logo`, portal user flag |
-| `person` | Contact persons | `name`, `email`, `phone`, `birthday`, `profile_image` — linked to one or more clients |
+| `client` | Business clients (custom tables) | `official_name`, `email`, `invoice_emails[]`, `address`, `vat_number`, `people[]` (linked persons), `status` (active/lead/inactive), `website`, `logo`, portal user flag |
+| `person` | Contact persons (custom table) | `name`, `email`, `phone`, `birthday`, `profile_image` — linked to one or more clients |
 | `transaction` | Income / expense | `type` (Einnahme/Ausgabe), `price_net`, `vat_percent`, `currency`, `invoice_date`, `transaction_date`, `note`, `internal_category`, `ksef_reference` |
 | `invoice` | Invoice metadata | `transaction_id`, `number`, `invoice_date`, `invoice_url`, `positions[]`, `language_code`, `client_id` |
 | `product` | Products / subscriptions | `client_id`, `price_net`, `vat_percent`, subscription frequency fields |

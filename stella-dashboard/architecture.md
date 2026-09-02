@@ -7,18 +7,44 @@
 - Forms: Formik + Yup validation
 - **No GraphQL** — it has been removed. Do not reference `@apollo/client`, `gql`, or `transactionFields.*` paths.
 
+## PHP layers — Domain / Persistence / Schema
+
+Three PSR-4 namespaces under `inc/` carry the long-term application core; they are autoloaded via the Composer classmap (`composer.json`). New custom-table code should land here rather than in ad-hoc `inc/services/*-db-service.php` files.
+
+| Namespace | Folder | Purpose |
+|-----|----|---|
+| `DLS\Domain` | `inc/Domain/` | Typed, immutable value objects — one `final readonly` class per custom-table row (`Client`, `Person`, `BankAccount`, `MailMessage`, `PmTask`, …). Extends `DLS\Domain\Model`, which provides `fromRow()`, `toArray()`, default `toRest()` (override to omit secrets) and scalar coercion helpers. Models are pure — no DB or REST dependencies. |
+| `DLS\Persistence` | `inc/Persistence/` | Generic CRUD repository base. `DLS\Persistence\Repository` exposes `findById`, `findOneBy`, `findAll($where, $orderBy, $limit, $offset)`, `count`, `create`, `update`, `deleteById`. Subclasses declare table name, model class, and writable columns with their `wpdb` format specifiers (`%s`, `%d`, `%f`); WHERE handling, sanitization hooks and timestamp updates are inherited. `*DbService` classes that need bespoke joins or business logic should still exist, but they should compose a repository instead of writing raw SQL. |
+| `DLS\Schema` | `inc/Schema/` | Centralised dbDelta migration runner. `SchemaRegistry::register()` records each table's option key, target version, `getSql()` callable, and optional `beforeUpgrade` / `afterInstall` hooks. `SchemaRegistry::install()` (hooked once on `init` priority 5 by `DLS\Schema\Bootstrap`) runs every pending migration in registration order. Each `inc/Schema/schemas/*Schema.php` file owns one related table cluster. |
+
+**Bootstrap.** `functions.php` calls `\DLS\Schema\Bootstrap::init()` exactly once. `Bootstrap` registers every schema class and hooks the registry to `init`. There are **no more** `inc/install-*-tables.php` files — they were consolidated into `inc/Schema/schemas/`.
+
+**One-shot migrations are gone.** `ClientPersonMigrationService`, the AI-profile / AI-layers seed-prompt helpers, and the post-type `try_import_data()` admin button are all removed; only idempotent migrations and minimal first-install seeding (e.g. default bank accounts) remain in `afterInstall` callbacks.
+
+**Backward compatibility.** Existing `*DbService` consumers are unchanged for now — the new layer is foundation only. Future PRs should migrate each service to extend `Repository<MyModel>` and return `Domain\` objects, then add `dls/v1` controllers that consume those repositories directly.
+
 ## Custom Post Types
-| Post Type slug     | WP REST API post type |
-|--------------------|-----------------------|
-| `client`           | `client`              |
-| `person`           | `person`              |
-| `file`             | `file`                |
-| `transaction`      | `transaction`         |
-| `invoice`          | `invoice`             |
-| `product`          | `product`             |
-| `accountingconfig` | `accountingconfig`    |
-| `credentials`      | `credentials`         |
-| `project`          | `project` (backend only — JS frontend removed) |
+| Post Type slug     | WP REST API post type | Storage |
+|--------------------|-----------------------|---------|
+| `client`           | `client` (custom controller) | **Custom tables** `dls_client*` — CPT registration is **REST wiring only** (no CPT UI; data not in `wp_posts`) |
+| `person`           | `person` (custom controller) | **Custom table** `dls_person` — CPT registration is **REST wiring only** (no CPT UI; data not in `wp_posts`) |
+| `file`             | `file`                | `wp_posts` + `wp_postmeta` |
+| `transaction`      | `transaction`         | `wp_posts` + `wp_postmeta` |
+| `invoice`          | `invoice`             | `wp_posts` + `wp_postmeta` |
+| `product`          | `product`             | `wp_posts` + `wp_postmeta` |
+| `accountingconfig` | `accountingconfig`    | `wp_posts` + `wp_postmeta` |
+| `credentials`      | `credentials`         | `wp_posts` + `wp_postmeta` |
+| `project`          | `project` (backend only — JS frontend removed) | `wp_posts` + `wp_postmeta` |
+
+### Client + Person — WordPress-independent storage
+- **Tables** (schema in `inc/Schema/schemas/ClientPersonSchema.php`): `dls_client`, `dls_person`, `dls_client_person` (junction), `dls_client_invoice_email`, `dls_client_social`, `dls_client_referral_report`. IDs are intentionally **shared with `wp_posts.ID`** so existing cross-references (`file.client_id`, `invoice.client_id`, `usermeta.client`, etc.) keep resolving without rewrite. The legacy CPT → custom-table backfill has been completed in production; the one-shot `dls_client_person_finalize_autoincrement()` migration was removed from the schema definition.
+- **Services**: `ClientDbService`, `PersonDbService` (CRUD, `to_rest_envelope()`). Helpers in `inc/client-person-helpers.php` resolve attachment IDs to the ACF `image` array shape so the envelope mirrors the historical `wp/v2/client.acf.logo`.
+- **REST (native, table-backed)**: `GET/POST /dls/v1/clients`, `GET/POST /dls/v1/persons`, and item routes under `inc/routes/clients.php` / `inc/routes/persons.php` — use these for scripts or UIs that do not need `@wordpress/core-data`.
+- **REST (`core-data` compatibility)**: `/wp/v2/client` and `/wp/v2/person` are still served by **custom controllers** (`ClientRestController`, `PersonRestController`) bound via `rest_controller_class`. They persist to the same tables and return the historical CPT-shaped envelope so React `useEntityRecords('postType', 'client', …)` keeps working. `register_post_type` for `client` / `person` is **not** a content workflow — it is only there to attach those routes (`show_ui=false`, `public=false`, `publicly_queryable=false`).
+- **Virtual editor routes**: `/clients/`, `/client/<id>/edit/`, `/client/new/`, `/person/<id>/edit/`, `/person/new/` are wired in `inc/app-routes.php` (no WordPress page required) and mount the React `dls-clients` / `dls-client-form` / `dls-person-form` containers.
+- **Migration**: Already run + finalized in production; all legacy `wp_posts` / `wp_postmeta` rows for `post_type IN ('client','person')` have been deleted. The one-shot `ClientPersonMigrationService` and `dls_client_person_finalize_autoincrement()` helper were removed from the codebase — fresh staging clones must restore from a production database snapshot.
+- **Legacy facade**: `ClientService::get_clients()` still returns `stdClass` objects (PDF, KSeF, Saldeo, FileService consumers untouched) but reads from the new tables internally. Direct `get_field('official_name'|…, $client_id)` calls in PHP have been replaced with `ClientDbService::get_client()` reads.
+- **Referral clearing**: When `referred_client === false`, `ClientDbService::sanitize()` wipes `referral_referrer_client_id`, `referral_commission_percent`, and `referral_commission_payout_date` (replaces the legacy `acf/save_post` hook in `inc/post-types/client.php`).
 
 ### Product (`product`)
 - ACF `client_id` — optional post object → `client` (`return_format: id`); `product-form.js` uses `SearchableSelect`; `normalizeProductAcfForRest` coerces empty/`0` to `null` for REST.
@@ -67,12 +93,24 @@ inc/
   constants.php              # App-wide constants: DLS_ALLOWED_IPS, DLS_OWNER_EMAILS, DLS_OWNER_DOMAINS, DLS_MAIL_CLASSIFICATION_ENABLED, DLS_ANALYSIS_TIMEOUT
   subscription-billing.php   # Clears legacy subscription cron; billing is manual via REST only
   mail-sync-cron.php         # WP-Cron: `dls_mail_imap_sync_cron` every 5 min → sync active mailboxes
-  install-mail-tables.php    # dbDelta v3 mail schema (see `DLS_MAIL_DB_VERSION` in file): dls_mail_account, dls_mail_folder, dls_mail_message, dls_mail_folder_link, dls_mail_message_link, dls_mail_attachment, dls_mail_classification_rule, dls_mail_sync_run, dls_mail_stella_index_run; drops legacy dls_mailbox / dls_email tables on early upgrades
-  install-pm-tables.php      # dbDelta: dls_pm_project, dls_pm_task_list, dls_pm_task, dls_pm_task_assignee, dls_pm_comment, dls_pm_time_entry; migrations v1–v2
-  install-bank-account-tables.php # dbDelta: dls_bank_account (label, iban, bic, bank_name, account_holder, condition_country, condition_vat, currency, is_primary, US fields); migrations v1–v3; seeds defaults
-  install-ai-chat-tables.php # dbDelta: dls_ai_chat_session, dls_ai_chat_message
-  install-writing-style-history.php # dbDelta: dls_writing_style_run + analysis_type (v2); append-only email AI analysis history
-  install-youtube-tables.php # dbDelta: YouTube Data + Analytics custom tables
+  Schema/                    # Centralised dbDelta schema registry (see "Schema layer" section below)
+    Bootstrap.php            # Registers every schema with SchemaRegistry and hooks install() to `init` (priority 5)
+    SchemaRegistry.php       # Generic schema runner: per-schema option key + version, idempotent migrations, optional beforeUpgrade / afterInstall hooks
+    schemas/
+      MailSchema.php             # dls_mail_account, dls_mail_folder, dls_mail_message, dls_mail_folder_link, dls_mail_message_link, dls_mail_attachment, dls_mail_classification_rule, dls_mail_sync_run, dls_mail_stella_index_run; drops legacy dls_mailbox / dls_email
+      PmSchema.php               # dls_pm_project, dls_pm_task_list, dls_pm_task, dls_pm_task_assignee, dls_pm_comment, dls_pm_time_entry
+      BankAccountSchema.php      # dls_bank_account (+ seeds defaults on fresh install)
+      ClientPersonSchema.php     # dls_client, dls_person, dls_client_person, dls_client_invoice_email, dls_client_social, dls_client_referral_report
+      AiProfileSchema.php        # dls_ai_profile, dls_ai_profile_run
+      AiLayersSchema.php         # dls_ai_connector, dls_ai_analysis_config, dls_ai_action
+      AiChatSchema.php           # dls_ai_chat_session, dls_ai_chat_message
+      WritingStyleHistorySchema.php # dls_writing_style_run (read-only legacy; data migrated to dls_ai_profile_run)
+      YoutubeSchema.php          # YouTube Data + Analytics custom tables
+  Domain/                    # Typed, immutable value objects per custom-table row (DLS\Domain\* — see "Domain layer")
+    Model.php                # Abstract base: fromRow / toArray / toRest + scalar coercion helpers
+    *.php                    # One readonly final class per table (BankAccount, Client, Person, ClientPerson, MailAccount, MailMessage, …)
+  Persistence/               # Generic CRUD repository base (DLS\Persistence\Repository)
+    Repository.php           # Abstract: findById / findOneBy / findAll / count / create / update / deleteById; subclass declares table, model, writable columns + wpdb formats
   acf/settings/              # ACF field group JSON configs (group_*.json)
   post-types/                # CPT registration
   routes/                    # REST API endpoints (dls/v1 namespace unless noted)
@@ -273,20 +311,51 @@ assets/scss/                 # SCSS source (ScssPhp, compiled on theme load when
 ```
 
 ## Virtual app routes (no WP page)
-- File: `inc/app-routes.php` — `dls_get_app_routes()` + `add_rewrite_rule` for `/projects`, `/marketing`, `/nachrichten`, `/verwaltung`, `/werkzeuge`.
-- `/verwaltung` has sub-routes: `buchhaltung`, `projekte`, `marketing`, `ai-anbindungen`, `ai-profiles`, `nachrichten` (tab selection via `data-subroute`). After changing sub-route slugs, flush permalinks (Settings → Permalinks → Save).
+- File: `inc/app-routes.php` — `dls_get_app_routes()` + `add_rewrite_rule` for `/projects`, `/marketing`, `/nachrichten`, `/verwaltung`.
+- `/verwaltung` has sub-routes: `praesentation` (admin-only — toggles demo/recording mode), `buchhaltung`, `projekte`, `marketing`, `ai-anbindungen`, `ai-profiles`, `nachrichten` (tab selection via `data-subroute`). After changing sub-route slugs, flush permalinks (Settings → Permalinks → Save).
 - `/marketing` has sub-routes: `start` (default; `/marketing/` redirects), `youtube` — PHP `.sub-header` tabs + `.site-meta` h1 + `data-subroute` on `.dls-marketing` (same shell as Buchhaltung + Verwaltung tabs).
-- `/werkzeuge` has sub-routes: `email-migration` (default; `/werkzeuge/` opens it) — PHP `.sub-header` + `.site-meta` h1 + `tools-page.js` on `.dls-werkzeuge` (`data-subroute`). Nav link in `header.php`.
-- **E-Mail-Migration** (`email-migration-tab.js`): **`POST /dls/v1/imap-sync/start`**, **`GET /dls/v1/imap-sync/jobs`**, **`GET /dls/v1/imap-sync/config`** (health), **`DELETE /dls/v1/imap-sync/jobs/{id}`** (cancel). Proxy **`inc/routes/imap-sync-proxy.php`**, option **`dls_imap_sync_base_url`**. Stella uses temp passfiles for `imapsync`. Separate from Nachrichten DB import.
+- **Werkzeuge removed (2026-09-02):** Deployment, E-Mail-Migration, and WordPress-Seiten are now handled by Atlas.
 - `AdminSettingsPage` in `admin-settings-page.js`: switches between `MailAdminMailboxes` (nachrichten), `AiConnectorsPage` / `AiProfilesPage` (AI tabs), and `ManagementPage` (buchhaltung/projekte/marketing).
 - Add new screens: add to `dls_get_app_routes()`, add `add_rewrite_rule`, add to `admin-settings-page.js` tab list if it's a Verwaltung tab, mount React component. Flush permalinks after adding.
 - **Do not** create a WP page with the same slug.
+
+## Präsentationsmodus (Demo / Bildschirmaufnahme)
+
+Globaler Schalter für Live-Demos und YouTube-Aufnahmen. Solange aktiv, ersetzt der Server sensible Inhalte vor der REST-Antwort durch deterministische Platzhalter und blockt **alle** Schreibzugriffe.
+
+- **Service:** `inc/services/presentation-mode-service.php` — Klasse `\DLS\Services\PresentationModeService`. Methoden: `is_active()`, `set_active(bool)`, `obfuscate_email_row()`, `obfuscate_email_list_payload()`, `obfuscate_client_envelope()`, `obfuscate_person_envelope()`, `obfuscate_mailbox_row()`, `is_blocked_request(WP_REST_Request)`, `blocked_response()`.
+- **Option:** `dls_presentation_mode` (boolean, registriert in `OptionService::register_settings()`, `show_in_rest=true`). Wird über `wp_localize_script()` als `stella_options.presentation_mode` an die UI durchgereicht.
+- **REST:**
+  - `GET  /dls/v1/presentation-mode` → `{ active: bool }` (eingeloggt)
+  - `POST /dls/v1/presentation-mode` Body `{ active: bool }` → admin only (`manage_options`)
+- **Schreibsperre:** Filter `rest_pre_dispatch` in `inc/routes/presentation-mode.php` weist alle nicht-`GET/HEAD/OPTIONS`-Anfragen unter `/dls/v1/*` und `/wp/v2/*` mit **`HTTP 423 Locked`** und Code `presentation_mode_active` ab. Allowlist: `dls/v1/presentation-mode`, `dls/v1/session/login`, `dls/v1/session/logout` — damit Admin den Modus wieder verlassen / sich abmelden kann.
+- **Daten-Maskierung (READ):**
+  - `GET /dls/v1/emails`, `GET /dls/v1/emails/{id}` — `from_name`, `from_email`, `to_addresses`, `subject`, `body_text`/`body_html` werden deterministisch pro Message-ID mit Fake-Personen, Demo-Betreffen und Lorem-Ipsum-Body ersetzt (`obfuscate_email_row`). Zusätzlich werden `has_attachment` und `attachments` auf 0 / leer gesetzt, damit das Büroklammer-Icon und alle Anhang-Bubbles in der UI verschwinden.
+  - `GET /dls/v1/emails/{id}/attachments` antwortet mit `{ attachments: [] }`; der Download-Endpoint `/emails/{id}/attachments/{att_id}/download` antwortet mit **`HTTP 423`** und Code `presentation_mode_active`.
+  - `GET /wp/v2/client`, `GET /dls/v1/clients[/{id}]` — `title.rendered`, `acf.official_name`, `acf.email`, `acf.phone`, `acf.address`, `acf.zip`, `acf.city`, `acf.invoice_emails`, `acf.logo` (auf `false`) werden ersetzt (`obfuscate_client_envelope`).
+  - `GET /wp/v2/person`, `GET /dls/v1/persons[/{id}]` — `title.rendered`, `acf.name`, `acf.email`, `acf.phone`, `acf.profile_image` (auf `false`) werden ersetzt (`obfuscate_person_envelope`).
+  - `GET /dls/v1/mailboxes[/{id}]` — `name`, `imap_username`, `imap_host` werden mit Fake-Firmennamen und Demo-Login überschrieben (`obfuscate_mailbox_row`). Verbindungen / Sync laufen **nicht**, weil POSTs ohnehin geblockt werden — die Maskierung dient nur der Anzeige.
+  - Avatare in `messages-page.js` / `messages-conversation-sidebar.js` rendern automatisch generische Initialen, weil `acf.profile_image` und `acf.logo` `false` sind (`conversationListAvatarInfo` fällt auf Initialen zurück).
+- **Eindeutigkeit der Fake-Daten:** `PresentationModeService` zerlegt jede Entitäts-ID über eine bijektive LCG-Multiplikation (`bijective_slot()`) in unabhängige Indizes je Achse plus einen kleinen Cycle-Suffix. So entstehen z. B. ~1 500 unterschiedliche Firmennamen (`COMPANY_ROOTS` × `COMPANY_SUFFIXES` × 4 Cycles) und ~49 000 unterschiedliche Personen — sequentielle IDs (1, 2, 3 …) verteilen sich gleichmäßig statt zu clustern, sodass keine fünf „Atlas Werkstatt“-Kunden mehr auftauchen.
+- **AI-Chatbot-Tools:** `AgentToolOrchestrator` ruft Datenbank-Services direkt auf (umgeht REST), liefert aber im Präsentationsmodus **keine echten Daten** an Ollama / Stella. Stattdessen routet `dispatch_tool()` jeden Aufruf an `dispatch_presentation_tool()`, der pro Tool eine deterministische Fake-Antwort aus `PresentationModeService` zurückgibt:
+  - `get_client_by_name(name)` → ein Treffer mit dem genannten Namen als `name` und einer Fake-E-Mail (`fake_client_search_results`) — der User kann jeden im UI sichtbaren obfuskierten Namen verwenden, ohne dass eine Reverse-Lookup-Tabelle nötig wäre.
+  - `get_client_emails`, `get_recent_emails`, `search_emails` → `fake_emails(seed, limit, direction)` mit Fake-Personen, Fake-Betreffen und Lorem-Ipsum-Body.
+  - `get_client_tasks`, `get_project_tasks` → `fake_tasks(seed, status, count)` mit deutschen Task-Titeln (z. B. „Abnahme Korrekturen“, „Setup Projektplan“).
+  - `get_client_projects` → `fake_projects(seed, count)` mit Projektnamen wie „Atlas — Relaunch“.
+  - `get_project_time_entries` → `fake_time_entries(seed, count)` mit Minutenwerten und Demo-Notizen.
+  - `get_client_transactions` → `fake_transactions(seed, type, count)` mit „Rechnung 0571“-artigen Titeln und plausiblen EUR-Beträgen.
+  - Seeds werden aus client_id / project_id / dem Such-String (`seed_from_string()` via MD5) abgeleitet → wiederholte Fragen während derselben Demo liefern dieselben Zahlen.
+- **System-Prompt-Erweiterung:** Im Präsentationsmodus hängt `build_messages()` einen Hinweis an, dass alle Tool-Ergebnisse synthetische Demodaten sind und das Modell keine verifizierten Fakten behaupten soll. Bei direkter Frage des Users nach Datenschutz/Demo-Status soll der Bot ehrlich antworten.
+- **Tools außerhalb des Orchestrators:** `AiYoutubeChatTools` (Anthropic Pattern C, YouTube-Analytics) ist **nicht** maskiert — Channel-Statistiken gelten nicht als kundensensible Daten. Falls in einer Demo unerwünscht, kann der Tab ausgeblendet werden.
+- **UI:** `/verwaltung/praesentation/` (admin only). Komponente: `src/components/presentation-mode-settings.js` — `IntegrationServiceCard` mit Toggle (`Toggle`-Komponente). Lädt aktuellen Status via `GET /dls/v1/presentation-mode`, speichert via POST.
+- **Frontend-Toast für Schreibsperre:** Globaler Singleton `src/global-toast.js` (`window.dlsAddToast(message, type)`) — kein React-Root nötig, fügt sich in alle Roots ein. `setup-api-fetch-auth.js`-Middleware fängt `error.code === 'presentation_mode_active'` bzw. `status === 423` ab und zeigt eine Error-Toast-Meldung (mit 1.5 s Debounce, falls mehrere Requests parallel laufen).
+- **Wichtig:** Maskierung greift **vor** dem Versand der REST-Antwort, **nicht** in der Datenbank. Nach Deaktivierung sind alle Originaldaten unverändert sichtbar.
 
 ## Nachrichten (IMAP)
 
 **Schema version:** `DLS_MAIL_DB_VERSION = 32` (option `dls_mail_db_version`). Legacy tables (`dls_mailbox`, `dls_email`, spam blocklist/whitelist, embed queue) were dropped in the v3 migration.
 
-- **Tables** (`inc/install-mail-tables.php`):
+- **Tables** (schema in `inc/Schema/schemas/MailSchema.php`):
 
 | Table | Purpose |
 |---|---|
@@ -320,7 +389,7 @@ assets/scss/                 # SCSS source (ScssPhp, compiled on theme load when
 
 ### Tabellen & Install
 
-- **`dls_ai_profile`** / **`dls_ai_profile_run`:** `inc/install-ai-profile-tables.php` (Option `dls_ai_profile_db_version`). Ein Profil je `(name, source_type)` — Seeds liefern weiter `system_prompt` + `user_prompt`; **Verwaltungs-UI** bearbeitet nur **`user_prompt`** (Analyse-Prompt) und leert `system_prompt` beim Speichern. Ollama-Aufruf (`ai-profile-run-execute.php`): System-Rolle nur wenn `system_prompt` nicht leer (Legacy), sonst nur User-Nachricht aus `user_prompt` (Platzhalter `{{corpus}}`, `{{count}}`, `{{model}}`). Filter-JSON u. a. `direction`, `spam_status`, `sample_limit`, `min_body_chars`, `max_body_chars`; Klassifizierung: `require_substring` für Output-Check.
+- **`dls_ai_profile`** / **`dls_ai_profile_run`:** schema in `inc/Schema/schemas/AiProfileSchema.php` (Option `dls_ai_profile_db_version`). Ein Profil je `(name, source_type)` — Seeds liefern weiter `system_prompt` + `user_prompt`; **Verwaltungs-UI** bearbeitet nur **`user_prompt`** (Analyse-Prompt) und leert `system_prompt` beim Speichern. Ollama-Aufruf (`ai-profile-run-execute.php`): System-Rolle nur wenn `system_prompt` nicht leer (Legacy), sonst nur User-Nachricht aus `user_prompt` (Platzhalter `{{corpus}}`, `{{count}}`, `{{model}}`). Filter-JSON u. a. `direction`, `spam_status`, `sample_limit`, `min_body_chars`, `max_body_chars`; Klassifizierung: `require_substring` für Output-Check.
 - **Worker:** `inc/scripts/run-ai-profile.php --run-id=N` — Logik in `inc/ai-profile-run-execute.php` (Corpus → Platzhalter ersetzen → Ollama `/api/chat`, Timeout 14400s). Corpus-Builder: `AiEmailCorpusBuilder` + `AiCorpusBuilderRegistry` (`task` / `slack` → noch nicht implementiert).
 - **REST (neu):** `inc/routes/ai-profiles.php` — `GET/PATCH /dls/v1/ai/profiles`, `GET /dls/v1/ai/profiles/{id}`, `POST /dls/v1/ai/profiles/{id}/run`, `POST /dls/v1/ai/profiles/runs/{id}/promote`, `POST /dls/v1/ai/profiles/worker/stop`. Worker-State: Option `dls_ai_profile_worker_state`; Cron-Fallback: `dls_ai_profile_cron_worker`.
 
@@ -336,7 +405,7 @@ assets/scss/                 # SCSS source (ScssPhp, compiled on theme load when
 
 ## Project Management (PM)
 
-- **Tables** (`inc/install-pm-tables.php`, option `dls_pm_db_version` v2): `dls_pm_project` (name, status, client_id, tt_project_id), `dls_pm_task_list` (project_id, sort_order, tt_task_list_id), `dls_pm_task` (title, status, due_date, sort_order, tt_task_id), `dls_pm_task_assignee` (task_id, user_id), `dls_pm_comment` (task_id, user_id, body, tt_comment_id), `dls_pm_time_entry` (task_id, project_id, user_id, minutes, started_at, tt_time_entry_id).
+- **Tables** (schema in `inc/Schema/schemas/PmSchema.php`, option `dls_pm_db_version` v2): `dls_pm_project` (name, status, client_id, tt_project_id), `dls_pm_task_list` (project_id, sort_order, tt_task_list_id), `dls_pm_task` (title, status, due_date, sort_order, tt_task_id), `dls_pm_task_assignee` (task_id, user_id), `dls_pm_comment` (task_id, user_id, body, tt_comment_id), `dls_pm_time_entry` (task_id, project_id, user_id, minutes, started_at, tt_time_entry_id).
 - **Service:** `DLS\Services\PmDbService` (`inc/services/pm-db-service.php`) — full CRUD for projects, task lists, tasks, assignees, comments, time entries. `get_project_id_by_tt_project_id()` for TrackingTime import upsert.
 - **REST:** `inc/routes/pm-projects.php` — namespace `dls/v1`, prefix `/pm`; routes for projects, task lists, tasks, assignees, comments, time entries. Auth: `dls_pm_permission()` (logged-in).
 - **UI:** `src/components/project-management.js` — mounts on `.dls-project-management`; full CRUD UI with `SidebarForm`, `SearchableSelect` (client), `DeleteModal`, task lists + tasks inline.
@@ -410,7 +479,7 @@ The status endpoint parses this and passes both refs to `KSeFService::check_send
 
 #### Buyer identification (Podmiot2)
 - PL buyer: `<NIP>` (10-digit, extracted from `vat_number`)
-- EU buyer: `<KodUE>` + `<NrVatUE>` (e.g. `DE` + `DE123456789`)
+- EU buyer: `<KodUE>` + `<NrVatUE>` without repeating the country code in `NrVatUE` (e.g. `AT` + `U69977414`, not `AT` + `ATU69977414` — KSeF concatenates both for display). `KSeFXmlBuilder::eu_vat_number_for_ksef()` strips the buyer country prefix from stored `vat_number` values before export.
 - Non-EU buyer: `<KodKraju>` + `<NrID>` (country ISO code + tax ID)
 
 - **Country resolution**: `KSeFXmlBuilder::resolve_country_code()` maps free-text country names (German, English, Polish) to ISO alpha-2 codes.
@@ -454,7 +523,7 @@ Beyond the basic structure, the following elements are mandatory in FA(3) schema
 
 ### Overview
 
-Bank accounts for invoice and PDF generation are stored in a **custom database table** (`dls_bank_account`) managed via `inc/install-bank-account-tables.php` (option `dls_bank_account_db_version`, current v3). A CRUD REST API and a React UI in Verwaltung → Buchhaltung allow adding, editing, and deleting entries.
+Bank accounts for invoice and PDF generation are stored in a **custom database table** (`dls_bank_account`) managed via `inc/Schema/schemas/BankAccountSchema.php` (option `dls_bank_account_db_version`, current v3). A CRUD REST API and a React UI in Verwaltung → Buchhaltung allow adding, editing, and deleting entries.
 
 ### Database table
 
@@ -541,7 +610,7 @@ Invoice bank choices are built in `inc/post-types/invoice.php` (`acf/load_field/
 - `get_pdf_base_css(string $extra_css)` — shared `<style>` block for all PDFs; pass document-specific CSS via `$extra_css`
 - `get_pdf_header_html(...)` — shared dark-background header (customer info + profile + Dominik info + invoice-meta row); used by invoices AND commission report
 - Invoice PDFs use `[0, 0, 0, 0]` constructor margins (edge-to-edge layout)
-- **Invoice `InvoicePdfService`**: If `service_start_date` and `service_end_date` fall on the same calendar day, the PDF shows **Leistungsdatum** / **Service date** / **Data sprzedaży** (PL) with a single formatted date instead of **Leistungszeitraum** with a range. When that day matches the invoice date, the value line still uses the existing “same as invoice date” wording (DE/EN/PL). Position override text, product title, and product `description` are passed through `wp_kses` with a small inline tag allowlist (`br`, `strong`, `b`, `em`, `i`, `u`, `p`, `span`) so Html2Pdf renders formatting instead of escaping tags as plain text. KSeF `FaWiersz` / `P_7` uses plain text (`wp_strip_all_tags` on the override description) because FA XML must not carry HTML markup.
+- **Invoice `InvoicePdfService`**: If `service_start_date` and `service_end_date` fall on the same calendar day, the PDF shows **Leistungsdatum** / **Service date** / **Data sprzedaży** (PL) with a single formatted date instead of **Leistungszeitraum** with a range. When that day matches the invoice date, the value line still uses the existing “same as invoice date” wording (DE/EN/PL). Position override text, product title, and product `description` are passed through `wp_kses` with a small inline tag allowlist (`br`, `strong`, `b`, `em`, `i`, `u`, `p`, `span`); in `InvoicePdfService::sanitize_invoice_line_html` only, any `<br>` in that stored line HTML is replaced (search/replace) with `<p class="dls-pdf-line-spacer"></p>` (CSS: `display:block; width:100%; margin: 0 0 10px; padding: 0`). The rest of the invoice PDF template still uses normal `<br />` where the layout is fixed in PHP, except for the gap between the product title and the product `description` when the description is non-empty and already contains a `dls-pdf-line-spacer` (i.e. at least one line break in that field), in which case that gap uses the same `p.dls-pdf-line-spacer` for consistent spacing. KSeF `FaWiersz` / `P_7` uses plain text (`wp_strip_all_tags` on the override description) because FA XML must not carry HTML markup.
 - Commission report uses `[13, 13, 13, 13]` constructor margins + `<page backbottom="10mm">` + `<page_footer>[[page_cu]]/[[page_nb]]</page_footer>` for page numbering
 
 ### Page margins + edge-to-edge header

@@ -53,7 +53,7 @@ ACF `date_picker` fields return `"Y-m-d"` strings. Positions repeater items use 
 | `bank_account_id`          | select      | `dls_bank_account` row id as string; `"0"` = no pin. Field key `field_6961inv_bank_acct`. Choices from `acf/load_field`. `ui: 0`. |
 | `bank_details_country_code`| select      | `"AT"`, `"PL"`, `"USA"` — legacy; bank line on PDF/KSeF comes from `bank_account_id` + `BankAccountDbService` |
 | `invoice_url`              | url         | string — PDF URL (from import or manual)      |
-| `positions`                | repeater    | array of `{ product_id, description, quantity, unit_price, vat_percent }` — optional `description` overrides the line title; inline HTML in that field is rendered on the invoice PDF (allowlisted tags) and stripped for KSeF `P_7` |
+| `positions`                | repeater    | array of `{ product_id, description, quantity, unit_price, vat_percent }` — optional `description` overrides the line title; inline HTML in that field is rendered on the invoice PDF (allowlisted tags; `<br>` in that HTML becomes `p.dls-pdf-line-spacer` in the PDF sanitizer only) and stripped for KSeF `P_7` |
 | `ksef_invoice_number`      | text        | KSeF number assigned after successful send. Field key: `field_6961inv_ksef_number` |
 | `ksef_send_status`         | select      | `""` / `"pending"` / `"sent"` / `"error"`. Field key: `field_6961inv_ksef_status` |
 | `ksef_sent_at`             | text        | ISO 8601 timestamp of last send attempt. Field key: `field_6961inv_ksef_sent_at` |
@@ -120,7 +120,7 @@ ACF `number` returns number. `base_price` can be used directly for arithmetic.
 | Field name               | ACF type     | Return value / notes                    |
 |--------------------------|--------------|-----------------------------------------|
 | `name`                   | text         | string                                  |
-| `description`            | textarea     | string — allowlisted inline HTML (`br`, `strong`, …) is rendered on invoice PDFs under the product title |
+| `description`            | textarea     | string — allowlisted inline HTML (`br`, `strong`, …) is rendered on invoice PDFs under the product title (optional `<br>` → `p.dls-pdf-line-spacer` in `sanitize_invoice_line_html` only) |
 | `base_price`             | number       | number — use directly for arithmetic    |
 | `is_recurring`           | true_false   | boolean                                 |
 | `subscription_period`    | radio        | `"monthly"`, `"quarterly"`, `"yearly"`  |

@@ -198,7 +198,7 @@
     },
     "/saldeo-export": {
       "get": {
-        "summary": "Download Saldeo XLSX (query: from, to, type)",
+        "summary": "Download Saldeo XLSX (query: from, to, type, ids)",
         "tags": [
           "Accounting"
         ],
@@ -735,132 +735,6 @@
         "summary": "Analytics sync status",
         "tags": [
           "YouTube"
-        ],
-        "security": [
-          {
-            "WPCookieAuth": []
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "OK (JSON or binary; see route implementation in theme)"
-          }
-        }
-      }
-    },
-    "/imap-sync/config": {
-      "get": {
-        "summary": "Stella imap-sync base URL + health probe",
-        "tags": [
-          "Integrations"
-        ],
-        "security": [
-          {
-            "WPCookieAuth": []
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "OK (JSON or binary; see route implementation in theme)"
-          }
-        }
-      }
-    },
-    "/imap-sync/health": {
-      "get": {
-        "summary": "Forward imap-sync /health",
-        "tags": [
-          "Integrations"
-        ],
-        "security": [
-          {
-            "WPCookieAuth": []
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "OK (JSON or binary; see route implementation in theme)"
-          }
-        }
-      }
-    },
-    "/imap-sync/jobs": {
-      "get": {
-        "summary": "List imap-sync jobs",
-        "tags": [
-          "Integrations"
-        ],
-        "security": [
-          {
-            "WPCookieAuth": []
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "OK (JSON or binary; see route implementation in theme)"
-          }
-        }
-      }
-    },
-    "/imap-sync/jobs/{id}": {
-      "delete": {
-        "summary": "Delete imap-sync job",
-        "tags": [
-          "Integrations"
-        ],
-        "security": [
-          {
-            "WPCookieAuth": []
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "OK (JSON or binary; see route implementation in theme)"
-          }
-        }
-      }
-    },
-    "/imap-sync/start": {
-      "post": {
-        "summary": "Start imap-sync copy job",
-        "tags": [
-          "Integrations"
-        ],
-        "security": [
-          {
-            "WPCookieAuth": []
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "OK (JSON or binary; see route implementation in theme)"
-          }
-        }
-      }
-    },
-    "/imap-sync/status/{id}": {
-      "get": {
-        "summary": "Job status",
-        "tags": [
-          "Integrations"
-        ],
-        "security": [
-          {
-            "WPCookieAuth": []
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "OK (JSON or binary; see route implementation in theme)"
-          }
-        }
-      }
-    },
-    "/imap-sync/status/{id}/log": {
-      "get": {
-        "summary": "Job log",
-        "tags": [
-          "Integrations"
         ],
         "security": [
           {
@@ -2229,6 +2103,7 @@
     "/mailboxes/{id}/stella-chroma-index/start": {
       "post": {
         "summary": "Start async Stella Chroma index job (logged in dls_mail_stella_index_run; client polls step)",
+        "description": "Resets Stella collection emails_v3, then indexes every message row for this mailbox (all synced IMAP folders, inbound and outbound). Client/project links are included when present.",
         "tags": [
           "Mail"
         ],
@@ -2264,7 +2139,7 @@
     },
     "/mailboxes/{id}/stella-chroma-index/step": {
       "post": {
-        "summary": "Process one batch of Stella upserts for the running job",
+        "summary": "Process one batch of Stella upserts for the running job (all messages for the mailbox, not client-filtered)",
         "tags": [
           "Mail"
         ],

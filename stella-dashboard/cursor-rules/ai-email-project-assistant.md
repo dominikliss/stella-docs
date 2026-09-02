@@ -225,7 +225,7 @@ Static **style profile** (from sent-email analysis) in system prompt; editable f
 | Slack replies | `qwen2.5:14b` | Faster, conversational |
 | Email classification | `qwen2.5:14b` | Small task, speed |
 | Technical / code | `qwen3-coder-next` | Code-optimised |
-| All RAG embeddings | `nomic-embed-text` | Fast, 768-dim |
+| All RAG embeddings | `nomic-embed-text` | Fast, 768-dim, 2048-token context (ddashboard caps Stella `document` 3600 UTF-8 chars default) |
 
 Same Ollama instance; **one model in memory at a time** — Slack jobs can get higher queue priority vs 70b email drafts.
 
