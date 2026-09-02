@@ -353,35 +353,24 @@ Globaler Schalter für Live-Demos und YouTube-Aufnahmen. Solange aktiv, ersetzt 
 
 ## Nachrichten (IMAP)
 
-**Schema version:** `DLS_MAIL_DB_VERSION = 32` (option `dls_mail_db_version`). Legacy tables (`dls_mailbox`, `dls_email`, spam blocklist/whitelist, embed queue) were dropped in the v3 migration.
+**Rebuilt 2026-09-02 — minimal stack.** Two tables only; INBOX-only sync; one tab per account in the UI. All legacy complexity (folders, threads, classification, Stella indexing, client links, chunk sync) removed.
+
+**Schema version:** `34` (option `dls_mail_db_version`). Upgrading from any previous version drops all `dls_mail_*` tables and recreates from scratch.
 
 - **Tables** (schema in `inc/Schema/schemas/MailSchema.php`):
 
 | Table | Purpose |
 |---|---|
-| `dls_mail_account` | IMAP accounts — credentials (password AES-encrypted), active flag |
-| `dls_mail_folder` | Per-account folder rows: `uid_validity`, `category`, `last_synced_at` |
-| `dls_mail_message` | One row per `(account_id, folder_id, imap_uid)`; `direction` inbound/outbound; `thread_id`; classification columns `email_category`, `email_action`, `email_urgency`, `classification_source` (`rule`/`ai`); `has_attachment`, `is_seen`, `is_flagged`, `subject_normalized` |
-| `dls_mail_folder_link` | Polymorphic folder → entity mapping |
-| `dls_mail_message_link` | Polymorphic message → entity; `source`: `folder` / `manual` / `address` |
-| `dls_mail_attachment` | Attachment metadata; files under `wp-content/private/dls-mail-attachments/{account_id}/{message_id}/` |
-| `dls_mail_classification_rule` | Ordered Layer-1 classification rules |
-| `dls_mail_sync_run` | Chunk sync audit log — `status` running → done/error/cancelled; `chunk_size`, `uid_cap`, `total_queued`, `processed_count`, `deleted_count`, `restored_links`, `errors_json`, timestamps |
+| `dls_mail_account` | IMAP accounts — name, email_address (display), IMAP credentials (AES-encrypted password), is_active, last_synced_at |
+| `dls_mail_message` | INBOX messages only — imap_uid, message_id, subject, from_name, from_email, date_sent, body_text, body_html, is_seen. UNIQUE `(account_id, imap_uid)` |
 
-- **Services** (`inc/services/`): `MailDbService` (DB façade), `MailSyncV2` (sync engine), `MailSyncRunDbService` (chunk audit log), `MailAttachmentService` (private attachment storage), `MailClassificationService` (rule + Ollama classification), `MailCrypto` (password AES), `DlsImapFactory` (Webklex PHPIMAP).
-- **WP-Cron:** `inc/mail-sync-cron.php` — hook `dls_mail_imap_sync_cron` every **5 minutes** (`dls_every_five_minutes`); calls `MailSyncV2::sync_account($id, $limit)` for each active account (default limit 100, filterable via `dls_mail_cron_sync_limit`, min 10).
-- **Quick sync vs chunk sync:**
-  - **Quick** (`sync_account`): per-folder UID diff, handles UIDVALIDITY change (purge + reimport), flag sync up to 500 UIDs, imports new UIDs up to `$limit`. Used by cron and `POST /mailboxes/{id}/sync`.
-  - **Chunk** (full wipe-resync): `start_chunk_job` wipes all mailbox messages, saves manual links to transient, builds per-folder UID queues, logs run in `MailSyncRunDbService`. `process_chunk_step` imports one folder's batch. On completion: `restore_manual_links_after_resync`. Job in transient `dls_mail_sync_job_{id}` (3 h TTL). Default `uid_cap = 0` (unlimited).
-- **Direction:** `outbound` when IMAP path matches Sent folder (`sent` / `gesendete`) or From matches `DLS_OWNER_EMAILS` / `DLS_OWNER_DOMAINS`; else `inbound`. **Classification** (`MailClassificationService`) is off by default (`DLS_MAIL_CLASSIFICATION_ENABLED`); when enabled, only **main INBOX** + **inbound** messages are classified (not subfolders, not outbound).
-- **Classification** (`MailClassificationService`): Layer-1 ordered rules in `dls_mail_classification_rule` (first match; `classification_source = 'rule'`); Layer-2 Ollama synchronous call if no rule matches and `AiRuntimeCredentials::ollama_base_url()` is set (`classification_source = 'ai'`). Runs **synchronously** inside `import_uid_batch`.
-- **Client assignment** — links in `dls_mail_message_link` with `source`:
-  1. **`folder`** — folder→entity from `dls_mail_folder_link`; highest priority.
-  2. **`address`** — From/To matching against `MailDbService::build_client_email_map` (WP CPTs: client emails, people, invoice emails).
-  3. **`manual`** — user-set via `PUT /emails/{id}`; survives wipe-resync via transient restore.
-  - `recompute_client_assignments` deletes `folder` + `address` links and re-derives them; manual links are preserved.
-- **REST** (all `dls/v1`): `mailboxes.php` (mailbox CRUD, folder-entity assignments, IMAP health/test/list-folders, `folder-clients-overview`), `mail-emails.php` (email list/get/update), `mail-sync.php` (quick sync, chunk sync start/step/cancel/status, wipe, **`stella-chroma-index`** async job + `dls_mail_stella_index_run`, recompute-metadata, clear-client-links), `mail-classification.php` (classification rules CRUD + reorder, POST classify).
-- **UI:** `messages-page.js` (dark inbox card, `.client-data` tabs, `useDlsQuery` INBOX list, inbox skeletons, `MessagesFocusInboxRow`, `MessagesConversationSidebar`), `mail-admin-tab.js` (mailbox CRUD + classification rules), `mailbox-sync-controls.js` (quick/chunk/wipe sync + resume), `email-classification-labels.js` (token → German label maps), `mail-conversation-resolution.js` (thread helpers, avatar, reply builder). SCSS: `messages-page.scss`, `mail-admin-panel.scss`, `inbox.scss`, `chunk-sync.scss`, `conversation-layout.scss`, `skeleton.scss`, `client-card.scss` (tab-badge); `filter-bar.scss` is not used on the Nachrichten inbox screen.
+- **Services** (`inc/services/`): `MailDbService` (account + message CRUD), `MailSyncService` (INBOX-only IMAP sync), `MailCrypto` (AES-256 password encryption), `DlsImapFactory` (Webklex PHPIMAP).
+- **WP-Cron:** `inc/mail-sync-cron.php` — hook `dls_mail_imap_sync_cron` every **5 minutes**; calls `MailSyncService::sync_account($id, $limit)` for each active account (default 100 messages, filterable via `dls_mail_sync_limit`, min 10).
+- **Sync:** `MailSyncService::sync_account` opens IMAP, fetches newest `$limit` messages from `INBOX` only, upserts via `(account_id, imap_uid)` unique key, updates `last_synced_at`. Manual sync available via `POST /dls/v1/mailboxes/{id}/sync`.
+- **REST** (all `dls/v1`):
+  - `mailboxes.php` — account CRUD (`GET/POST /mailboxes`, `GET/PUT/DELETE /mailboxes/{id}`), `POST /mailboxes/test-imap`, `POST /mailboxes/{id}/sync`
+  - `mail-emails.php` — `GET /emails?account_id={id}&page={n}&per_page=25`, `GET /emails/{id}`, `PUT /emails/{id}` (mark seen)
+- **UI:** `messages-page.js` (tabs per account, inbox list, message sidebar), `mail-admin-tab.js` (account CRUD, test-imap, manual sync). Admin under **Verwaltung → Nachrichten**. SCSS: `nachrichten.scss`, `messages-page.scss`, `mail-admin-panel.scss`.
 
 ## E-Mail-AI-Analysen (Ollama, Verwaltung → AI-Profile)
 
