@@ -86,6 +86,8 @@ stella.foxcraft.digital {
             dns hetzner {env.HETZNER_API_TOKEN}
         }
     }
+    @blocked remote_ip 213.47.151.242 89.67.29.69
+    respond @blocked 403
     handle /ollama* {
         uri strip_prefix /ollama
         reverse_proxy ollama:11434 {
@@ -113,6 +115,8 @@ advoapp.finditoo.foxcraft.digital {
             dns hetzner {env.HETZNER_API_TOKEN}
         }
     }
+    @blocked remote_ip 213.47.151.242 89.67.29.69
+    respond @blocked 403
     reverse_proxy advoapp-dev:8080
 }
 
@@ -124,6 +128,8 @@ stella-deployment-api.foxcraft.digital {
             dns hetzner {env.HETZNER_API_TOKEN}
         }
     }
+    @blocked remote_ip 213.47.151.242 89.67.29.69
+    respond @blocked 403
     reverse_proxy deploy-api:8080
 }
 
@@ -135,6 +141,8 @@ stella-health-api.foxcraft.digital {
             dns hetzner {env.HETZNER_API_TOKEN}
         }
     }
+    @blocked remote_ip 213.47.151.242 89.67.29.69
+    respond @blocked 403
     reverse_proxy health-api:8080
 }
 
@@ -146,11 +154,17 @@ osgar.datahub.foxcraft.digital {
             dns hetzner {env.HETZNER_API_TOKEN}
         }
     }
+    # Allow team IPs + client IPs; block everyone else.
+    # See client-ip-access.md — client IPs are temporary.
+    @blocked not remote_ip 194.126.177.181 23.88.90.12 213.47.151.242 89.67.29.69
+    respond @blocked 403
     reverse_proxy osgar.datahub.foxcraft.digital:8080
 }
 ```
 
-**Required template for every new domain block** (copy as-is; only change hostname + upstream):
+> **Per-site IP scoping (2026-09-03):** `@blocked` matchers were added to all site blocks. Blocks other than `osgar.datahub` deny the client IPs outright; `osgar.datahub` uses an allow-list. This is the second layer of a two-layer approach — the first layer (DOCKER-USER) lets client IPs reach port 443 at all; Caddy's matchers then restrict which subdomain they can actually use. See [`client-ip-access.md`](client-ip-access.md) for the full rationale, the list of current client IPs, and removal instructions.
+
+**Required template for every new domain block** (copy as-is; only change hostname + upstream). Add the `@blocked` deny-list if any client IPs are in effect — see [`client-ip-access.md`](client-ip-access.md):
 
 ```caddyfile
 <subdomain>.foxcraft.digital {
@@ -161,6 +175,8 @@ osgar.datahub.foxcraft.digital {
             dns hetzner {env.HETZNER_API_TOKEN}
         }
     }
+    @blocked remote_ip <client-ip-1> <client-ip-2>   # omit if no client IPs are active
+    respond @blocked 403
     reverse_proxy <container-name>:8080
 }
 ```
@@ -313,7 +329,7 @@ networks:
 3. Write a `Dockerfile` appropriate to the stack (see `finditoo-advoapp` for a .NET example)
 4. Write `docker-compose.yml` per the template above — **no `ports:` block**
 5. Create the DNS A record via Hetzner Cloud API (see below)
-6. Add a Caddy block with explicit `dir` pin (see Caddyfile template above), then `docker compose restart caddy`
+6. Add a Caddy block with explicit `dir` pin (see Caddyfile template above), **plus a `@blocked remote_ip` deny-list for any client IPs currently active** (see [`client-ip-access.md`](client-ip-access.md)), then `docker compose restart caddy`
 7. Check / clear stale `_acme-challenge` TXT if issuance sticks (Issue 2)
 8. `docker compose build && docker compose up -d` (or `docker-compose.dev.yml` for .NET hot-reload — see [`dotnet-app-deployment.md`](dotnet-app-deployment.md))
 
@@ -413,11 +429,12 @@ Fully decommissioned. See git history / prior doc versions if a vector search fe
 
 ## Security
 
-### Current state (verified 2026-08-06; ports updated 2026-08-07 and 2026-09-01)
+### Current state (verified 2026-08-06; ports updated 2026-08-07, 2026-09-01, 2026-09-03)
 
 - **UFW** — active, default-deny incoming. Ports 22, 443 restricted to `194.126.177.181` and `23.88.90.12`. Port 8001 additionally allows `172.18.0.0/16` (`services_default` bridge subnet) for Caddy's internal proxy calls, **and `172.20.0.0/16` (`edge` bridge subnet, added 2026-08-10)** for `health-api`'s stella-api check. Port 11434's direct-access rules removed 2026-08-10 once Ollama moved fully behind the `edge` network / Caddy — no longer needs a host-level UFW allowance for the old static-IP whitelist. Host SSH (port 22) remains Dominik-only; per-app Cursor SSH uses Docker-published `22XX` ports — [`dev-ssh-access.md`](dev-ssh-access.md).
 - **fail2ban** — running
 - **Docker-published ports (443, 2201, 2202)** — protected via a custom `DOCKER-USER` iptables chain (details below). Per-app SSH containers add a new `22XX` as they are created.
+- **Per-site Caddy `remote_ip` scoping (added 2026-09-03)** — client IPs granted access to `osgar.datahub.foxcraft.digital` only; all other Caddy site blocks explicitly deny those IPs via `@blocked remote_ip` matchers. See [`client-ip-access.md`](client-ip-access.md).
 
 **Note (2026-09-01):** `imap-sync` no longer publishes `3001`, and `caddy` no longer publishes `8080`. The `DOCKER-USER` rules for those two ports are now dead (the packets never arrive) and can be removed in a future cleanup; they are kept for now, harmless. The `:8080` Caddyfile block was already removed on 2026-08-07.
 
@@ -452,6 +469,8 @@ iptables -A DOCKER-USER -i $WAN_IF -p tcp --dport 8080 -j DROP
 
 iptables -A DOCKER-USER -i $WAN_IF -s 194.126.177.181 -p tcp --dport 443 -j ACCEPT
 iptables -A DOCKER-USER -i $WAN_IF -s 23.88.90.12 -p tcp --dport 443 -j ACCEPT
+iptables -A DOCKER-USER -i $WAN_IF -s 213.47.151.242 -p tcp --dport 443 -j ACCEPT  # client (osgar.datahub only — temporary)
+iptables -A DOCKER-USER -i $WAN_IF -s 89.67.29.69 -p tcp --dport 443 -j ACCEPT     # client (osgar.datahub only — temporary)
 iptables -A DOCKER-USER -i $WAN_IF -p tcp --dport 443 -j DROP
 
 # Per-app SSH containers (see dev-ssh-access.md). Next app gets 2203.

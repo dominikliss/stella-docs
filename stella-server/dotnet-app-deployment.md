@@ -91,6 +91,8 @@ Key details:
 - Start it: `docker compose -f docker-compose.dev.yml up -d`
 - **`restart: unless-stopped` added 2026-08-10.** Originally missing — `advoapp-dev` was killed by a Docker daemon restart on 2026-08-07 (unrelated troubleshooting elsewhere on the server) and, with no restart policy, silently stayed down for **3 days** before being noticed. Nothing was monitoring it at the time. Root cause confirmed via `docker inspect --format '{{.State.FinishedAt}}'` cross-referenced against `journalctl -u docker` daemon-restart timestamps — not an OOM kill (`OOMKilled: false`, no kernel log entry), just a daemon bounce with no policy to bring the container back. This exact scenario is now also caught automatically by [`health-api`](health-api.md), Atlas polling permitting.
 
+> **`osgar-datahub-dev` uses a different pattern** — supervisord instead of a raw `dotnet watch` command. This allows: (a) `dotnet watch` to be restarted from the SSH container without Docker socket access, (b) a permanent SCSS watcher process alongside `dotnet watch`, and (c) proper supervised autorestart. The `advoapp-dev` pattern above remains valid for simpler apps. See [`osgar-datahub-dev-setup.md`](osgar-datahub-dev-setup.md) for the full supervisord approach.
+
 Run manually (start it, view logs): `docker compose -f docker-compose.dev.yml up`
 
 ---
@@ -211,9 +213,9 @@ Reference run: `osgar.datahub.foxcraft.digital` (Blazor Server, .NET 10). Comple
 
 1. **App folder + source** under `/opt/apps/dotnet/<subdomain>/src` — clone the repo, or for an empty repo: `dotnet new blazor -n <Name> --interactivity Server`
 2. **`Dockerfile.dev` + `docker-compose.dev.yml`** after the `advoapp-dev` pattern above. Adjust the host port if `5080` is already taken (e.g. `127.0.0.1:5081:8080`)
-3. **Per-app `-ssh` container** — `Dockerfile.ssh`, `authorized_keys`, compose service with **no `networks:` key**, next free `22XX` port, `DOCKER-USER` rules, host `src/` group perms. Full checklist: [`dev-ssh-access.md`](dev-ssh-access.md)
+3. **Per-app `-ssh` container** — `Dockerfile.ssh`, `authorized_keys`, compose service with **no `networks:` key**, next free `22XX` port, `DOCKER-USER` rules, host `src/` group perms (**both** the one-time `chgrp`/`chmod`/SetGID fix **and** the `setfacl` default-ACL fix). Full checklist: [`dev-ssh-access.md`](dev-ssh-access.md)
 4. **DNS A-Record** via Hetzner Cloud API (see [`infrastructure.md`](infrastructure.md) — zone `567656`)
-5. **Caddy block** with explicit Let's Encrypt production `dir` pin:
+5. **Caddy block** with explicit Let's Encrypt production `dir` pin and `@blocked` deny-list for any currently-active client IPs (see [`infrastructure.md`](infrastructure.md) and [`client-ip-access.md`](client-ip-access.md)):
    ```caddyfile
    <subdomain>.foxcraft.digital {
        tls {
@@ -223,6 +225,8 @@ Reference run: `osgar.datahub.foxcraft.digital` (Blazor Server, .NET 10). Comple
                dns hetzner {env.HETZNER_API_TOKEN}
            }
        }
+       @blocked remote_ip <client-ip-1> <client-ip-2>   # omit if no client IPs are active
+       respond @blocked 403
        reverse_proxy <container-name>:8080
    }
    ```

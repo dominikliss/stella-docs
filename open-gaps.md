@@ -1,6 +1,6 @@
 # Open Gaps & Next Steps
 
-Last updated: 2026-09-01
+Last updated: 2026-09-04
 
 **Cross-system overview:** [integration/ddashboard-and-stella-server.md](integration/ddashboard-and-stella-server.md)
 
@@ -20,10 +20,25 @@ Last updated: 2026-09-01
   - finditoo (5 consumer repos + contracts)
 - [ ] **stella-api in git** — `/opt/services/stella-api` is not version controlled yet
 - [ ] **Daily connectivity tests** — automated login/fetch/update tests for contract sync with failure notifications (stack not finalized)
-- [ ] **Atlas health-api: render newer payload keys** — `docker_daemon`, `ollama_resource_usage`, `cpu_ram` (added later 2026-08-10). Polling + dashboard already live against `STELLA_HEALTH_API_URL`. See [`stella-server/health-api.md`](stella-server/health-api.md).
+- [ ] **Atlas health-api: render newer payload keys** — ~~`docker_daemon`, `ollama_resource_usage`, `cpu_ram` (added later 2026-08-10). Polling + dashboard already live against `STELLA_HEALTH_API_URL`. See [`stella-server/health-api.md`](stella-server/health-api.md).~~ **Closed 2026-09-03.** All keys are now normalized by `StellaHealthApiClient::normalizeServices()` and stored as per-service `StellaServiceUptimeLog` rows. See [`atlas/monitoring.md`](atlas/monitoring.md).
 - [ ] **Remove now-unneeded UFW rules for port 11434** — Ollama no longer needs direct host-level access now that it's fully behind `edge`/Caddy. Rules for the two static-IP whitelist entries can be deleted once the retired systemd `ollama.service` is confirmed not coming back.
 - [ ] **Old host-side Ollama model files** — can be deleted once `docker exec ollama ollama list` confirms all 13 models are present in the new container volume. Not yet verified as of 2026-08-10 (pull was still in progress — 10/13 confirmed present at last check).
 - [ ] **Remove dead `DOCKER-USER` rules for ports 3001 and 8080** — those publishes were deleted 2026-09-01 (`imap-sync` via Caddy only; Caddy `:8080` already unused). Rules kept as harmless leftovers. See [`stella-server/infrastructure.md`](stella-server/infrastructure.md).
+- [ ] **`advoapp-ssh` — Node.js and supervisord not yet evaluated** — host-key volume fix already applied; Node and the supervisord restart-control pattern (implemented for osgar-datahub only) have not been evaluated for `advoapp-ssh`. Apply from [`stella-server/osgar-datahub-dev-setup.md`](stella-server/osgar-datahub-dev-setup.md) if SCSS builds or SSH-triggered restarts are needed there.
+- [ ] **osgar-datahub `supervisorctl` credentials** — plaintext password baked into both Dockerfiles' build args; acceptable for the current dummy-dev-DB environment, not suitable for any app with production data in `src/`.
+- [ ] **osgar-datahub `DataProtection` key-ring warning** — `No XML encryptor configured` on every fresh run; cosmetic for dev, worth fixing before reusing this pattern for anything closer to production.
+- [ ] **Client IP grant for `osgar.datahub.foxcraft.digital` — temporary** — IPs `213.47.151.242` and `89.67.29.69` added 2026-09-03; remove when client no longer needs access. See [`stella-server/client-ip-access.md`](stella-server/client-ip-access.md).
+
+---
+
+## Closed 2026-09-03
+
+- **Atlas-side health polling** — `CheckStellaHealth` job runs every 5 min; stores `StellaHealthCheck` + per-service `StellaServiceUptimeLog` rows. Signed `system-health` request to `STELLA_HEALTH_API_URL`, with public-probe fallback. See [`atlas/monitoring.md`](atlas/monitoring.md).
+- **Atlas newer health-api payload keys** — `docker_daemon`, `ollama_resource_usage`, `cpu_ram`, `backup`, `backup_history` all normalized and stored. CPU/RAM/disk thresholds applied for aggregate status.
+- **WP Sites uptime monitoring** — `CheckWpSiteUptime` runs every 5 min per site; stores `WpSiteUptimeLog`; sends Brevo email alert on first `down` transition per outage. See [`atlas/monitoring.md`](atlas/monitoring.md).
+- **Stella deploy-api integration in Atlas** — new `stella_deploy_api` deploy type in Atlas: signed trigger, job-ID persistence for worker-restart recovery, live log streaming from Stella. See [`atlas/deploy-pipeline.md`](atlas/deploy-pipeline.md).
+- **Atlas IMAP migration UI** — Atlas-side Tools → IMAP Migration proxies to the Stella `imap-sync` service. Stored `ImapMigrationJob` records in Atlas for history. See [`stella-server/imap-sync-service.md`](stella-server/imap-sync-service.md).
+- **Atlas settings module** — GitHub SSH key path and Brevo transactional email (API key, from address, alert recipient) configurable in Settings UI, stored in `app_settings` table.
 
 ---
 
@@ -43,7 +58,7 @@ Last updated: 2026-09-01
 - **Unused `advoapp` staging container** — built during initial setup, never routed, silently sat unused. Removed.
 - **19GB of stale Docker build cache, an orphaned `/opt/github-runners` folder** — cleaned up.
 - **`health-api` public subdomain** — `stella-health-api.foxcraft.digital` via Caddy (Atlas cannot reach edge-internal hosts). Signature still required for `/system/health`. See [`stella-server/health-api.md`](stella-server/health-api.md).
-- **Atlas-side health polling** — scheduled job + DB history + dashboard status grid against `STELLA_HEALTH_API_URL` (remaining gap: render newer payload keys above).
+- **Atlas-side health polling** — ~~scheduled job + DB history + dashboard status grid against `STELLA_HEALTH_API_URL`~~ **(remaining gap: render newer payload keys above).** Closed 2026-09-03.
 - **Ollama `OLLAMA_KEEP_ALIVE` changed from `-1` to `30m`** — the initial containerization set models to never unload, mirroring the old "preloaded permanently" systemd framing. Reconsidered same day: judged not worth holding 40GB+ RAM resident indefinitely regardless of actual use, especially now under a hard CPU cap shared with the rest of the box. `llama3.3:70b` and `phi4-mini` explicitly unloaded (`ollama stop`); no model is now treated as always-warm by default.
 
 ---

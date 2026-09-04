@@ -34,11 +34,15 @@ One extra service per app, alongside the existing `-dev` container, in the same 
 
 ### Dockerfile.ssh (template)
 
+> **Updated 2026-09-03:** Node.js and `supervisor` added (see [osgar-datahub-dev-setup.md](osgar-datahub-dev-setup.md) — Problems 2 & 3 & Architectural change). The original template below lacked both, causing SCSS build failures and no way to trigger app restarts from the SSH container.
+
 ```dockerfile
 FROM mcr.microsoft.com/dotnet/sdk:10.0
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    openssh-server curl wget ca-certificates git \
+    openssh-server curl wget ca-certificates git supervisor \
+    && curl -fsSL https://deb.nodesource.com/setup_22.x | bash - \
+    && apt-get install -y nodejs \
     && mkdir /var/run/sshd \
     && rm -rf /var/lib/apt/lists/*
 
@@ -58,11 +62,15 @@ EXPOSE 22
 CMD ["/usr/sbin/sshd", "-D"]
 ```
 
+`supervisor` is installed so the `supervisorctl` binary is available inside the container for restarting `dotnet watch` in the sibling `-dev` container. A per-user `.supervisorctl.conf` pointing at `<app>-dev:9001` should also be written during the image build — see [osgar-datahub-dev-setup.md](osgar-datahub-dev-setup.md) for the full pattern.
+
 **`getent group 1000` instead of `groupadd -g 1000 devs`:** the `mcr.microsoft.com/dotnet/sdk` base image already has a GID 1000 group (from its own default non-root user setup). Creating a new group at the same GID fails (`groupadd: GID '1000' already exists`) — reuse it instead. One `authorized_keys` file is copied to both users; either dev's key can log in as either Linux user inside the container (acceptable — the isolation boundary is per-app, not per-dev-identity within an app).
 
 **Both users get the same key file deliberately** — simpler than maintaining two files, and the security boundary that matters is app-to-app, not dev-to-dev within one app's container.
 
 ### Compose service (template)
+
+> **Updated 2026-09-03:** a named volume for `/etc/ssh` was added to persist SSH host keys across rebuilds (see [osgar-datahub-dev-setup.md](osgar-datahub-dev-setup.md) — Problem 3). Without it, every `docker compose build` regenerates new keys and triggers "REMOTE HOST IDENTIFICATION HAS CHANGED" on every client.
 
 ```yaml
   <app>-ssh:
@@ -73,9 +81,13 @@ CMD ["/usr/sbin/sshd", "-D"]
     volumes:
       - ./src:/home/dominik/app
       - ./src:/home/pawel/app
+      - <app>-ssh-keys:/etc/ssh   # persists host keys across rebuilds
     ports:
       - "22XX:22"
     restart: unless-stopped
+
+volumes:
+  <app>-ssh-keys:
 ```
 
 **No `networks:` key.** This is the critical line. Do not add `- edge`. Omitting `networks:` puts the container in the Compose project's own auto-created `<project>_default` network only.
@@ -103,7 +115,7 @@ The very first version of `osgar-datahub-ssh` was built with `networks: [edge]` 
 
 App source folders on the host are owned `root:root`, mode `755` (normal for these apps — the `-dev` containers run as root, so this was never an issue before). The new `dominik`/`pawel` users inside the `-ssh` container are non-root and, without a fix, get `Permission denied` on every write — confirmed by a live Cursor-agent write test before the fix.
 
-**Fix, applied per app before building the `-ssh` container:**
+**Step 1 — one-time group ownership fix:**
 
 ```bash
 sudo chgrp -R 1000 /opt/apps/dotnet/<subdomain>/src
@@ -114,6 +126,18 @@ sudo find /opt/apps/dotnet/<subdomain>/src -type d -exec chmod g+s {} \;
 - `chgrp -R 1000` — group-owns the whole tree to GID 1000 (the same GID both `dominik` and `pawel` are secondary-group members of inside the container, via the `getent group 1000` trick above). Does not change the `root` owner, only adds group access.
 - `chmod -R g+rwX` — group gets read/write on files, read/write/execute on directories (capital `X` = execute only if already set for someone, i.e. directories get traversable, files don't become spuriously executable).
 - `find ... chmod g+s` (SetGID bit on every directory) — **required**, not optional. Without it, new files/folders created inside the container (e.g. `dotnet` build output, new source files) inherit the creating user's primary group (`dominik`/`pawel`), not group 1000, and lose write access for the other dev. SetGID forces new entries to inherit the parent directory's group.
+
+**Step 2 — default ACLs (required for build artefacts):**
+
+> **Added 2026-09-03** — the original one-time fix above is not enough. The `-dev` container running as root regularly regenerates `obj/` and `bin/`, producing files owned `root:1000 644` — group-readable but not group-writable. Non-root users in the SSH container can't set timestamps on those files, causing `MSB3374` errors during `dotnet build`. Default ACLs fix this permanently by making every new file created under `src/` automatically group-writable. See [osgar-datahub-dev-setup.md](osgar-datahub-dev-setup.md) — Problem 1.
+
+```bash
+sudo apt-get install -y acl
+sudo setfacl -R -m g:1000:rwX /opt/apps/dotnet/<subdomain>/src
+sudo setfacl -R -d -m g:1000:rwX /opt/apps/dotnet/<subdomain>/src
+```
+
+**Caveat:** default ACLs are blanket — every new file in `src/` (including potential secrets files like `appsettings.Production.json`) becomes group-readable/writable by all SSH container users. Not a concern for apps with dummy dev databases, but check before applying to any app with real credentials in-tree.
 
 Confirmed working via live write test inside Cursor: `touch ~/app/test-write.txt && rm ~/app/test-write.txt` succeeded after the fix, failed before it.
 
@@ -166,9 +190,11 @@ A standalone script exists for manually confirming no port is reachable from a n
 
 ## Adding SSH to a new app — checklist
 
-1. Add `Dockerfile.ssh` + `authorized_keys` next to `Dockerfile.dev` (template above).
-2. Fix host `src/` group perms (`chgrp 1000` / `g+rwX` / SetGID) **before** first connect.
-3. Append the `-ssh` service to `docker-compose.dev.yml` — **no `networks:` key**, unique host port `22XX`.
+1. Add `Dockerfile.ssh` + `authorized_keys` next to `Dockerfile.dev` (template above — includes Node.js and `supervisor`).
+2. Fix host `src/` group perms:
+   - Step 1: `chgrp 1000` / `g+rwX` / SetGID (one-time fix on existing tree)
+   - Step 2: `setfacl` default ACLs (permanent fix for future build artefacts — required, not optional)
+3. Append the `-ssh` service to `docker-compose.dev.yml` — **no `networks:` key**, unique host port `22XX`, **`<app>-ssh-keys:/etc/ssh` volume**.
 4. Append the three `DOCKER-USER` rules for that port; re-run `sudo /usr/local/bin/docker-user-firewall.sh`.
 5. `docker compose -f docker-compose.dev.yml up -d --build <app>-ssh`
 6. Update the port table in this doc and the client's `~/.ssh/config`.
