@@ -304,3 +304,5 @@ curl -s -o /dev/null -w "%{http_code}\n" https://osgar.datahub.foxcraft.digital/
 - [ ] Same `Dockerfile.ssh` gaps (missing Node, no persistent host keys) likely apply to `advoapp-ssh` too — host key fix already applied there; Node and supervisord have not been evaluated for that app.
 - [ ] `supervisorctl` credentials are currently a shared plaintext password baked into both Dockerfiles' build args — fine for this dummy-DB dev environment, but should not be copied as-is to any app with production data in `src/`.
 - [ ] `DataProtection` key-ring warning (`No XML encryptor configured... may be persisted to storage in unencrypted form`) appears on every fresh run — cosmetic for dev, but worth a real fix if this pattern is ever used for anything closer to production.
+
+**2026-09-04 addition:** `osgar-datahub-ssh` now also has `sqlcmd` (mssql-tools18) for direct DB inspection — see [`osgar-datahub-ssh-sqlcmd.md`](osgar-datahub-ssh-sqlcmd.md).
