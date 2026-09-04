@@ -122,6 +122,15 @@ autorestart=true
 startretries=3
 stopasgroup=true
 killasgroup=true
+stdout_logfile=/app-logs/app.log
+stdout_logfile_maxbytes=10MB
+stdout_logfile_backups=3
+redirect_stderr=true
+
+[program:app-log-forward]
+command=tail -F /app-logs/app.log
+autostart=true
+autorestart=true
 stdout_logfile=/dev/stdout
 stdout_logfile_maxbytes=0
 redirect_stderr=true
@@ -305,4 +314,6 @@ curl -s -o /dev/null -w "%{http_code}\n" https://osgar.datahub.foxcraft.digital/
 - [ ] `supervisorctl` credentials are currently a shared plaintext password baked into both Dockerfiles' build args — fine for this dummy-DB dev environment, but should not be copied as-is to any app with production data in `src/`.
 - [ ] `DataProtection` key-ring warning (`No XML encryptor configured... may be persisted to storage in unencrypted form`) appears on every fresh run — cosmetic for dev, but worth a real fix if this pattern is ever used for anything closer to production.
 
-**2026-09-04 addition:** `osgar-datahub-ssh` now also has `sqlcmd` (mssql-tools18) for direct DB inspection — see [`osgar-datahub-ssh-sqlcmd.md`](osgar-datahub-ssh-sqlcmd.md).
+**2026-09-04 additions:**
+- `osgar-datahub-ssh` now has `sqlcmd` (mssql-tools18) for direct DB inspection — see [`osgar-datahub-ssh-sqlcmd.md`](osgar-datahub-ssh-sqlcmd.md).
+- App logs are now written to a shared `app-logs/` bind mount so the SSH container can read them without Docker access — see [`osgar-datahub-ssh-app-logs.md`](osgar-datahub-ssh-app-logs.md).
