@@ -20,9 +20,9 @@ Core Docker-managed services live at `/opt/services/docker-compose.yml`. Dev/sta
 
 | Service | Runtime | Port | Notes |
 |---------|---------|------|-------|
-| `caddy` | Docker (custom build, see below) | 443 (public) | Reverse proxy — `stella.foxcraft.digital` block serves `/ollama`, `/imap-sync`, `/stella`; subdomain-based blocks for dev/staging apps. ACME data in named volume `caddy-data`. Direct `8080:8080` publish removed 2026-09-01 |
-| `stella-api` | Docker (`network_mode: host`) | 8001 | FastAPI via uvicorn — chat-only (`/chat/health`, `/chat/stream`) |
-| `imap-sync` | Docker (Node.js) | — (Caddy `/imap-sync` only) | `imapsync` wrapper (Express). Direct `3001:3001` publish removed 2026-09-01 — already fully served via Caddy |
+| `caddy` | Docker (custom build, see below) | 443 (public) | Reverse proxy — `stella.foxcraft.digital` block serves `/ollama`, `/imap-sync`, `/stella`; subdomain-based blocks for dev/staging apps. ACME data in named volume `caddy-data`. Direct `8080:8080` publish removed 2026-09-01. **Running container is `services-caddy-1`** (no `container_name:`) |
+| `stella-api` | Docker (`network_mode: host`) | 8001 | FastAPI via uvicorn — chat-only (`/chat/health`, `/chat/stream`). **Running container is `services-stella-api-1`** (no `container_name:`) |
+| `imap-sync` | Docker (Node.js) | — (Caddy `/imap-sync` only) | `imapsync` wrapper (Express). Direct `3001:3001` publish removed 2026-09-01 — already fully served via Caddy. **Running container is `services-imap-sync-1`** (no `container_name:`) |
 | `deploy-api` | Docker (`edge` network, no host port) | — | SSH-signature-authenticated deploy trigger — [`deploy-api.md`](deploy-api.md) |
 | `ollama` | Docker (`edge` network) | 11434 (published to `127.0.0.1` only) | LLM inference — containerized 2026-08-10, see below |
 | `health-api` | Docker (`edge` network) | 443 via Caddy (`stella-health-api.foxcraft.digital`) | System status endpoint for Atlas — [`health-api.md`](health-api.md) |
@@ -244,6 +244,7 @@ curl -s -X DELETE \
 cd /opt/services
 docker compose restart caddy
 docker compose logs -f --since 1m caddy | grep -i "<subdomain>"
+# raw docker (not compose) must use the auto-name: docker logs services-caddy-1
 ```
 
 If DELETE returns `"not_found"`: fine — Caddy already cleaned up on the last successful (or partially cleaned) attempt.
@@ -516,6 +517,7 @@ Location: `/opt/services/docker-compose.yml`
 services:
   caddy:
     build: ./caddy
+    # no container_name: — Docker Compose auto-names this services-caddy-1
     env_file:
       - ./caddy/.env
     ports:
@@ -532,10 +534,12 @@ services:
 
   imap-sync:
     build: ./imap-sync
+    # no container_name: — Docker Compose auto-names this services-imap-sync-1
     restart: unless-stopped
 
   stella-api:
     build: ./stella-api
+    # no container_name: — Docker Compose auto-names this services-stella-api-1
     network_mode: host
     environment:
       - OLLAMA_URL=http://127.0.0.1:11434
@@ -594,3 +598,25 @@ volumes:
   ollama-models:
   caddy-data:
 ```
+
+**⚠️ Known gap — missing `container_name:` on three core services.** `caddy`, `imap-sync`, and `stella-api` have no `container_name:` in `/opt/services/docker-compose.yml`, so Docker Compose auto-names them `services-caddy-1`, `services-imap-sync-1`, and `services-stella-api-1`. `docker compose …` commands still take the **service** name (`caddy`), but raw Docker commands do not:
+
+```bash
+# wrong — no container is named "caddy"
+docker logs caddy
+docker exec caddy …
+
+# correct
+docker logs services-caddy-1
+docker exec services-caddy-1 …
+```
+
+Recommend adding explicit `container_name: caddy` / `imap-sync` / `stella-api` for these three to match `deploy-api`, `ollama`, `health-api`, and `backup`. Until then, treat `services-<service>-1` as the real container name.
+
+### Incident — `/opt/services` stack found fully down (2026-09-07)
+
+The entire `/opt/services` stack (`caddy`, `ollama`, `deploy-api`, `health-api`, `backup`, `imap-sync`, `stella-api`) was found down — all containers **removed** (not just stopped). Named volumes (`services_caddy-data`, `services_ollama-models`) were intact. `docker events` showed nothing for these containers in the prior 24h, so the removal predates that window; **root cause not yet identified**.
+
+Stack was restarted via `docker compose up -d` from `/opt/services` and came back healthy. Caddy re-acquired all 5 domain certs from existing `caddy-data` storage without re-issuance.
+
+**Unresolved:** nothing is currently monitoring whether this stack is running. `health-api` itself (which would normally catch this class of issue) was one of the containers that was down.

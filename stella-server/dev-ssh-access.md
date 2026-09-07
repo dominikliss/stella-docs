@@ -141,6 +141,8 @@ sudo setfacl -R -d -m g:1000:rwX /opt/apps/dotnet/<subdomain>/src
 
 Confirmed working via live write test inside Cursor: `touch ~/app/test-write.txt && rm ~/app/test-write.txt` succeeded after the fix, failed before it.
 
+**Applied to advoapp as well (2026-09-07):** the same `setfacl -R -m g:1000:rwX` + `setfacl -R -d -m g:1000:rwX` default-ACL fix was applied to `/opt/apps/dotnet/advoapp.finditoo.foxcraft.digital/src`, not just osgar-datahub's `src/`. Verified via write test (`touch`/`rm`) from the `dominik` user inside `advoapp-ssh`.
+
 ## Firewall — same `DOCKER-USER` pattern as `imap-sync`
 
 Each `-ssh` service publishes its port on `0.0.0.0` (`"22XX:22"`), which — per [`infrastructure.md`](infrastructure.md) — bypasses UFW entirely. Must be locked down the same way as `imap-sync`'s (now-retired) port 3001: append to `/usr/local/bin/docker-user-firewall.sh` (systemd-applied on boot, reapplied manually with `sudo /usr/local/bin/docker-user-firewall.sh`):

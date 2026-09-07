@@ -20,8 +20,9 @@ Established 2026-08-06 with `finditoo-advoapp` (`advoapp`) as the first implemen
 /opt/apps/dotnet/
   ├── advoapp.finditoo.foxcraft.digital/            ← dev container definition
   │     ├── src/                                     ← git clone; live-edited via the `-ssh` container (see [`dev-ssh-access.md`](dev-ssh-access.md))
-  │     ├── Dockerfile.dev                             ← dev build (SDK image only, no publish)
+  │     ├── Dockerfile.dev                             ← dev build (SDK image + supervisor)
   │     ├── Dockerfile.ssh                             ← sshd for Cursor Remote-SSH
+  │     ├── supervisord.conf                           ← bind-mounted into `-dev` (not baked into the image)
   │     ├── authorized_keys                            ← both devs' public keys
   │     └── docker-compose.dev.yml                     ← `-dev` + `-ssh` services (bind-mounts src/)
   │
@@ -38,6 +39,8 @@ Note: despite the `.finditoo.foxcraft.digital`-style naming, the production fold
 `Dockerfile.dev`:
 ```dockerfile
 FROM mcr.microsoft.com/dotnet/sdk:10.0
+RUN apt-get update && apt-get install -y --no-install-recommends supervisor \
+    && rm -rf /var/lib/apt/lists/*
 WORKDIR /src
 EXPOSE 8080
 ```
@@ -53,13 +56,14 @@ services:
     working_dir: /src
     volumes:
       - ./src:/src
+      - ./supervisord.conf:/etc/supervisor/conf.d/app.conf
     ports:
       - "127.0.0.1:5080:8080"
     environment:
       - ASPNETCORE_URLS=http://+:8080
       - ASPNETCORE_ENVIRONMENT=Development
       - DOTNET_USE_POLLING_FILE_WATCHER=1
-    command: ["dotnet", "watch", "run", "--urls", "http://+:8080"]
+    command: ["supervisord", "-c", "/etc/supervisor/conf.d/app.conf"]
     restart: unless-stopped
     networks:
       - edge
@@ -91,7 +95,40 @@ Key details:
 - Start it: `docker compose -f docker-compose.dev.yml up -d`
 - **`restart: unless-stopped` added 2026-08-10.** Originally missing — `advoapp-dev` was killed by a Docker daemon restart on 2026-08-07 (unrelated troubleshooting elsewhere on the server) and, with no restart policy, silently stayed down for **3 days** before being noticed. Nothing was monitoring it at the time. Root cause confirmed via `docker inspect --format '{{.State.FinishedAt}}'` cross-referenced against `journalctl -u docker` daemon-restart timestamps — not an OOM kill (`OOMKilled: false`, no kernel log entry), just a daemon bounce with no policy to bring the container back. This exact scenario is now also caught automatically by [`health-api`](health-api.md), Atlas polling permitting.
 
-> **`osgar-datahub-dev` uses a different pattern** — supervisord instead of a raw `dotnet watch` command. This allows: (a) `dotnet watch` to be restarted from the SSH container without Docker socket access, (b) a permanent SCSS watcher process alongside `dotnet watch`, and (c) proper supervised autorestart. The `advoapp-dev` pattern above remains valid for simpler apps. See [`osgar-datahub-dev-setup.md`](osgar-datahub-dev-setup.md) for the full supervisord approach.
+`supervisord.conf` (bind-mounted, not baked into the image — same structure as [`osgar-datahub-dev-setup.md`](osgar-datahub-dev-setup.md), without a `[program:scss]` block because advoapp has no SCSS build step):
+```ini
+[supervisord]
+nodaemon=true
+logfile=/dev/stdout
+logfile_maxbytes=0
+
+[inet_http_server]
+port=*:9001
+username=agent
+password=<see .env or ask Dominik>
+
+[rpcinterface:supervisor]
+supervisor.rpcinterface_factory = supervisor.rpcinterface:make_main_rpcinterface
+
+[program:app]
+command=dotnet watch run --urls http://+:8080 --non-interactive
+directory=/src
+autostart=true
+autorestart=true
+startretries=3
+stopasgroup=true
+killasgroup=true
+stdout_logfile=/dev/stdout
+stdout_logfile_maxbytes=0
+redirect_stderr=true
+
+[supervisorctl]
+serverurl=http://127.0.0.1:9001
+username=agent
+password=<same as above>
+```
+
+> **Migrated to supervisord 2026-09-07** — `advoapp-dev` now matches `osgar-datahub-dev`'s pattern exactly (minus the SCSS watcher). Reason: close the gap tracked in [`osgar-datahub-dev-setup.md`](osgar-datahub-dev-setup.md)'s "Open follow-ups" — orphaned `dotnet watch` process chains without `stopasgroup`/`killasgroup`, and no restart trigger from the `-ssh` container without Docker socket access. Verified 2026-09-07 via `docker exec advoapp-dev ps aux` showing exactly one `supervisord` → `dotnet watch` → `dotnet-watch.dll` → `dotnet run` → `finditoo.advoapp` chain.
 
 Run manually (start it, view logs): `docker compose -f docker-compose.dev.yml up`
 
@@ -101,7 +138,7 @@ Run manually (start it, view logs): `docker compose -f docker-compose.dev.yml up
 
 Previously existed as a second Dockerfile/compose pair in the same folder as the dev container (`Dockerfile` + `docker-compose.yml`, vs. dev's `Dockerfile.dev` + `docker-compose.dev.yml`). Built during initial setup per the original three-environment plan, but never actually routed to by Caddy after the decision to point the public subdomain at the live dev container instead (see the "Current state note" above). Confirmed unused — not in `docker ps -a`, no Caddy block referenced it, and the production deploy pipeline (`deploy-advoapp.sh`) builds independently from a separate clean checkout, never touching this container at all.
 
-Removed entirely: container, built image, and both defining files (`Dockerfile`, `docker-compose.yml`). The `advoapp.finditoo.foxcraft.digital` folder now contains `Dockerfile.dev`, `Dockerfile.ssh`, `authorized_keys`, `docker-compose.dev.yml`, and `src/` — matching what's actually deployed.
+Removed entirely: container, built image, and both defining files (`Dockerfile`, `docker-compose.yml`). The `advoapp.finditoo.foxcraft.digital` folder now contains `Dockerfile.dev`, `Dockerfile.ssh`, `supervisord.conf`, `authorized_keys`, `docker-compose.dev.yml`, and `src/` — matching what's actually deployed.
 
 If a genuine pre-deploy build-sanity-check is ever wanted, it should get its own subdomain and Caddy route rather than being silently built-but-unrouted — otherwise it becomes indistinguishable from dead weight, as it did here.
 

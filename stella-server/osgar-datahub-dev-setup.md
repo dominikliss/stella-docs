@@ -310,7 +310,7 @@ curl -s -o /dev/null -w "%{http_code}\n" https://osgar.datahub.foxcraft.digital/
 
 ## Open follow-ups
 
-- [ ] Same `Dockerfile.ssh` gaps (missing Node, no persistent host keys) likely apply to `advoapp-ssh` too — host key fix already applied there; Node and supervisord have not been evaluated for that app.
+- [x] Resolved 2026-09-07 — `advoapp-ssh`'s `Dockerfile.ssh` updated to match this repo's current template (Node.js 22.x + supervisor package + per-user `.supervisorctl.conf` pointing at `advoapp-dev:9001`). `advoapp-dev` also migrated to supervisord — see [`dotnet-app-deployment.md`](dotnet-app-deployment.md).
 - [ ] `supervisorctl` credentials are currently a shared plaintext password baked into both Dockerfiles' build args — fine for this dummy-DB dev environment, but should not be copied as-is to any app with production data in `src/`.
 - [ ] `DataProtection` key-ring warning (`No XML encryptor configured... may be persisted to storage in unencrypted form`) appears on every fresh run — cosmetic for dev, but worth a real fix if this pattern is ever used for anything closer to production.
 
