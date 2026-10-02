@@ -7,7 +7,7 @@ This is the **cross-system map** for foxcraft.digital: who owns what, which host
 - Atlas platform: [`../atlas/README.md`](../atlas/README.md)
 - Atlas architecture: [`../atlas/architecture.md`](../atlas/architecture.md)
 - Atlas ↔ ddashboard login: [`../atlas/auth.md`](../atlas/auth.md)
-- Atlas ↔ WordPress sites: [`../atlas/atlas-connect.md`](../atlas/atlas-connect.md)
+- Atlas ↔ WordPress sites: [`../atlas/atlas-connect/`](../atlas/atlas-connect/)
 - ddashboard ↔ Stella (AI chat only): [`ddashboard-and-stella-server.md`](ddashboard-and-stella-server.md)
 - Stella host: [`../stella-server/infrastructure.md`](../stella-server/infrastructure.md)
 - Edison (coding-agent host): [`../edison/README.md`](../edison/README.md)
@@ -61,7 +61,8 @@ Stella is a **service host**. It does not have a general-purpose UI. Atlas and d
         │                                           destination SSH servers (rsync)
         │
         └── browser never talks to Stella or to client WP sites directly
-            (except opening an Atlas Connect one-time login URL)
+            (except opening an Atlas Connect one-time login URL).
+            The site never calls Atlas. Backups are Atlas → site → S3.
 
 
  Operator browser
@@ -125,9 +126,10 @@ Details: [`ddashboard-and-stella-server.md`](ddashboard-and-stella-server.md).
 | Feature | Target | Auth |
 |---------|--------|------|
 | Uptime every 5 min | `HEAD https://{domain}` | None (TLS verify off) |
-| One-click WP admin login | `POST https://{domain}/wp-json/dl-connect/v1/generate-token` | Shared **Atlas Connect** secret; Atlas host IP must be allowlisted on the site |
+| One-click WP admin login | `POST https://{domain}/wp-json/atlas-connect/v1/generate-token` | Shared **Atlas Connect** secret; Atlas host IP must be allowlisted on the site |
+| Encrypted backup (plugin ready; Atlas driver TODO) | `POST …/atlas-connect/v1/backup/{start,chunk,cancel}` | Same secret + IP allowlist. Atlas sends S3 credentials in the JSON body; the site does not store them |
 
-Details: [`../atlas/atlas-connect.md`](../atlas/atlas-connect.md).
+Details: [`../atlas/atlas-connect/`](../atlas/atlas-connect/).
 
 ### Atlas → GitHub + SSH servers (classic deploys)
 
@@ -216,7 +218,7 @@ Hetzner Cloud
 |------|---------|
 | **ddashboard** | WordPress theme / business product |
 | **Atlas** | Laravel ops platform at `dev.atlas.foxcraft.digital` |
-| **Atlas Connect** | WordPress plugin on each managed site; issues one-time admin login URLs (`dl-connect/v1`) |
+| **Atlas Connect** | WordPress plugin on each managed site; one-time admin login + encrypted S3 backups (`atlas-connect/v1`). Site never phones home |
 | **Stella** | Dedicated server hosting AI and ops services |
 | **stella-api** | FastAPI app — `/chat/*` only |
 | **deploy-api** | FastAPI app — signed deploy trigger + status |

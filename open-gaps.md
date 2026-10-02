@@ -8,7 +8,7 @@ Last updated: 2026-10-01
 
 ## Atlas documentation
 
-- [x] **System-level Atlas docs** — closed 2026-10-01. Atlas is no longer only a folder of module notes. See [`atlas/README.md`](atlas/README.md), [`atlas/architecture.md`](atlas/architecture.md), [`atlas/auth.md`](atlas/auth.md), [`atlas/atlas-connect.md`](atlas/atlas-connect.md), [`atlas/tools.md`](atlas/tools.md), and [`integration/system-overview.md`](integration/system-overview.md). `atlas/dotnet-azure.md` now describes the live `stella_deploy_api` path (the old “post-deploy hook, not yet signed” plan is obsolete).
+- [x] **System-level Atlas docs** — closed 2026-10-01. Atlas is no longer only a folder of module notes. See [`atlas/README.md`](atlas/README.md), [`atlas/architecture.md`](atlas/architecture.md), [`atlas/auth.md`](atlas/auth.md), [`atlas/atlas-connect/`](atlas/atlas-connect/), [`atlas/tools.md`](atlas/tools.md), and [`integration/system-overview.md`](integration/system-overview.md). `atlas/dotnet-azure.md` now describes the live `stella_deploy_api` path (the old “post-deploy hook, not yet signed” plan is obsolete).
 
 ---
 

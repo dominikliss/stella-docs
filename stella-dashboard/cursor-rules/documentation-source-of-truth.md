@@ -43,7 +43,7 @@ When your change affects **how the system works** (not purely internal refactors
 | Atlas login / ddashboard tokens / IP allowlist | `atlas/auth.md` |
 | Atlas deploy types, runs, SSH / deploy-api | `atlas/deploy-pipeline.md`; Stella: `stella-server/deploy-api.md` |
 | Atlas Stella health / WP uptime / Brevo alerts | `atlas/monitoring.md`; Stella: `stella-server/health-api.md` |
-| Atlas Connect / WP auto-login | `atlas/atlas-connect.md` |
+| Atlas Connect / WP auto-login + backups | `atlas/atlas-connect/` |
 | Atlas IMAP migration UI | `atlas/tools.md`; Stella: `stella-server/imap-sync-service.md` |
 | Edison host, agent containers, sshfs, allowlist | `edison/README.md`, `edison/infrastructure.md`, `edison/cursor-agent.md` |
 | ACF fields / REST field shapes | `stella-dashboard/cursor-rules/acf-field-map.md` **and** this repo’s `acf-field-map.mdc` |

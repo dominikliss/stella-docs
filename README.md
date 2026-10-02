@@ -39,7 +39,7 @@ Servers use One Piece Vegapunk-satellite names. Firewalls, IPs, networks, and si
 | [atlas/README.md](atlas/README.md)                                                         | Atlas platform — overview, modules, API reference                  |
 | [atlas/architecture.md](atlas/architecture.md)                                             | Atlas code layout, hosting, queue, SPA routes                      |
 | [atlas/auth.md](atlas/auth.md)                                                             | Atlas login via ddashboard tokens                                  |
-| [atlas/atlas-connect.md](atlas/atlas-connect.md)                                           | WP plugin contract for one-click admin login                       |
+| [atlas/atlas-connect/](atlas/atlas-connect/)                                               | WP plugin: one-click admin login + encrypted S3 backups            |
 | [atlas/deploy-pipeline.md](atlas/deploy-pipeline.md)                                       | Deploy flow: ssh_rsync and stella_deploy_api paths                 |
 | [atlas/monitoring.md](atlas/monitoring.md)                                                 | Stella health monitoring + WP Sites uptime (Atlas-side)            |
 | [atlas/tools.md](atlas/tools.md)                                                           | IMAP mailbox copy via Stella imap-sync                             |

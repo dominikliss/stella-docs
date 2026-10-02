@@ -181,6 +181,6 @@ If `brevo_api_key` is not set, alerts are silently skipped — no exception, jus
 
 ## Further reading
 
-- One-click WP admin login (not part of the uptime loop): [`atlas-connect.md`](atlas-connect.md)
+- Atlas Connect login and backups (not part of the uptime loop): [`atlas-connect/`](atlas-connect/)
 - Stella-side health-api: [`../stella-server/health-api.md`](../stella-server/health-api.md)
 - System map: [`../integration/system-overview.md`](../integration/system-overview.md)

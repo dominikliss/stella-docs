@@ -32,7 +32,7 @@ It is **not** the business dashboard. Clients, invoices, mail, and projects live
 |--------|----------|--------------|
 | **Dashboard** | `/dashboard` | Home + Stella status summary |
 | **Deployments** | `/deployments` | SSH rsync deploys and Stella deploy-api deploys |
-| **WP Sites** | `/wp-sites` | Register sites, 5-min uptime, Atlas Connect auto-login |
+| **WP Sites** | `/wp-sites` | Register sites, 5-min uptime, Atlas Connect login (backups: plugin ready) |
 | **Monitoring** | `/monitoring/stella` | Stella health grid + history charts |
 | **Tools → IMAP Migration** | `/tools/imap-migration` | Trigger / poll `imapsync` jobs on Stella |
 | **Settings** | `/settings` | SSH/GitHub key path, Brevo transactional email |
@@ -49,7 +49,7 @@ Browser (IP-allowlisted)
         → Stella health-api   signed container / TLS / disk snapshot
         → Stella imap-sync    mailbox copy (no HTTP auth)
         → GitHub + SSH hosts  ssh_rsync deploys
-        → WP sites            HEAD uptime + Atlas Connect login
+        → WP sites            HEAD uptime + Atlas Connect login / backup driver
 ```
 
 Atlas **does not** call Stella `/chat/*`. That is ddashboard’s AI path.
@@ -269,7 +269,7 @@ STELLA_OSGAR_URL=https://osgar.datahub.foxcraft.digital
 
 - [`architecture.md`](architecture.md) — domains, SPA routes, hosting, demo mode
 - [`auth.md`](auth.md) — ddashboard token proxy, roles, IP allowlist
-- [`atlas-connect.md`](atlas-connect.md) — WP plugin contract for one-click login
+- [`atlas-connect/`](atlas-connect/) — WP plugin: login + backups (Atlas still implements the backup driver)
 - [`deploy-pipeline.md`](deploy-pipeline.md) — ssh_rsync and stella_deploy_api
 - [`monitoring.md`](monitoring.md) — Stella health + WP uptime
 - [`tools.md`](tools.md) — IMAP migration via Stella

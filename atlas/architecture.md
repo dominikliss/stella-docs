@@ -31,7 +31,7 @@ Business code lives under `app/Domain/{Name}/` (controllers, models, jobs, servi
 | `Auth` | Login proxy, token middleware, IP allowlist, `DdashboardTokenDriver` / `FakeTokenAuthDriver` |
 | `Deploy` | Configs, servers, runs, rsync, Stella deploy-api client, SSH signer, GitHub branches, folder browser |
 | `Monitoring` | Signed health-api client, public-probe fallback, history + prune |
-| `WpSites` | Site registry, uptime job, Atlas Connect login, down-alert mail |
+| `WpSites` | Site registry, uptime job, Atlas Connect login, down-alert mail. Backup driver not implemented yet — see [`atlas-connect/backups.md`](atlas-connect/backups.md) |
 | `Tools` | IMAP migration proxy to Stella `imap-sync` |
 | `Settings` | `app_settings` key/value (SSH path, Brevo) |
 
@@ -54,7 +54,7 @@ Entry: `resources/views/app.blade.php` → Vite → `resources/js/routes/index.t
 | `/tools/imap-migration` | `domains/tools/imap-migration/ImapMigrationPage` |
 | `/settings` | `domains/settings/SettingsPage` |
 
-API calls go through `resources/js/lib/api-client.ts` with the bearer token from `lib/token-store.ts` (access + refresh). The browser never calls Stella, GitHub, or `dl-connect` directly.
+API calls go through `resources/js/lib/api-client.ts` with the bearer token from `lib/token-store.ts` (access + refresh). The browser never calls Stella, GitHub, or the Atlas Connect plugin directly.
 
 Shell / nav: `resources/js/components/AppShell.tsx`, `SidebarDrawer.tsx`.
 
