@@ -66,7 +66,7 @@ Cursor CLI has **no** native Remote-SSH (the IDE installs a server component on 
 **Related Stella-side docs** (the remote the agent mounts):
 
 - Per-app SSH containers, port 2201, `edison` user: [`../stella-server/dev-ssh-access.md`](../stella-server/dev-ssh-access.md)
-- osgar-datahub permissions / supervisord: [`../stella-server/osgar-datahub-dev-setup.md`](../stella-server/osgar-datahub-dev-setup.md)
+- osgar-datahub permissions / supervisord: [`../stella-server/apps/osgar-datahub/setup.md`](../stella-server/apps/osgar-datahub/setup.md)
 - Stella host + `DOCKER-USER` (Edison’s public IP must be allowed on 2201): [`../stella-server/infrastructure.md`](../stella-server/infrastructure.md)
 
 ---

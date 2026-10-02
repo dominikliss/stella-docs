@@ -35,7 +35,7 @@ One extra service per app, alongside the existing `-dev` container, in the same 
 
 ### Dockerfile.ssh (template)
 
-> **Updated 2026-09-03:** Node.js and `supervisor` added (see [osgar-datahub-dev-setup.md](osgar-datahub-dev-setup.md) — Problems 2 & 3 & Architectural change). The original template below lacked both, causing SCSS build failures and no way to trigger app restarts from the SSH container.
+> **Updated 2026-09-03:** Node.js and `supervisor` added (see [apps/osgar-datahub/setup.md](apps/osgar-datahub/setup.md) — Problems 2 & 3 & Architectural change). The original template below lacked both, causing SCSS build failures and no way to trigger app restarts from the SSH container.
 
 ```dockerfile
 FROM mcr.microsoft.com/dotnet/sdk:10.0
@@ -63,7 +63,7 @@ EXPOSE 22
 CMD ["/usr/sbin/sshd", "-D"]
 ```
 
-`supervisor` is installed so the `supervisorctl` binary is available inside the container for restarting `dotnet watch` in the sibling `-dev` container. A per-user `.supervisorctl.conf` pointing at `<app>-dev:9001` should also be written during the image build — see [osgar-datahub-dev-setup.md](osgar-datahub-dev-setup.md) for the full pattern.
+`supervisor` is installed so the `supervisorctl` binary is available inside the container for restarting `dotnet watch` in the sibling `-dev` container. A per-user `.supervisorctl.conf` pointing at `<app>-dev:9001` should also be written during the image build — see [apps/osgar-datahub/setup.md](apps/osgar-datahub/setup.md) for the full pattern.
 
 **`getent group 1000` instead of `groupadd -g 1000 devs`:** the `mcr.microsoft.com/dotnet/sdk` base image already has a GID 1000 group (from its own default non-root user setup). Creating a new group at the same GID fails (`groupadd: GID '1000' already exists`) — reuse it instead. One `authorized_keys` file is copied to both users; either dev's key can log in as either Linux user inside the container (acceptable — the isolation boundary is per-app, not per-dev-identity within an app).
 
@@ -71,7 +71,7 @@ CMD ["/usr/sbin/sshd", "-D"]
 
 ### Compose service (template)
 
-> **Updated 2026-09-03:** a named volume for `/etc/ssh` was added to persist SSH host keys across rebuilds (see [osgar-datahub-dev-setup.md](osgar-datahub-dev-setup.md) — Problem 3). Without it, every `docker compose build` regenerates new keys and triggers "REMOTE HOST IDENTIFICATION HAS CHANGED" on every client.
+> **Updated 2026-09-03:** a named volume for `/etc/ssh` was added to persist SSH host keys across rebuilds (see [apps/osgar-datahub/setup.md](apps/osgar-datahub/setup.md) — Problem 3). Without it, every `docker compose build` regenerates new keys and triggers "REMOTE HOST IDENTIFICATION HAS CHANGED" on every client.
 
 ```yaml
   <app>-ssh:
@@ -130,7 +130,7 @@ sudo find /opt/apps/dotnet/<subdomain>/src -type d -exec chmod g+s {} \;
 
 **Step 2 — default ACLs (required for build artefacts):**
 
-> **Added 2026-09-03** — the original one-time fix above is not enough. The `-dev` container running as root regularly regenerates `obj/` and `bin/`, producing files owned `root:1000 644` — group-readable but not group-writable. Non-root users in the SSH container can't set timestamps on those files, causing `MSB3374` errors during `dotnet build`. Default ACLs fix this permanently by making every new file created under `src/` automatically group-writable. See [osgar-datahub-dev-setup.md](osgar-datahub-dev-setup.md) — Problem 1.
+> **Added 2026-09-03** — the original one-time fix above is not enough. The `-dev` container running as root regularly regenerates `obj/` and `bin/`, producing files owned `root:1000 644` — group-readable but not group-writable. Non-root users in the SSH container can't set timestamps on those files, causing `MSB3374` errors during `dotnet build`. Default ACLs fix this permanently by making every new file created under `src/` automatically group-writable. See [apps/osgar-datahub/setup.md](apps/osgar-datahub/setup.md) — Problem 1.
 
 ```bash
 sudo apt-get install -y acl

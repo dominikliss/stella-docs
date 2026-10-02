@@ -1,14 +1,14 @@
 # osgar-datahub-ssh — App Logs via Shared `app-logs` Mount
 
-**Status:** Implemented 2026-09-04. Extends [`osgar-datahub-dev-setup.md`](osgar-datahub-dev-setup.md) and [`osgar-datahub-ssh-sqlcmd.md`](osgar-datahub-ssh-sqlcmd.md) — same session.
+**Status:** Implemented 2026-09-04. Extends [`setup.md`](setup.md) and [`ssh-sqlcmd.md`](ssh-sqlcmd.md) — same session.
 
 **Why:** the Cursor agent in `osgar-datahub-ssh` needed a way to check build/runtime logs after triggering a restart (e.g. to confirm a migration applied, or to see a build error), without Docker access.
 
 **Related**
 
-- Container/network layout: [`dev-ssh-access.md`](dev-ssh-access.md)
-- Permissions, supervisord, migration workflow: [`osgar-datahub-dev-setup.md`](osgar-datahub-dev-setup.md)
-- `sqlcmd` DB access: [`osgar-datahub-ssh-sqlcmd.md`](osgar-datahub-ssh-sqlcmd.md)
+- Container/network layout: [`../../dev-ssh-access.md`](../../dev-ssh-access.md)
+- Permissions, supervisord, migration workflow: [`setup.md`](setup.md)
+- `sqlcmd` DB access: [`ssh-sqlcmd.md`](ssh-sqlcmd.md)
 
 ---
 
@@ -109,5 +109,5 @@ No `supervisorctl`, no Docker, no host access needed — plain file read over th
 ## If this pattern is copied to a future `.NET` app
 
 - Add `app-logs/` to `.gitignore` (log content, not source).
-- Do **not** add `app-logs` to the `backup.volumes` label — it's regenerable runtime output, not data worth restoring (same reasoning already applied to `src/` being excluded from backups in [`backup.md`](backup.md)).
+- Do **not** add `app-logs` to the `backup.volumes` label — it's regenerable runtime output, not data worth restoring (same reasoning already applied to `src/` being excluded from backups in [`../../backup.md`](../../backup.md)).
 - If the app's own log output volume is high, consider a shorter `stdout_logfile_backups` count, or route to a proper log file inside the app's own logging config rather than relying on supervisord's rotation.

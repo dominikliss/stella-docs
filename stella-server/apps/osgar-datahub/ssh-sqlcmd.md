@@ -1,13 +1,13 @@
 # osgar-datahub-ssh — Direct DB Access via `sqlcmd`
 
-**Status:** Implemented 2026-09-04. Extends [`osgar-datahub-dev-setup.md`](osgar-datahub-dev-setup.md) — same session, same container. Not a new architecture, just a new tool + two new environment variables on an already-existing service.
+**Status:** Implemented 2026-09-04. Extends [`setup.md`](setup.md) — same session, same container. Not a new architecture, just a new tool + two new environment variables on an already-existing service.
 
-**Why:** the Cursor agent inside `osgar-datahub-ssh` needed a way to inspect DB contents (schema, row data) without a Docker socket, without `sqlcmd` on the host, and without introducing a second app instance. `osgar-datahub-ssh` already has network access to `osgar-datahub-db:1433` (documented in [`dev-ssh-access.md`](dev-ssh-access.md)'s network isolation table) — this only adds the client tool and the credentials to actually use it.
+**Why:** the Cursor agent inside `osgar-datahub-ssh` needed a way to inspect DB contents (schema, row data) without a Docker socket, without `sqlcmd` on the host, and without introducing a second app instance. `osgar-datahub-ssh` already has network access to `osgar-datahub-db:1433` (documented in [`../../dev-ssh-access.md`](../../dev-ssh-access.md)'s network isolation table) — this only adds the client tool and the credentials to actually use it.
 
 **Related**
 
-- Container/network layout: [`dev-ssh-access.md`](dev-ssh-access.md)
-- Permissions, supervisord, SCSS watcher: [`osgar-datahub-dev-setup.md`](osgar-datahub-dev-setup.md)
+- Container/network layout: [`../../dev-ssh-access.md`](../../dev-ssh-access.md)
+- Permissions, supervisord, SCSS watcher: [`setup.md`](setup.md)
 
 ---
 

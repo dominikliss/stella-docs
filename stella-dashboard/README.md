@@ -19,12 +19,11 @@ WordPress **ddashboard** theme: product overview, deep dives, and **mirrors of C
 | [DESIGN_SYSTEM.md](DESIGN_SYSTEM.md) | Design system (legacy / long reference) |
 | [STATS_PAGE_DESIGN_BRIEF.md](STATS_PAGE_DESIGN_BRIEF.md) | Stats page design brief |
 
-## Integration with Stella
+## Integration
 
-Not WordPress-only: email **vector indexing** and Stella API are documented under:
-
-- [../integration/ddashboard-and-stella-server.md](../integration/ddashboard-and-stella-server.md)
-- [../integration/email-indexing.md](../integration/email-indexing.md)
+- Company map: [../integration/system-overview.md](../integration/system-overview.md)
+- ddashboard ↔ Stella **AI chat**: [../integration/ddashboard-and-stella-server.md](../integration/ddashboard-and-stella-server.md)
+- Email vector indexing — **decommissioned**: [../integration/email-indexing.md](../integration/email-indexing.md)
 
 ## Cursor rule exports
 

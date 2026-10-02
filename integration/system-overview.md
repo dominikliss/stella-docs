@@ -9,7 +9,7 @@ This is the **cross-system map** for foxcraft.digital: who owns what, which host
 - Atlas ↔ ddashboard login: [`../atlas/auth.md`](../atlas/auth.md)
 - Atlas ↔ WordPress sites: [`../atlas/atlas-connect/`](../atlas/atlas-connect/)
 - ddashboard ↔ Stella (AI chat only): [`ddashboard-and-stella-server.md`](ddashboard-and-stella-server.md)
-- Stella host: [`../stella-server/infrastructure.md`](../stella-server/infrastructure.md)
+- Stella host: [`../stella-server/README.md`](../stella-server/README.md)
 - Edison (coding-agent host): [`../edison/README.md`](../edison/README.md)
 
 ---

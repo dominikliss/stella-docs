@@ -20,7 +20,7 @@ Folder roles inside the submodule:
 | **`stella-server/`** | Stella host: infrastructure, Docker, Caddy, FastAPI (`stella-api`), per-app SSH |
 | **`atlas/`** | Atlas operations platform |
 | **`edison/`** | Edison coding-agent host: infrastructure, Cursor CLI container, sshfs |
-| **`integration/`** | Cross-cutting: **system-overview** (all four systems), WordPress ↔ Stella AI, email indexing |
+| **`integration/`** | Cross-cutting: **system-overview** (all four systems), WordPress ↔ Stella AI |
 | **Root** | `README.md`, `open-gaps.md` |
 
 **Allowed in the theme repo:** `docs/README.md` (pointer only), short stubs like root `DESIGN_SYSTEM.md` / `STATS_PAGE_DESIGN_BRIEF.md` that link into `docs/stella-docs/`. **Do not** add full guides under `docs/*.md` or duplicate long architecture text in `.mdc` files — keep `.mdc` for Cursor behaviour; put facts in the submodule.
@@ -38,7 +38,8 @@ When your change affects **how the system works** (not purely internal refactors
 | WP options, cron hooks, install/migrations | `architecture.md`, `CAPABILITIES.md`; integration doc if Stella-related |
 | Mail/IMAP/spam/client linking | `stella-dashboard/mail-nachrichten.md`, `mail-cron-hosting.md` |
 | Email embed / Stella HTTP client / queue | `integration/email-indexing.md`, `integration/ddashboard-and-stella-server.md` |
-| Stella server, compose, API behaviour | `stella-server/infrastructure.md`, `stella-server/stella-api.md`; SSH access: `stella-server/dev-ssh-access.md` |
+| Stella server, compose, API behaviour | `stella-server/README.md`, `stella-server/infrastructure.md`, `stella-server/stella-api.md`; SSH access: `stella-server/dev-ssh-access.md` |
+| osgar-datahub (or other app on Stella) | `stella-server/apps/<app>/` |
 | **Atlas** platform, modules, env, API surface | `atlas/README.md`, `atlas/architecture.md`; cross-system: `integration/system-overview.md` |
 | Atlas login / ddashboard tokens / IP allowlist | `atlas/auth.md` |
 | Atlas deploy types, runs, SSH / deploy-api | `atlas/deploy-pipeline.md`; Stella: `stella-server/deploy-api.md` |

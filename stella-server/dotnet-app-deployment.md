@@ -95,7 +95,7 @@ Key details:
 - Start it: `docker compose -f docker-compose.dev.yml up -d`
 - **`restart: unless-stopped` added 2026-08-10.** Originally missing — `advoapp-dev` was killed by a Docker daemon restart on 2026-08-07 (unrelated troubleshooting elsewhere on the server) and, with no restart policy, silently stayed down for **3 days** before being noticed. Nothing was monitoring it at the time. Root cause confirmed via `docker inspect --format '{{.State.FinishedAt}}'` cross-referenced against `journalctl -u docker` daemon-restart timestamps — not an OOM kill (`OOMKilled: false`, no kernel log entry), just a daemon bounce with no policy to bring the container back. This exact scenario is now also caught automatically by [`health-api`](health-api.md), Atlas polling permitting.
 
-`supervisord.conf` (bind-mounted, not baked into the image — same structure as [`osgar-datahub-dev-setup.md`](osgar-datahub-dev-setup.md), without a `[program:scss]` block because advoapp has no SCSS build step):
+`supervisord.conf` (bind-mounted, not baked into the image — same structure as [`apps/osgar-datahub/setup.md`](apps/osgar-datahub/setup.md), without a `[program:scss]` block because advoapp has no SCSS build step):
 ```ini
 [supervisord]
 nodaemon=true
@@ -128,7 +128,7 @@ username=agent
 password=<same as above>
 ```
 
-> **Migrated to supervisord 2026-09-07** — `advoapp-dev` now matches `osgar-datahub-dev`'s pattern exactly (minus the SCSS watcher). Reason: close the gap tracked in [`osgar-datahub-dev-setup.md`](osgar-datahub-dev-setup.md)'s "Open follow-ups" — orphaned `dotnet watch` process chains without `stopasgroup`/`killasgroup`, and no restart trigger from the `-ssh` container without Docker socket access. Verified 2026-09-07 via `docker exec advoapp-dev ps aux` showing exactly one `supervisord` → `dotnet watch` → `dotnet-watch.dll` → `dotnet run` → `finditoo.advoapp` chain.
+> **Migrated to supervisord 2026-09-07** — `advoapp-dev` now matches `osgar-datahub-dev`'s pattern exactly (minus the SCSS watcher). Reason: close the gap tracked in [`apps/osgar-datahub/setup.md`](apps/osgar-datahub/setup.md)'s "Open follow-ups" — orphaned `dotnet watch` process chains without `stopasgroup`/`killasgroup`, and no restart trigger from the `-ssh` container without Docker socket access. Verified 2026-09-07 via `docker exec advoapp-dev ps aux` showing exactly one `supervisord` → `dotnet watch` → `dotnet-watch.dll` → `dotnet run` → `finditoo.advoapp` chain.
 
 Run manually (start it, view logs): `docker compose -f docker-compose.dev.yml up`
 

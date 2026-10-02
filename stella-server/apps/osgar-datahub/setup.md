@@ -1,12 +1,12 @@
 # osgar-datahub — Dev Environment: Permissions, Build Tooling, and Live Reload
 
-**Status:** Implemented 2026-09-03. Supersedes the original `osgar-datahub-ssh` setup in [`dev-ssh-access.md`](dev-ssh-access.md) with three fixes and one architectural addition (supervisord, later extended with a dedicated SCSS watcher process).
+**Status:** Implemented 2026-09-03. Supersedes the original `osgar-datahub-ssh` setup in [`../../dev-ssh-access.md`](../../dev-ssh-access.md) with three fixes and one architectural addition (supervisord, later extended with a dedicated SCSS watcher process).
 
 **Related**
 
-- Original per-app SSH container pattern: [`dev-ssh-access.md`](dev-ssh-access.md)
-- `.NET` app / `-dev` container pattern: [`dotnet-app-deployment.md`](dotnet-app-deployment.md)
-- Edison agent mounts this tree via sshfs as user `edison`: [`../edison/cursor-agent.md`](../edison/cursor-agent.md)
+- Original per-app SSH container pattern: [`../../dev-ssh-access.md`](../../dev-ssh-access.md)
+- `.NET` app / `-dev` container pattern: [`../../dotnet-app-deployment.md`](../../dotnet-app-deployment.md)
+- Edison agent mounts this tree via sshfs as user `edison`: [`../../../edison/cursor-agent.md`](../../../edison/cursor-agent.md)
 
 ---
 
@@ -155,7 +155,7 @@ password=<same as above>
 
 **`--non-interactive` on `dotnet watch`** avoids it expecting a TTY for its interactive hot-key commands (`Ctrl+R` to force-restart, etc.) — irrelevant and potentially hang-prone under supervisord, which has no interactive terminal attached.
 
-**Port 9001 is not published to the host** (no `ports:` entry in compose for it) — only reachable from sibling containers on the same Compose network (`osgar-datahub-ssh` can reach it as `osgar-datahub-dev:9001`, per the network isolation table in [`dev-ssh-access.md`](dev-ssh-access.md)).
+**Port 9001 is not published to the host** (no `ports:` entry in compose for it) — only reachable from sibling containers on the same Compose network (`osgar-datahub-ssh` can reach it as `osgar-datahub-dev:9001`, per the network isolation table in [`../../dev-ssh-access.md`](../../dev-ssh-access.md)).
 
 ### Critical: `stopasgroup` / `killasgroup`
 
@@ -311,10 +311,10 @@ curl -s -o /dev/null -w "%{http_code}\n" https://osgar.datahub.foxcraft.digital/
 
 ## Open follow-ups
 
-- [x] Resolved 2026-09-07 — `advoapp-ssh`'s `Dockerfile.ssh` updated to match this repo's current template (Node.js 22.x + supervisor package + per-user `.supervisorctl.conf` pointing at `advoapp-dev:9001`). `advoapp-dev` also migrated to supervisord — see [`dotnet-app-deployment.md`](dotnet-app-deployment.md).
+- [x] Resolved 2026-09-07 — `advoapp-ssh`'s `Dockerfile.ssh` updated to match this repo's current template (Node.js 22.x + supervisor package + per-user `.supervisorctl.conf` pointing at `advoapp-dev:9001`). `advoapp-dev` also migrated to supervisord — see [`../../dotnet-app-deployment.md`](../../dotnet-app-deployment.md).
 - [ ] `supervisorctl` credentials are currently a shared plaintext password baked into both Dockerfiles' build args — fine for this dummy-DB dev environment, but should not be copied as-is to any app with production data in `src/`.
 - [ ] `DataProtection` key-ring warning (`No XML encryptor configured... may be persisted to storage in unencrypted form`) appears on every fresh run — cosmetic for dev, but worth a real fix if this pattern is ever used for anything closer to production.
 
 **2026-09-04 additions:**
-- `osgar-datahub-ssh` now has `sqlcmd` (mssql-tools18) for direct DB inspection — see [`osgar-datahub-ssh-sqlcmd.md`](osgar-datahub-ssh-sqlcmd.md).
-- App logs are now written to a shared `app-logs/` bind mount so the SSH container can read them without Docker access — see [`osgar-datahub-ssh-app-logs.md`](osgar-datahub-ssh-app-logs.md).
+- `osgar-datahub-ssh` now has `sqlcmd` (mssql-tools18) for direct DB inspection — see [`ssh-sqlcmd.md`](ssh-sqlcmd.md).
+- App logs are now written to a shared `app-logs/` bind mount so the SSH container can read them without Docker access — see [`ssh-app-logs.md`](ssh-app-logs.md).

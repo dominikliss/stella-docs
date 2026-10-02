@@ -37,6 +37,18 @@ It is **not** the business dashboard. Clients, invoices, mail, and projects live
 | **Tools → IMAP Migration** | `/tools/imap-migration` | Trigger / poll `imapsync` jobs on Stella |
 | **Settings** | `/settings` | SSH/GitHub key path, Brevo transactional email |
 
+## Documents in this folder
+
+| Document | Contents |
+|----------|----------|
+| [architecture.md](architecture.md) | Domains, SPA routes, hosting, queue |
+| [auth.md](auth.md) | ddashboard token proxy, roles, IP allowlist |
+| [atlas-connect/](atlas-connect/) | WP plugin: login + backups |
+| [deploy-pipeline.md](deploy-pipeline.md) | ssh_rsync and stella_deploy_api |
+| [monitoring.md](monitoring.md) | Stella health + WP uptime |
+| [tools.md](tools.md) | IMAP copy via Stella |
+| [dotnet-azure.md](dotnet-azure.md) | .NET / Azure via `stella_deploy_api` |
+
 ---
 
 ## Place in the system
