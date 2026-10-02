@@ -240,7 +240,7 @@ Takes several minutes end-to-end — `dotnet publish` inside Docker, then Azure'
 
 ### Remote trigger
 
-See [`deploy-api.md`](deploy-api.md) — ddashboard can trigger this same script via an authenticated HTTP API instead of SSHing in manually.
+See [`deploy-api.md`](deploy-api.md) — **Atlas** triggers this script via the signed deploy-api (`stella_deploy_api` config). Do not SSH in manually except as an emergency fallback. Atlas-side: [`../atlas/dotnet-azure.md`](../atlas/dotnet-azure.md).
 
 ---
 

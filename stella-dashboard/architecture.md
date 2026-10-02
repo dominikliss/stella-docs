@@ -314,7 +314,7 @@ assets/scss/                 # SCSS source (ScssPhp, compiled on theme load when
 - File: `inc/app-routes.php` — `dls_get_app_routes()` + `add_rewrite_rule` for `/projects`, `/marketing`, `/nachrichten`, `/verwaltung`.
 - `/verwaltung` has sub-routes: `praesentation` (admin-only — toggles demo/recording mode), `buchhaltung`, `projekte`, `marketing`, `ai-anbindungen`, `ai-profiles`, `nachrichten` (tab selection via `data-subroute`). After changing sub-route slugs, flush permalinks (Settings → Permalinks → Save).
 - `/marketing` has sub-routes: `start` (default; `/marketing/` redirects), `youtube` — PHP `.sub-header` tabs + `.site-meta` h1 + `data-subroute` on `.dls-marketing` (same shell as Buchhaltung + Verwaltung tabs).
-- **Werkzeuge removed (2026-09-02):** Deployment, E-Mail-Migration, and WordPress-Seiten are now handled by Atlas.
+- **Werkzeuge removed (2026-09-02):** Deployment, E-Mail-Migration, and WordPress-Seiten are now handled by Atlas. See [`../atlas/README.md`](../atlas/README.md) and [`../integration/system-overview.md`](../integration/system-overview.md).
 - `AdminSettingsPage` in `admin-settings-page.js`: switches between `MailAdminMailboxes` (nachrichten), `AiConnectorsPage` / `AiProfilesPage` (AI tabs), and `ManagementPage` (buchhaltung/projekte/marketing).
 - Add new screens: add to `dls_get_app_routes()`, add `add_rewrite_rule`, add to `admin-settings-page.js` tab list if it's a Verwaltung tab, mount React component. Flush permalinks after adding.
 - **Do not** create a WP page with the same slug.

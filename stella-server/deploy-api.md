@@ -1,6 +1,8 @@
 # Deploy API — SSH-Signature-Authenticated Deploy Trigger
 
-**Purpose:** lets ddashboard (or any other trusted caller) remotely trigger a production deploy (currently `advoapp-production`) over HTTP, with real-time status and commit tracking, without a shared-secret bearer token.
+**Purpose:** lets **Atlas** (or any other trusted caller with the `ddashboard` signer key) remotely trigger a production deploy over HTTP, with real-time status and commit tracking, without a shared-secret bearer token.
+
+Atlas-side: [`../atlas/deploy-pipeline.md`](../atlas/deploy-pipeline.md), [`../atlas/dotnet-azure.md`](../atlas/dotnet-azure.md). System map: [`../integration/system-overview.md`](../integration/system-overview.md).
 
 **Live at:** `https://stella-deployment-api.foxcraft.digital`
 
@@ -55,7 +57,7 @@ Format: `<principal> <key-type> <base64-key>`. `ddashboard` is the "principal" n
 
 The timestamp provides replay protection — rejected if more than 60 seconds old or in the future (`REPLAY_WINDOW_SECONDS`).
 
-**Signing (caller side, e.g. on ddashboard):**
+**Signing (caller side — Atlas `StellaSshSigner`):**
 ```bash
 TIMESTAMP=$(date +%s)
 PAYLOAD="deploy-advoapp-production:${TIMESTAMP}"   # or "list-apps:${TIMESTAMP}"

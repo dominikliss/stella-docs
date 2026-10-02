@@ -1,8 +1,27 @@
 # Open Gaps & Next Steps
 
-Last updated: 2026-09-04
+Last updated: 2026-10-01
 
-**Cross-system overview:** [integration/ddashboard-and-stella-server.md](integration/ddashboard-and-stella-server.md)
+**Cross-system overview:** [integration/system-overview.md](integration/system-overview.md) (Atlas + ddashboard + Stella + Edison). AI-chat path only: [integration/ddashboard-and-stella-server.md](integration/ddashboard-and-stella-server.md).
+
+---
+
+## Atlas documentation
+
+- [x] **System-level Atlas docs** — closed 2026-10-01. Atlas is no longer only a folder of module notes. See [`atlas/README.md`](atlas/README.md), [`atlas/architecture.md`](atlas/architecture.md), [`atlas/auth.md`](atlas/auth.md), [`atlas/atlas-connect.md`](atlas/atlas-connect.md), [`atlas/tools.md`](atlas/tools.md), and [`integration/system-overview.md`](integration/system-overview.md). `atlas/dotnet-azure.md` now describes the live `stella_deploy_api` path (the old “post-deploy hook, not yet signed” plan is obsolete).
+
+---
+
+## Edison (coding-agent server)
+
+Host + `cursor-agent` container live 2026-09-22. See [`edison/README.md`](edison/README.md).
+
+- [ ] **Stella `DOCKER-USER` ACCEPT for Edison’s public IP on port 2201** — `osgar-datahub-ssh` currently allows only `194.126.177.181` and `23.88.90.12`. Record the numeric IP of Hetzner address `dev-agent-ip` in [`edison/infrastructure.md`](edison/infrastructure.md) and add the ACCEPT rule (before DROP) in [`stella-server/infrastructure.md`](stella-server/infrastructure.md).
+- [ ] **Bake `edison` user into `osgar-datahub-ssh` image** — if the user was added only in the running container, a rebuild drops it. Same `./src` bind-mount at `/home/edison/app`, dedicated `authorized_keys` for `edison_agent.pub`. See [`stella-server/dev-ssh-access.md`](stella-server/dev-ssh-access.md).
+- [ ] **Persist Cursor-agent SSH config** — `/root/.ssh/config` lives only in the container writable layer; bind-mount it from the Edison host like the key. See [`edison/cursor-agent.md`](edison/cursor-agent.md).
+- [ ] **Web app to drive the agent** — browser UI → Node backend on `edison-net` → spawn `cursor-agent` headless (`--print` or whatever `cursor-agent --help` shows on the installed version) with cwd `/mnt/<host>`. Add an audit trail once runs are no longer watched live.
+- [ ] **Further agent images** — OpenCode, optionally Claude Code: own Dockerfile, tool-named container, same `edison-net` and `/mnt/<full-hostname>` scheme.
+- [ ] **Edison firewall for HTTP/HTTPS** — open only when the web app is exposed; keep IP-restricted. Internal container traffic does not need these rules.
 
 ---
 
@@ -30,6 +49,10 @@ Last updated: 2026-09-04
 - [ ] **Client IP grant for `osgar.datahub.foxcraft.digital` — temporary** — IPs `213.47.151.242` and `89.67.29.69` added 2026-09-03; remove when client no longer needs access. See [`stella-server/client-ip-access.md`](stella-server/client-ip-access.md).
 
 ---
+
+## Closed 2026-10-01
+
+- **Atlas in the system docs** — `integration/system-overview.md` plus Atlas architecture / auth / Atlas Connect / tools. `atlas/dotnet-azure.md` rewritten onto the live `stella_deploy_api` path. health-api “What Atlas still needs” marked implemented.
 
 ## Closed 2026-09-03
 

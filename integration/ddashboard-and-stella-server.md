@@ -1,16 +1,22 @@
-# ddashboard and Stella server — how they fit together
+# ddashboard and Stella server — AI chat path
 
-This document describes the **roles**, **network paths**, **data flows**, and **operational boundaries** between the **ddashboard** WordPress theme (Hetzner managed hosting) and the **Stella** stack (Hetzner dedicated server: FastAPI, Ollama, Caddy, optional **IMAP mailbox copy** service).
+This document is the **ddashboard ↔ Stella AI** contract (chat stream, Ollama, what WordPress owns). It is **not** the company-wide map.
+
+**For Atlas + ddashboard + Stella + Edison together**, start at [`system-overview.md`](system-overview.md).
+
+This page describes the **roles**, **network paths**, **data flows**, and **operational boundaries** between the **ddashboard** WordPress theme (Hetzner managed hosting) and the **Stella** stack (Hetzner dedicated server: FastAPI, Ollama, Caddy). IMAP mailbox **copy** is operated from Atlas, not from this theme.
 
 > **ChromaDB removed 2026-08-06.** ChromaDB, `nomic-embed-text`, and all `/emails/*` Stella routes no longer exist. Current `stella-api` scope is chat-only. See [`email-indexing.md`](email-indexing.md) for the decommission notice.
 
 **Related docs**
 
+- **Full stack (includes Atlas):** [`system-overview.md`](system-overview.md)
 - Server topology and ports: [`../stella-server/infrastructure.md`](../stella-server/infrastructure.md)
 - Stella HTTP API (FastAPI, chat-only): [`../stella-server/stella-api.md`](../stella-server/stella-api.md)
-- Stella **imapsync** helper (Express via Caddy `/imap-sync`): [`../stella-server/imap-sync-service.md`](../stella-server/imap-sync-service.md)
+- Stella **imapsync** helper (now driven by Atlas): [`../stella-server/imap-sync-service.md`](../stella-server/imap-sync-service.md), [`../atlas/tools.md`](../atlas/tools.md)
 - Email indexing pipeline (decommissioned): [`email-indexing.md`](email-indexing.md)
 - WordPress theme architecture (long): [`../stella-dashboard/architecture.md`](../stella-dashboard/architecture.md)
+- Atlas identity (ddashboard tokens): [`../atlas/auth.md`](../atlas/auth.md)
 
 ---
 
@@ -18,10 +24,11 @@ This document describes the **roles**, **network paths**, **data flows**, and **
 
 | System | Role |
 |--------|------|
-| **ddashboard** | Custom WordPress theme: CRM, accounting, IMAP mail in MySQL (**v3** tables `dls_mail_*`), REST `dls/v1`, React SPA, AI chat agents, Ollama mail analyses. **Source of truth** for message rows, links, clients, and WP options. |
-| **Stella** | Dedicated AI host: **Ollama** (LLM inference), **stella-api** (FastAPI) — **`/chat/*`** only, **Caddy** on **443**. Optional **`imap-sync`**: Express + **`imapsync`** to copy mail between two IMAP accounts (**not** ddashboard's DB import), reached only via `https://stella.foxcraft.digital/imap-sync`. ChromaDB has been uninstalled. |
+| **ddashboard** | Custom WordPress theme: CRM, accounting, IMAP mail in MySQL (**v3** tables `dls_mail_*`), REST `dls/v1`, React SPA, AI chat agents, Ollama mail analyses. **Source of truth** for message rows, links, clients, and WP options. Also the **identity provider** for Atlas (`/dls/v1/auth/*`). |
+| **Stella** | Dedicated AI host: **Ollama** (LLM inference), **stella-api** (FastAPI) — **`/chat/*`** only, **Caddy** on **443**. **`imap-sync`**, **deploy-api**, and **health-api** live here too but are called by **Atlas**, not by this theme. ChromaDB has been uninstalled. |
+| **Atlas** | Ops platform (separate Laravel app). Not on this AI path. See [`system-overview.md`](system-overview.md). |
 
-Neither system replaces the other: WordPress owns relational data and sessions; Stella provides **streaming LLM inference** via `/chat/stream`.
+ddashboard and Stella do not replace each other: WordPress owns relational data and sessions; Stella provides **streaming LLM inference** via `/chat/stream`. Atlas is a third app that reuses ddashboard login and Stella’s ops APIs.
 
 ---
 
@@ -68,7 +75,7 @@ Non-streaming / non-tool agents call Ollama directly via `POST {ollama_base_url}
 ## 4a. Stella `imap-sync` (mailbox copy)
 
 - **Purpose:** Operator **server-to-server IMAP copy** (`imapsync`), HTTP API for jobs/logs — not ddashboard's MySQL mail import.
-- **WordPress proxy removed (2026-09-02):** `inc/routes/imap-sync-proxy.php` and the Werkzeuge E-Mail-Migration UI have been removed. The `imap-sync` service is now called directly (e.g. from Atlas or CLI).
+- **WordPress proxy removed (2026-09-02):** `inc/routes/imap-sync-proxy.php` and the Werkzeuge E-Mail-Migration UI have been removed. Atlas **Tools → IMAP Migration** is the UI (`../atlas/tools.md`).
 - **Contract:** [`../stella-server/imap-sync-service.md`](../stella-server/imap-sync-service.md).
 
 ---
@@ -97,7 +104,7 @@ Paths use WordPress REST prefix `/wp-json/dls/v1/…`.
 ## 7. Ops — submodule and documentation
 
 - Canonical docs live in **`stella-docs`** (this tree), submodule from the theme: **`docs/stella-docs`**.
-- When behaviour changes, update **`stella-dashboard/`**, **`stella-server/`**, and **`integration/`** together where applicable.
+- When behaviour changes, update **`stella-dashboard/`**, **`stella-server/`**, **`atlas/`**, and **`integration/`** together where applicable.
 
 **Logs (Stella):** e.g. `docker logs services-stella-api-1 --tail 50` (container name may vary — see [`../stella-server/infrastructure.md`](../stella-server/infrastructure.md)).
 
@@ -107,8 +114,9 @@ Paths use WordPress REST prefix `/wp-json/dls/v1/…`.
 
 | Term | Meaning |
 |------|---------|
-| **ddashboard** | WordPress theme / product |
-| **Stella** | Dedicated server hosting AI services |
+| **ddashboard** | WordPress theme / product; Atlas identity provider |
+| **Atlas** | Laravel ops platform — [`../atlas/README.md`](../atlas/README.md) |
+| **Stella** | Dedicated server hosting AI and ops services |
 | **stella-api** | FastAPI app — **`/chat/*`** only (email routes removed 2026-08-06) |
-| **imap-sync** | Express on Stella; **`imapsync`** mailbox migration; public entry `https://stella.foxcraft.digital/imap-sync` (no host port as of 2026-09-01) |
+| **imap-sync** | Express on Stella; **`imapsync`** mailbox migration; called from Atlas; public entry `https://stella.foxcraft.digital/imap-sync` |
 | **gitlink** | Git submodule pointer SHA for `stella-docs` |

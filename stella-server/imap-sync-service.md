@@ -14,13 +14,15 @@ Small **Node.js + Express** helper on the Stella server that runs **`imapsync`**
 **Related**
 
 - Topology and ports: [`infrastructure.md`](infrastructure.md)
-- ddashboard vs Stella responsibilities: [`../integration/ddashboard-and-stella-server.md`](../integration/ddashboard-and-stella-server.md)
+- Company-wide map: [`../integration/system-overview.md`](../integration/system-overview.md)
+- Atlas UI / history (no passwords): [`../atlas/tools.md`](../atlas/tools.md)
+- ddashboard vs Stella AI responsibilities: [`../integration/ddashboard-and-stella-server.md`](../integration/ddashboard-and-stella-server.md)
 
 ---
 
 ## ddashboard proxy (removed 2026-09-02)
 
-The `dls/v1/imap-sync/*` WordPress proxy (`inc/routes/imap-sync-proxy.php`) and the Werkzeuge E-Mail-Migration UI have been removed. Deployment, E-Mail-Migration, and WordPress-Seiten are now managed by Atlas. Call the `imap-sync` service directly at `https://stella.foxcraft.digital/imap-sync`.
+The `dls/v1/imap-sync/*` WordPress proxy (`inc/routes/imap-sync-proxy.php`) and the Werkzeuge E-Mail-Migration UI have been removed. Deployment, E-Mail-Migration, and WordPress-Seiten are now managed by Atlas ([`../atlas/tools.md`](../atlas/tools.md)). Call the `imap-sync` service from Atlas (or CLI) at `https://stella.foxcraft.digital/imap-sync`.
 
 ---
 

@@ -176,3 +176,11 @@ Both monitoring features can send email alerts. Configured in **Settings → Ema
 | `brevo_alert_email` | Recipient for WP site down alerts |
 
 If `brevo_api_key` is not set, alerts are silently skipped — no exception, just a log warning.
+
+---
+
+## Further reading
+
+- One-click WP admin login (not part of the uptime loop): [`atlas-connect.md`](atlas-connect.md)
+- Stella-side health-api: [`../stella-server/health-api.md`](../stella-server/health-api.md)
+- System map: [`../integration/system-overview.md`](../integration/system-overview.md)

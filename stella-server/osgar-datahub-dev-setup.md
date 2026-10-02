@@ -6,6 +6,7 @@
 
 - Original per-app SSH container pattern: [`dev-ssh-access.md`](dev-ssh-access.md)
 - `.NET` app / `-dev` container pattern: [`dotnet-app-deployment.md`](dotnet-app-deployment.md)
+- Edison agent mounts this tree via sshfs as user `edison`: [`../edison/cursor-agent.md`](../edison/cursor-agent.md)
 
 ---
 

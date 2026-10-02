@@ -10,7 +10,17 @@
 - **Role:** AI inference, API services, IMAP sync, reverse-proxied dev/staging apps
 
 ### ddashboard (Hetzner Managed)
-- **Role:** WordPress — ddashboard theme, Stella client, REST API routes
+- **Role:** WordPress — ddashboard theme, Stella **chat** client, REST `dls/v1` (including auth tokens consumed by Atlas)
+
+### Atlas (Hetzner Managed, same account as ddashboard)
+- **Role:** Ops platform — deploys, Stella health polling, WP site uptime, IMAP migration UI
+- **URL:** `https://dev.atlas.foxcraft.digital`
+- **Docs:** [`../atlas/README.md`](../atlas/README.md), [`../integration/system-overview.md`](../integration/system-overview.md)
+- Shares the host SSH key Stella trusts as principal `ddashboard` (deploy-api + health-api)
+
+### Edison (Hetzner Cloud) — separate machine, not this host
+- **Role:** Coding-agent sandbox (Cursor CLI, later other agents). Must not run on Stella.
+- **Docs:** [`../edison/README.md`](../edison/README.md)
 
 ---
 
@@ -434,7 +444,7 @@ Fully decommissioned. See git history / prior doc versions if a vector search fe
 
 - **UFW** — active, default-deny incoming. Ports 22, 443 restricted to `194.126.177.181` and `23.88.90.12`. Port 8001 additionally allows `172.18.0.0/16` (`services_default` bridge subnet) for Caddy's internal proxy calls, **and `172.20.0.0/16` (`edge` bridge subnet, added 2026-08-10)** for `health-api`'s stella-api check. Port 11434's direct-access rules removed 2026-08-10 once Ollama moved fully behind the `edge` network / Caddy — no longer needs a host-level UFW allowance for the old static-IP whitelist. Host SSH (port 22) remains Dominik-only; per-app Cursor SSH uses Docker-published `22XX` ports — [`dev-ssh-access.md`](dev-ssh-access.md).
 - **fail2ban** — running
-- **Docker-published ports (443, 2201, 2202)** — protected via a custom `DOCKER-USER` iptables chain (details below). Per-app SSH containers add a new `22XX` as they are created.
+- **Docker-published ports (443, 2201, 2202)** — protected via a custom `DOCKER-USER` iptables chain (details below). Per-app SSH containers add a new `22XX` as they are created. Port 2201 also needs an ACCEPT for Edison’s public IP (`dev-agent-ip`) so the coding-agent `sshfs` mount works — see [`../edison/infrastructure.md`](../edison/infrastructure.md).
 - **Per-site Caddy `remote_ip` scoping (added 2026-09-03)** — client IPs granted access to `osgar.datahub.foxcraft.digital` only; all other Caddy site blocks explicitly deny those IPs via `@blocked remote_ip` matchers. See [`client-ip-access.md`](client-ip-access.md).
 
 **Note (2026-09-01):** `imap-sync` no longer publishes `3001`, and `caddy` no longer publishes `8080`. The `DOCKER-USER` rules for those two ports are now dead (the packets never arrive) and can be removed in a future cleanup; they are kept for now, harmless. The `:8080` Caddyfile block was already removed on 2026-08-07.
@@ -477,6 +487,9 @@ iptables -A DOCKER-USER -i $WAN_IF -p tcp --dport 443 -j DROP
 # Per-app SSH containers (see dev-ssh-access.md). Next app gets 2203.
 iptables -A DOCKER-USER -i $WAN_IF -s 194.126.177.181 -p tcp --dport 2201 -j ACCEPT
 iptables -A DOCKER-USER -i $WAN_IF -s 23.88.90.12 -p tcp --dport 2201 -j ACCEPT
+# Edison agent host (Hetzner name dev-agent-ip) — add numeric IP, then remove this comment.
+# See ../edison/infrastructure.md. Must sit above the DROP.
+# iptables -A DOCKER-USER -i $WAN_IF -s <dev-agent-ip> -p tcp --dport 2201 -j ACCEPT
 iptables -A DOCKER-USER -i $WAN_IF -p tcp --dport 2201 -j DROP
 
 iptables -A DOCKER-USER -i $WAN_IF -s 194.126.177.181 -p tcp --dport 2202 -j ACCEPT

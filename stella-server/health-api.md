@@ -217,15 +217,15 @@ Internal edge-network callers can still use `http://health-api:8080/system/healt
 
 ---
 
-## What Atlas still needs to build
+## Atlas-side (implemented)
 
-Stella-side endpoint is live. Atlas (`dev.atlas.foxcraft.digital`) should:
+All five items below shipped. See [`../atlas/monitoring.md`](../atlas/monitoring.md) and [`../integration/system-overview.md`](../integration/system-overview.md).
 
-1. A scheduled job that signs a `system-health:<timestamp>` payload and POSTs it to `https://stella-health-api.foxcraft.digital/system/health` every few minutes (`STELLA_HEALTH_API_URL`).
-2. Storage for the latest snapshot per server (or a small history) — a new model, or reuse of an existing pattern.
-3. A status grid view — green/red per container and check, surfaced somewhere visible (dashboard home, or a dedicated health page).
-4. Timeout tuned to at least 60s given the response-time note above.
-5. Render the newer top-level keys (`docker_daemon`, `ollama_resource_usage`, `cpu_ram`) once they appear in the payload.
+1. `CheckStellaHealth` every 5 minutes signs `system-health:{timestamp}` and POSTs to `STELLA_HEALTH_API_URL` (`https://stella-health-api.foxcraft.digital/system/health`). Timeout 60s.
+2. History in `stella_health_checks` + per-service `stella_service_uptime_logs` (30-day retention).
+3. Dashboard summary + `/monitoring/stella` grid and charts.
+4. Public-endpoint probe fallback when health-api is unreachable.
+5. Newer payload keys (`docker_daemon`, `ollama_resource_usage`, `cpu_ram`, `backup`, `backup_history`) normalized by `StellaHealthApiClient::normalizeServices()`.
 
 ---
 

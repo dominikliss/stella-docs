@@ -8,6 +8,7 @@
 
 - Host topology, `DOCKER-USER`, core compose: [`infrastructure.md`](infrastructure.md)
 - .NET app folder / `-dev` pattern: [`dotnet-app-deployment.md`](dotnet-app-deployment.md)
+- Edison coding-agent host (sshfs into this container as user `edison`): [`../edison/README.md`](../edison/README.md)
 
 ---
 
@@ -185,6 +186,24 @@ Host advoapp-finditoo
 Pawel: same file, `User pawel`, his own `IdentityFile`. Windows devs need `ssh-keygen -t ed25519` first if no key exists yet (PowerShell), then their public key added to the relevant apps' `authorized_keys` files (rebuild the `-ssh` container after).
 
 Cursor: `Cmd/Ctrl+Shift+P` → "Remote-SSH: Connect to Host" → pick the host alias. Cursor auto-installs its remote server on first connect (~30-60s). Confirmed working end-to-end for both apps, including live file edits without copying, and `git` operations (needs `git config --global --add safe.directory /home/dominik/app` inside the container first, since the repo is owned `root:ubuntu` and the SSH user is not root — noted by the Cursor agent during testing, not yet pre-baked into the Dockerfile).
+
+---
+
+## Edison agent user (`edison`)
+
+**Added 2026-09-22** for the Edison coding-agent server. Dedicated Linux user **inside** `osgar-datahub-ssh` (same isolation model as `dominik` / `pawel` — not a Stella host account). Lets agent access be revoked without touching personal keys.
+
+| | |
+|---|---|
+| User | `edison` |
+| Port | 2201 (same container) |
+| Key | Edison host `~/.ssh/edison_agent.pub` only — **not** in `dominik`/`pawel` `authorized_keys`, and their keys must **not** be in `edison`'s |
+| Working copy | `/home/edison/app` → same host `./src` bind-mount as the other users |
+| Client | `cursor-agent` container on Edison, via `sshfs` — [`../edison/cursor-agent.md`](../edison/cursor-agent.md) |
+
+Bake this into `Dockerfile.ssh` + compose (useradd, `authorized_keys` for this user only, `./src:/home/edison/app`). If the user was added only in the running container, a rebuild drops it — tracked in [`../open-gaps.md`](../open-gaps.md).
+
+**Firewall:** Stella `DOCKER-USER` ACCEPT for 2201 must include Edison’s public IP (`dev-agent-ip`), not only the laptop/VPN IPs. Placeholder in [`infrastructure.md`](infrastructure.md); record the numeric IP in [`../edison/infrastructure.md`](../edison/infrastructure.md).
 
 ## Verifying isolation — external checklist
 

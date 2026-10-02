@@ -185,3 +185,12 @@ Same SSH-signature mechanism as health-api — see [`../stella-server/deploy-api
 | 30-min poll timeout | Destination + run → `error` |
 | Job exception | `DeployRunJob::failed()` — same behaviour as ssh_rsync |
 | Worker restart mid-poll | `stella_job_id` already stored on the destination row → job resumes polling on restart (no re-trigger) |
+
+---
+
+## Further reading
+
+- [`README.md`](README.md) — Atlas modules and API
+- [`dotnet-azure.md`](dotnet-azure.md) — why .NET uses `stella_deploy_api`
+- [`../stella-server/deploy-api.md`](../stella-server/deploy-api.md) — Stella-side auth and job API
+- [`../integration/system-overview.md`](../integration/system-overview.md) — how this path sits next to ddashboard and health-api

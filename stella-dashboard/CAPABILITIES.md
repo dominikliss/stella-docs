@@ -2,6 +2,8 @@
 
 ddashboard is a self-built internal business application for **Dominik Liss**, a self-employed web developer and entrepreneur based in Vienna, Austria. It runs as a custom WordPress theme with a React frontend compiled via webpack, backed by the WordPress REST API and a custom `dls/v1` REST namespace.
 
+**Ops tools are not in this theme.** Deployment, WordPress-site registry, and IMAP mailbox copy live in **Atlas** (`https://dev.atlas.foxcraft.digital`). ddashboard remains the identity provider (`/dls/v1/auth/*`) and the Stella **chat** client. See [`../integration/system-overview.md`](../integration/system-overview.md) and [`../atlas/README.md`](../atlas/README.md).
+
 ---
 
 ## Tech Stack
