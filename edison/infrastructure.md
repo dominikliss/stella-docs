@@ -15,7 +15,7 @@
 | **Type** | CPX32 — 4 vCPU shared, 8 GB RAM, 160 GB SSD |
 | **OS** | Ubuntu 26.04 LTS |
 | **Location** | Falkenstein |
-| **Primary IP** | Dedicated address, Hetzner name `dev-agent-ip` (functional name). Record the numeric IP here when confirming Stella firewall rules. |
+| **Primary IP** | Dedicated address, Hetzner name `dev-agent-ip` (functional name). Stella `DOCKER-USER` ACCEPTs `178.105.203.54` on ports 2201 and 2204 — **ASSUMED** to be this IP. **TODO (Dominik):** confirm, then record the numeric IP here. |
 | **Backups** | Hetzner automatic backups **off** on purpose (sandbox; code lives in git). Take a manual snapshot before risky host changes. |
 
 Shared (CPX) rather than dedicated (CCX) is intentional: one or two interactive agent sessions do not justify CCX pricing. Resize to CPX42 / CPX52 is a console click if load grows.
@@ -83,9 +83,11 @@ The agent SSHes to Stella’s per-app SSH container, not to Stella’s host SSH:
 | Port | **2201** (published by `osgar-datahub-ssh`) |
 | User | `edison` — dedicated user inside that container, for revoke-without-touching-devs |
 
-Stella’s `DOCKER-USER` chain currently ACCEPTs `194.126.177.181` and `23.88.90.12` on 2201 and DROPs everything else. Edison’s public IP (`dev-agent-ip`) **must** be an additional ACCEPT on 2201, or `sshfs` from the agent container will time out.
+Stella’s `DOCKER-USER` chain ACCEPTs `194.126.177.181`, `23.88.90.12`, and `178.105.203.54` on 2201 (and the same three on 2204) and DROPs everything else. `178.105.203.54` is **ASSUMED** to be Edison’s public IP (`dev-agent-ip`); **TODO (Dominik):** confirm and record it in the table at the top of this page.
 
-See [`../stella-server/infrastructure.md`](../stella-server/infrastructure.md) (DOCKER-USER script) and [`../stella-server/dev-ssh-access.md`](../stella-server/dev-ssh-access.md) (`edison` user). Record the numeric IP in the table at the top of this page once the rule is in place.
+A second per-app SSH container with an `edison` user now exists on port **2204** (`dominikliss.foxcraft.digital`). It is reachable only if the Edison IP is in the `DOCKER-USER` ACCEPT for 2204 (currently `178.105.203.54`). See [`../stella-server/wordpress-staging.md`](../stella-server/wordpress-staging.md).
+
+See [`../stella-server/infrastructure.md`](../stella-server/infrastructure.md) (DOCKER-USER script) and [`../stella-server/dev-ssh-access.md`](../stella-server/dev-ssh-access.md) (`edison` user).
 
 ---
 

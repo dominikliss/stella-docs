@@ -19,6 +19,7 @@ Dedicated AI / services host. No general-purpose UI — **Atlas** and **ddashboa
 | [dev-ssh-access.md](dev-ssh-access.md) | Per-app SSH containers (not host users) |
 | [client-ip-access.md](client-ip-access.md) | Per-subdomain client IP grants |
 | [dotnet-app-deployment.md](dotnet-app-deployment.md) | .NET pattern: Stella dev containers → Azure production |
+| [wordpress-staging.md](wordpress-staging.md) | WordPress staging: `/opt/apps/wordpress/<subdomain>/` |
 
 Atlas halves of the signed APIs: [`../atlas/deploy-pipeline.md`](../atlas/deploy-pipeline.md), [`../atlas/monitoring.md`](../atlas/monitoring.md), [`../atlas/tools.md`](../atlas/tools.md).
 
@@ -32,3 +33,4 @@ App-specific runbooks (not Stella-the-product) live under [`apps/`](apps/).
 |-----|------|
 | osgar-datahub | [`apps/osgar-datahub/`](apps/osgar-datahub/) |
 | advoapp | Pattern in [dotnet-app-deployment.md](dotnet-app-deployment.md) (no separate folder yet) |
+| dominikliss (WP staging) | [wordpress-staging.md](wordpress-staging.md) |

@@ -39,6 +39,7 @@ When your change affects **how the system works** (not purely internal refactors
 | Mail/IMAP/spam/client linking | `stella-dashboard/mail-nachrichten.md`, `mail-cron-hosting.md` |
 | Email embed / Stella HTTP client / queue | `integration/email-indexing.md`, `integration/ddashboard-and-stella-server.md` |
 | Stella server, compose, API behaviour | `stella-server/README.md`, `stella-server/infrastructure.md`, `stella-server/stella-api.md`; SSH access: `stella-server/dev-ssh-access.md` |
+| WordPress staging on Stella | `stella-server/wordpress-staging.md` |
 | osgar-datahub (or other app on Stella) | `stella-server/apps/<app>/` |
 | **Atlas** platform, modules, env, API surface | `atlas/README.md`, `atlas/architecture.md`; cross-system: `integration/system-overview.md` |
 | Atlas login / ddashboard tokens / IP allowlist | `atlas/auth.md` |

@@ -41,6 +41,10 @@ Core Docker-managed services live at `/opt/services/docker-compose.yml`. Dev/sta
 | `osgar-datahub-db` | Docker (MSSQL 2022) | — (internal only) | `mcr.microsoft.com/mssql/server:2022-latest`, data volume `osgar-datahub-mssql-data`; same compose file as `osgar-datahub-dev` |
 | `osgar-datahub-ssh` | Docker (sshd in SDK image) | 2201 | Per-app Cursor Remote-SSH — [`dev-ssh-access.md`](dev-ssh-access.md). **Must not** join `edge` |
 | `advoapp-ssh` | Docker (sshd in SDK image) | 2202 | Same pattern for finditoo advoapp — [`dev-ssh-access.md`](dev-ssh-access.md) |
+| `advoapp-redesign-ssh` | Docker (sshd) | 2203 | Same pattern; was running but previously undocumented — [`dev-ssh-access.md`](dev-ssh-access.md) |
+| `dominikliss.foxcraft.digital` | Docker (`wordpress:php8.4-apache`) | — (Caddy `:80`) | First WP staging site — [`wordpress-staging.md`](wordpress-staging.md) |
+| `dominikliss.foxcraft.digital-db` | Docker (MariaDB 11) | — (internal only) | Never on `edge` |
+| `dominikliss.foxcraft.digital-ssh` | Docker (sshd in `php:8.4-cli`) | 2204 | WP staging SSH — [`wordpress-staging.md`](wordpress-staging.md). **Must not** join `edge` |
 
 ### Non-Docker systemd services
 - `fail2ban.service`
@@ -58,7 +62,7 @@ Standard Caddy can't issue certs without exposing port 80 to the whole internet 
 
 **⚠️ Hetzner DNS API migration (2026-08-06):** Hetzner shut down the old `dns.hetzner.com` DNS Console/API in May 2026 and merged DNS management into the unified Hetzner Cloud API (`api.hetzner.cloud`). Tokens created in the old DNS Console **do not work** with the new API. If you ever see a `301` redirect to `console.hetzner.com` from a `dns.hetzner.com` API call, this is why. Use:
 - **`caddy-dns/hetzner/v2`** (not v1) — v1 targets the dead API
-- API tokens from **console.hetzner.com** → project (`konsoleH`) → Security → API tokens — not the old DNS Console
+- API tokens from **console.hetzner.com** → the project that **owns the `foxcraft.digital` zone** → Security → API tokens — not the old DNS Console. Docs previously said `konsoleH`; the zone has been moved. **TODO (Dominik): name of the new project.**
 - Endpoint: `https://api.hetzner.cloud/v1/zones/{zone_id}/rrsets` (not the old `/api/v1/records` structure)
 
 ```dockerfile
@@ -72,7 +76,24 @@ COPY --from=builder /usr/bin/caddy /usr/bin/caddy
 
 Token stored in `/opt/services/caddy/.env` (`chmod 600`), referenced in the Caddyfile as `{env.HETZNER_API_TOKEN}`. **Never run `curl -v` against Hetzner's API with the token in a header** — verbose curl output prints request headers including `Auth-API-Token`/`Authorization`. Use plain `curl -s` and only inspect the response body.
 
-**foxcraft.digital zone ID:** `567656` (Hetzner Cloud API, `konsoleH` project)
+**foxcraft.digital zone ID:** `567656` (unchanged after the project move; verified with the new token via `GET /v1/zones?name=foxcraft.digital`). **TODO (Dominik): name of the new Hetzner Cloud project** (previously referred to as `konsoleH`).
+
+### Zone moved to another Hetzner Cloud project
+
+`foxcraft.digital` was moved to a different Hetzner Cloud project. Zone ID stayed `567656`. The token in `/opt/services/caddy/.env` was from the old project and lost access to the zone; the old token was revoked and the `.env` backup deleted.
+
+**Symptom:** `POST /v1/zones/567656/rrsets` returned `"code":"not_found","message":"Zone not found"` although the zone ID was correct. Cause: the API token belongs to a different project than the zone. Without a working token Caddy also cannot renew certificates (DNS-01 breaks for all sites).
+
+**Diagnosis:** `GET https://api.hetzner.cloud/v1/zones?name=foxcraft.digital` (the unfiltered list is paginated, so the zone may be missing from page 1).
+
+**Fix procedure** (never print the token):
+
+1. Create a new token with read+write in the project that owns the zone (console.hetzner.com → Security → API tokens).
+2. Test it before touching `.env`: `read -rs NEWTOKEN`, then run the GET above.
+3. Back up `.env`, write the new `.env` with `chmod 600`.
+4. `docker compose up -d --force-recreate caddy` in `/opt/services` (plain `restart` does **not** re-read `.env` — Issue 1 below).
+5. Verify without printing the token: compare `docker exec services-caddy-1 printenv HETZNER_API_TOKEN | tr -d '\n' | sha256sum` with `printf %s "$NEWTOKEN" | sha256sum`.
+6. `unset NEWTOKEN`; delete the `.env` backup; revoke the old token in the old project.
 
 ### Caddyfile structure
 
@@ -96,7 +117,7 @@ stella.foxcraft.digital {
             dns hetzner {env.HETZNER_API_TOKEN}
         }
     }
-    @blocked remote_ip 213.47.151.242 89.67.29.69
+    @blocked remote_ip 213.47.151.242 89.67.29.69 49.13.27.117
     respond @blocked 403
     handle /ollama* {
         uri strip_prefix /ollama
@@ -138,7 +159,7 @@ stella-deployment-api.foxcraft.digital {
             dns hetzner {env.HETZNER_API_TOKEN}
         }
     }
-    @blocked remote_ip 213.47.151.242 89.67.29.69
+    @blocked remote_ip 213.47.151.242 89.67.29.69 49.13.27.117
     respond @blocked 403
     reverse_proxy deploy-api:8080
 }
@@ -151,7 +172,7 @@ stella-health-api.foxcraft.digital {
             dns hetzner {env.HETZNER_API_TOKEN}
         }
     }
-    @blocked remote_ip 213.47.151.242 89.67.29.69
+    @blocked remote_ip 213.47.151.242 89.67.29.69 49.13.27.117
     respond @blocked 403
     reverse_proxy health-api:8080
 }
@@ -170,9 +191,37 @@ osgar.datahub.foxcraft.digital {
     respond @blocked 403
     reverse_proxy osgar.datahub.foxcraft.digital:8080
 }
+
+advoapp-redesign.finditoo.foxcraft.digital {
+    tls {
+        issuer acme {
+            email projects@foxcraft.digital
+            dir https://acme-v02.api.letsencrypt.org/directory
+            dns hetzner {env.HETZNER_API_TOKEN}
+        }
+    }
+    @blocked remote_ip 213.47.151.242 89.67.29.69
+    respond @blocked 403
+    reverse_proxy advoapp-redesign-dev:8080
+}
+
+dominikliss.foxcraft.digital {
+    tls {
+        issuer acme {
+            email projects@foxcraft.digital
+            dir https://acme-v02.api.letsencrypt.org/directory
+            dns hetzner {env.HETZNER_API_TOKEN}
+        }
+    }
+    @blocked remote_ip 213.47.151.242 89.67.29.69 49.13.27.117
+    respond @blocked 403
+    reverse_proxy dominikliss.foxcraft.digital:80
+}
 ```
 
 > **Per-site IP scoping (2026-09-03):** `@blocked` matchers were added to all site blocks. Blocks other than `osgar.datahub` deny the client IPs outright; `osgar.datahub` uses an allow-list. This is the second layer of a two-layer approach — the first layer (DOCKER-USER) lets client IPs reach port 443 at all; Caddy's matchers then restrict which subdomain they can actually use. See [`client-ip-access.md`](client-ip-access.md) for the full rationale, the list of current client IPs, and removal instructions.
+
+> **Caddyfile reality check (2026-10-03):** port 443 in `DOCKER-USER` also ACCEPTs `49.13.27.117`. Caddy `@blocked` deny-lists contain `49.13.27.117` on `stella`, `stella-deployment-api`, `stella-health-api`, and `dominikliss`, but **not** on `advoapp.finditoo` and `advoapp-redesign.finditoo` (those only deny `213.47.151.242` and `89.67.29.69`), so that IP currently reaches those two. **TODO (Dominik):** who is `49.13.27.117` (client? expiry?) and whether the two advoapp blocks should deny it too.
 
 **Required template for every new domain block** (copy as-is; only change hostname + upstream). Add the `@blocked` deny-list if any client IPs are in effect — see [`client-ip-access.md`](client-ip-access.md):
 
@@ -193,7 +242,7 @@ osgar.datahub.foxcraft.digital {
 
 The `dir` line is decisive — without it, Caddy can still fall back internally to `acme-staging-v02.api.letsencrypt.org` even with `issuer acme` set. A global `acme_dns hetzner {env.HETZNER_API_TOKEN}` alone also does **not** lock the issuer.
 
-**Already pinned with `dir`:** `stella.foxcraft.digital`, `advoapp.finditoo.foxcraft.digital`, `stella-deployment-api.foxcraft.digital`, `stella-health-api.foxcraft.digital`, `osgar.datahub.foxcraft.digital`.
+**Already pinned with `dir`:** `stella.foxcraft.digital`, `advoapp.finditoo.foxcraft.digital`, `stella-deployment-api.foxcraft.digital`, `stella-health-api.foxcraft.digital`, `osgar.datahub.foxcraft.digital`, `advoapp-redesign.finditoo.foxcraft.digital`, `dominikliss.foxcraft.digital`.
 
 Each new subdomain gets its own block at the bottom, reverse-proxying to a container name on the `edge` network — Caddy handles TLS automatically via DNS-01, no manual cert management needed.
 
@@ -284,6 +333,14 @@ Observed history:
 
 **Follow-up (2026-08-10, `stella-health-api.foxcraft.digital`):** staging fallback was also observed **with a correct `dir` pin already present**, on Caddy's own ~60s internal retry after an initial NXDOMAIN — not a config-reload restart. Waiting it out was not enough; a full `docker compose restart caddy` after DNS had propagated landed on production LE. See [`health-api.md`](health-api.md). If this recurs: confirm DNS live, then force a Caddy restart rather than relying on internal retries alone.
 
+**Follow-up (2026-10-03, `dominikliss.foxcraft.digital`):** first attempt reported `NXDOMAIN looking up TXT for _acme-challenge...` as "During secondary validation" — Let's Encrypt's additional vantage points did not see the TXT yet, consistent with slow propagation after the zone move. Caddy's own retry (~60 s later) went to `acme-staging-v02` despite the verified `dir` pin (third observed staging fallback, after `stella-deployment-api` and `stella-health-api`). Later retries returned to production and the certificate was issued from `acme-v02.api.letsencrypt.org-directory` without further manual action. Issuer verified with `openssl s_client ... | openssl x509 -noout -issuer -dates` (Let's Encrypt, not STAGING).
+
+Hetzner rrset creation is asynchronous (the POST returns an action with status `running`). A manual test TXT (`_acme-test.<sub>`) was visible on both `ns1.your-server.de` and `1.1.1.1` after waiting 200 s. Exact time to visibility was not measured.
+
+Untested idea: `propagation_delay 2m` inside `issuer acme { ... }` for a block on a freshly moved or created zone. The live `dominikliss` block does **not** currently have it (**UNVERIFIED**, **TODO (Dominik):** `grep -n propagation_delay /opt/services/caddy/Caddyfile`).
+
+Rule of thumb unchanged: confirm DNS is live with `dig` before restarting Caddy; if staging shows up, delete stale `_acme-challenge` TXT, then full `docker compose restart caddy`.
+
 ---
 
 ## App deployment pattern — `edge` network
@@ -309,10 +366,16 @@ Folders are named by subdomain, for easy visual mapping:
   │           ├── Dockerfile.ssh         ← per-app Cursor Remote-SSH (see [`dev-ssh-access.md`](dev-ssh-access.md))
   │           ├── authorized_keys
   │           └── docker-compose.dev.yml
-  └── wp-staging/
-        └── <subdomain>/
-              └── docker-compose.yml
+  └── wordpress/
+        └── <subdomain>/                 ← first site: dominikliss.foxcraft.digital
+              ├── .env
+              ├── docker-compose.yml
+              ├── Dockerfile.ssh
+              ├── authorized_keys
+              └── html/
 ```
+
+WordPress staging (folder layout, compose, SSH, permissions, Caddy upstream port 80): [`wordpress-staging.md`](wordpress-staging.md).
 
 **Container names also match the subdomain** — makes `docker ps`/`docker logs` output unambiguous once there are many services running. Example:
 
@@ -342,9 +405,9 @@ networks:
 5. Create the DNS A record via Hetzner Cloud API (see below)
 6. Add a Caddy block with explicit `dir` pin (see Caddyfile template above), **plus a `@blocked remote_ip` deny-list for any client IPs currently active** (see [`client-ip-access.md`](client-ip-access.md)), then `docker compose restart caddy`
 7. Check / clear stale `_acme-challenge` TXT if issuance sticks (Issue 2)
-8. `docker compose build && docker compose up -d` (or `docker-compose.dev.yml` for .NET hot-reload — see [`dotnet-app-deployment.md`](dotnet-app-deployment.md))
+8. `docker compose build && docker compose up -d` (or `docker-compose.dev.yml` for .NET hot-reload — see [`dotnet-app-deployment.md`](dotnet-app-deployment.md)). For WordPress staging, use `/opt/apps/wordpress/<subdomain>/` and the checklist in [`wordpress-staging.md`](wordpress-staging.md) (Caddy upstream port **80**, not 8080; SSH port + `DOCKER-USER` rules required).
 
-No UFW or `DOCKER-USER` changes needed for Caddy-routed HTTP apps — that's the entire point of routing everything through Caddy on the `edge` network. **Exception:** per-app `-ssh` containers publish a host port (`22XX:22`) and **must** get matching `DOCKER-USER` rules. They must **not** join `edge`. See [`dev-ssh-access.md`](dev-ssh-access.md).
+No UFW or `DOCKER-USER` changes needed for Caddy-routed HTTP apps — that's the entire point of routing everything through Caddy on the `edge` network. **Exception:** per-app `-ssh` containers publish a host port (`22XX:22`) and **must** get matching `DOCKER-USER` rules. They must **not** join `edge`. See [`dev-ssh-access.md`](dev-ssh-access.md). Next free SSH port: **2205**.
 
 ### Gateway IP depends on which Docker network the caller is on
 
@@ -444,8 +507,8 @@ Fully decommissioned. See git history / prior doc versions if a vector search fe
 
 - **UFW** — active, default-deny incoming. Ports 22, 443 restricted to `194.126.177.181` and `23.88.90.12`. Port 8001 additionally allows `172.18.0.0/16` (`services_default` bridge subnet) for Caddy's internal proxy calls, **and `172.20.0.0/16` (`edge` bridge subnet, added 2026-08-10)** for `health-api`'s stella-api check. Port 11434's direct-access rules removed 2026-08-10 once Ollama moved fully behind the `edge` network / Caddy — no longer needs a host-level UFW allowance for the old static-IP whitelist. Host SSH (port 22) remains Dominik-only; per-app Cursor SSH uses Docker-published `22XX` ports — [`dev-ssh-access.md`](dev-ssh-access.md).
 - **fail2ban** — running
-- **Docker-published ports (443, 2201, 2202)** — protected via a custom `DOCKER-USER` iptables chain (details below). Per-app SSH containers add a new `22XX` as they are created. Port 2201 also needs an ACCEPT for Edison’s public IP (`dev-agent-ip`) so the coding-agent `sshfs` mount works — see [`../edison/infrastructure.md`](../edison/infrastructure.md).
-- **Per-site Caddy `remote_ip` scoping (added 2026-09-03)** — client IPs granted access to `osgar.datahub.foxcraft.digital` only; all other Caddy site blocks explicitly deny those IPs via `@blocked remote_ip` matchers. See [`client-ip-access.md`](client-ip-access.md).
+- **Docker-published ports (443, 2201, 2202, 2203, 2204, and 8081)** — protected via a custom `DOCKER-USER` iptables chain (details below). Per-app SSH containers add a new `22XX` as they are created. Next free SSH port: **2205**. Port 2201 (and 2204) also ACCEPT `178.105.203.54` — **ASSUMED** Edison (`dev-agent-ip`); **TODO (Dominik):** confirm — see [`../edison/infrastructure.md`](../edison/infrastructure.md). Port **8081** has team-IP ACCEPT + DROP; **TODO (Dominik):** what 8081 is.
+- **Per-site Caddy `remote_ip` scoping (added 2026-09-03)** — client IPs granted access to `osgar.datahub.foxcraft.digital` only; most other Caddy site blocks explicitly deny those IPs via `@blocked remote_ip` matchers. `49.13.27.117` is ACCEPTed on port 443 and denied on some blocks but **not** on the two advoapp blocks — see the Caddyfile reality check above and [`client-ip-access.md`](client-ip-access.md).
 
 **Note (2026-09-01):** `imap-sync` no longer publishes `3001`, and `caddy` no longer publishes `8080`. The `DOCKER-USER` rules for those two ports are now dead (the packets never arrive) and can be removed in a future cleanup; they are kept for now, harmless. The `:8080` Caddyfile block was already removed on 2026-08-07.
 
@@ -482,20 +545,36 @@ iptables -A DOCKER-USER -i $WAN_IF -s 194.126.177.181 -p tcp --dport 443 -j ACCE
 iptables -A DOCKER-USER -i $WAN_IF -s 23.88.90.12 -p tcp --dport 443 -j ACCEPT
 iptables -A DOCKER-USER -i $WAN_IF -s 213.47.151.242 -p tcp --dport 443 -j ACCEPT  # client (osgar.datahub only — temporary)
 iptables -A DOCKER-USER -i $WAN_IF -s 89.67.29.69 -p tcp --dport 443 -j ACCEPT     # client (osgar.datahub only — temporary)
+iptables -A DOCKER-USER -i $WAN_IF -s 49.13.27.117 -p tcp --dport 443 -j ACCEPT    # TODO (Dominik): owner / expiry
 iptables -A DOCKER-USER -i $WAN_IF -p tcp --dport 443 -j DROP
 
-# Per-app SSH containers (see dev-ssh-access.md). Next app gets 2203.
+# Per-app SSH containers (see dev-ssh-access.md). Next free port: 2205.
 iptables -A DOCKER-USER -i $WAN_IF -s 194.126.177.181 -p tcp --dport 2201 -j ACCEPT
 iptables -A DOCKER-USER -i $WAN_IF -s 23.88.90.12 -p tcp --dport 2201 -j ACCEPT
-# Edison agent host (Hetzner name dev-agent-ip) — add numeric IP, then remove this comment.
-# See ../edison/infrastructure.md. Must sit above the DROP.
-# iptables -A DOCKER-USER -i $WAN_IF -s <dev-agent-ip> -p tcp --dport 2201 -j ACCEPT
+iptables -A DOCKER-USER -i $WAN_IF -s 178.105.203.54 -p tcp --dport 2201 -j ACCEPT  # ASSUMED Edison (dev-agent-ip); TODO (Dominik): confirm
 iptables -A DOCKER-USER -i $WAN_IF -p tcp --dport 2201 -j DROP
 
 iptables -A DOCKER-USER -i $WAN_IF -s 194.126.177.181 -p tcp --dport 2202 -j ACCEPT
 iptables -A DOCKER-USER -i $WAN_IF -s 23.88.90.12 -p tcp --dport 2202 -j ACCEPT
 iptables -A DOCKER-USER -i $WAN_IF -p tcp --dport 2202 -j DROP
+
+iptables -A DOCKER-USER -i $WAN_IF -s 194.126.177.181 -p tcp --dport 2203 -j ACCEPT
+iptables -A DOCKER-USER -i $WAN_IF -s 23.88.90.12 -p tcp --dport 2203 -j ACCEPT
+iptables -A DOCKER-USER -i $WAN_IF -p tcp --dport 2203 -j DROP
+
+iptables -A DOCKER-USER -i $WAN_IF -s 194.126.177.181 -p tcp --dport 2204 -j ACCEPT
+iptables -A DOCKER-USER -i $WAN_IF -s 23.88.90.12 -p tcp --dport 2204 -j ACCEPT
+iptables -A DOCKER-USER -i $WAN_IF -s 178.105.203.54 -p tcp --dport 2204 -j ACCEPT  # same extra IP as 2201; ASSUMED Edison
+iptables -A DOCKER-USER -i $WAN_IF -p tcp --dport 2204 -j DROP
+
+# Port 8081 — ACCEPT for the two team IPs, then DROP. Not documented anywhere else.
+# TODO (Dominik): say what 8081 is, or mark it as unknown.
+iptables -A DOCKER-USER -i $WAN_IF -s 194.126.177.181 -p tcp --dport 8081 -j ACCEPT
+iptables -A DOCKER-USER -i $WAN_IF -s 23.88.90.12 -p tcp --dport 8081 -j ACCEPT
+iptables -A DOCKER-USER -i $WAN_IF -p tcp --dport 8081 -j DROP
 ```
+
+`2204` rules verified live via `iptables -L` (ACCEPT before DROP). `178.105.203.54` is the same extra IP already ACCEPTed on 2201. **ASSUMED** to be Edison (`dev-agent-ip`); **TODO (Dominik):** confirm, and record it in [`../edison/infrastructure.md`](../edison/infrastructure.md).
 
 Port 3001 / 8080 rules above are leftovers from retired publishes (`imap-sync` and Caddy `:8080`, removed 2026-09-01). Harmless; delete in a future cleanup. **Do not** delete 443 or any `22XX` rule that still has a live `-ssh` container.
 
@@ -518,7 +597,7 @@ Stale UFW rule with no corresponding service/container/binary anywhere on the se
 ### Secrets handling
 
 - **Never use `curl -v`/`curl --verbose` with an API token in a header** — verbose mode prints the full request including headers. Use `curl -s` (silent) and inspect only the response body. This mistake happened once with a Hetzner API token during this session; the token was rotated afterward.
-- API tokens live in `.env` files with `chmod 600`, scoped as narrowly as the provider allows (e.g. Hetzner token scoped to the `konsoleH` project specifically, not account-wide).
+- API tokens live in `.env` files with `chmod 600`, scoped as narrowly as the provider allows (e.g. Hetzner token scoped to the project that owns the `foxcraft.digital` zone, not account-wide). **TODO (Dominik): name of that project** (previously `konsoleH`; the zone has been moved).
 
 ---
 

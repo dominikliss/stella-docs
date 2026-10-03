@@ -10,10 +10,11 @@
 
 ## Client IPs currently allowed (osgar.datahub only)
 
-| IP | Added |
-|---|---|
-| `213.47.151.242` | 2026-09-03 |
-| `89.67.29.69` | 2026-09-03 |
+| IP | Added | Owner / expiry |
+|---|---|---|
+| `213.47.151.242` | 2026-09-03 | client (osgar.datahub) — temporary |
+| `89.67.29.69` | 2026-09-03 | client (osgar.datahub) — temporary |
+| `49.13.27.117` | — | **TODO (Dominik):** owner / expiry |
 
 ⚠️ **These are temporary and should be removed once the client no longer needs access.** Removal = delete the IP from both places below, then `docker compose restart caddy` (and reapply the firewall script if the IP is being fully retired, not just re-scoped).
 
@@ -39,10 +40,11 @@ iptables -A DOCKER-USER -i $WAN_IF -s 194.126.177.181 -p tcp --dport 443 -j ACCE
 iptables -A DOCKER-USER -i $WAN_IF -s 23.88.90.12 -p tcp --dport 443 -j ACCEPT
 iptables -A DOCKER-USER -i $WAN_IF -s 213.47.151.242 -p tcp --dport 443 -j ACCEPT
 iptables -A DOCKER-USER -i $WAN_IF -s 89.67.29.69 -p tcp --dport 443 -j ACCEPT
+iptables -A DOCKER-USER -i $WAN_IF -s 49.13.27.117 -p tcp --dport 443 -j ACCEPT
 iptables -A DOCKER-USER -i $WAN_IF -p tcp --dport 443 -j DROP
 ```
 
-No entry was added for `2201` (osgar-datahub-ssh) or `2202` (advoapp-ssh) — SSH access remains restricted to the two static team IPs only.
+Port 443 also ACCEPTs `49.13.27.117`. No client-IP entry was added for `2201` / `2202` / `2203` / `2204` — SSH access remains restricted to the two static team IPs (plus `178.105.203.54` on 2201 and 2204; **ASSUMED** Edison — see [`infrastructure.md`](infrastructure.md)).
 
 Script is systemd-applied on boot; reapply manually after edits with:
 
@@ -60,7 +62,7 @@ sudo iptables -L DOCKER-USER -n -v --line-numbers | grep 443
 
 ## 2. Caddy — `/opt/services/caddy/Caddyfile`
 
-Every site block **except** `osgar.datahub` gets an explicit deny-list matcher for the client IPs:
+Every site block **except** `osgar.datahub` gets an explicit deny-list matcher for the client IPs. Live Caddyfile (2026-10-03): `stella`, `stella-deployment-api`, `stella-health-api`, and `dominikliss` also deny `49.13.27.117`. `advoapp.finditoo` and `advoapp-redesign.finditoo` only deny `213.47.151.242` and `89.67.29.69`, so `49.13.27.117` currently reaches those two. **TODO (Dominik):** who is `49.13.27.117`, and whether the two advoapp blocks should deny it too.
 
 ```caddyfile
 @blocked remote_ip 213.47.151.242 89.67.29.69

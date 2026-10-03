@@ -78,5 +78,5 @@ Tracked in [`../open-gaps.md`](../open-gaps.md) (Edison section). Short list:
 1. Web app to spawn `cursor-agent` headless over `edison-net`
 2. Persist `/root/.ssh/config` (and later mounts) as host volumes — today config dies with the container
 3. Further agent images (`opencode-agent`, `claude-code-agent`) on the same network and mount scheme
-4. Confirm Stella `DOCKER-USER` ACCEPT for Edison’s public IP on port 2201
+4. Confirm Stella `DOCKER-USER` ACCEPT `178.105.203.54` is Edison’s public IP (`dev-agent-ip`) — already on 2201 and 2204
 5. Open HTTP/HTTPS on Edison’s firewall only when the web app is exposed, still IP-restricted

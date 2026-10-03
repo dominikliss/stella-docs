@@ -1,6 +1,6 @@
 # Open Gaps & Next Steps
 
-Last updated: 2026-10-01
+Last updated: 2026-10-03
 
 **Cross-system overview:** [integration/system-overview.md](integration/system-overview.md) (Atlas + ddashboard + Stella + Edison). AI-chat path only: [integration/ddashboard-and-stella-server.md](integration/ddashboard-and-stella-server.md).
 
@@ -16,7 +16,7 @@ Last updated: 2026-10-01
 
 Host + `cursor-agent` container live 2026-09-22. See [`edison/README.md`](edison/README.md).
 
-- [ ] **Stella `DOCKER-USER` ACCEPT for Edison’s public IP on port 2201** — `osgar-datahub-ssh` currently allows only `194.126.177.181` and `23.88.90.12`. Record the numeric IP of Hetzner address `dev-agent-ip` in [`edison/infrastructure.md`](edison/infrastructure.md) and add the ACCEPT rule (before DROP) in [`stella-server/infrastructure.md`](stella-server/infrastructure.md).
+- [ ] **Confirm `178.105.203.54` is Edison (`dev-agent-ip`)** — already ACCEPTed on Stella `DOCKER-USER` ports 2201 and 2204. **TODO (Dominik):** confirm, and record the numeric IP in [`edison/infrastructure.md`](edison/infrastructure.md).
 - [ ] **Bake `edison` user into `osgar-datahub-ssh` image** — if the user was added only in the running container, a rebuild drops it. Same `./src` bind-mount at `/home/edison/app`, dedicated `authorized_keys` for `edison_agent.pub`. See [`stella-server/dev-ssh-access.md`](stella-server/dev-ssh-access.md).
 - [ ] **Persist Cursor-agent SSH config** — `/root/.ssh/config` lives only in the container writable layer; bind-mount it from the Edison host like the key. See [`edison/cursor-agent.md`](edison/cursor-agent.md).
 - [ ] **Web app to drive the agent** — browser UI → Node backend on `edison-net` → spawn `cursor-agent` headless (`--print` or whatever `cursor-agent --help` shows on the installed version) with cwd `/mnt/<host>`. Add an audit trail once runs are no longer watched live.
@@ -47,6 +47,12 @@ Host + `cursor-agent` container live 2026-09-22. See [`edison/README.md`](edison
 - [ ] **osgar-datahub `supervisorctl` credentials** — plaintext password baked into both Dockerfiles' build args; acceptable for the current dummy-dev-DB environment, not suitable for any app with production data in `src/`.
 - [ ] **osgar-datahub `DataProtection` key-ring warning** — `No XML encryptor configured` on every fresh run; cosmetic for dev, worth fixing before reusing this pattern for anything closer to production.
 - [ ] **Client IP grant for `osgar.datahub.foxcraft.digital` — temporary** — IPs `213.47.151.242` and `89.67.29.69` added 2026-09-03; remove when client no longer needs access. See [`stella-server/client-ip-access.md`](stella-server/client-ip-access.md).
+- [ ] **`49.13.27.117` on port 443** — ACCEPTed in `DOCKER-USER`; Caddy denies it on `stella`, `stella-deployment-api`, `stella-health-api`, and `dominikliss`, but **not** on `advoapp.finditoo` / `advoapp-redesign.finditoo`. **TODO (Dominik):** owner / expiry, and whether the two advoapp blocks should deny it too. See [`stella-server/client-ip-access.md`](stella-server/client-ip-access.md).
+- [ ] **Port 8081 in `docker-user-firewall.sh`** — ACCEPT for the two team IPs, then DROP. Not documented anywhere else. **TODO (Dominik):** say what 8081 is, or mark it as unknown.
+- [ ] **WP staging: split `authorized_keys` for `edison`** — `dominikliss.foxcraft.digital` copies one shared file to all three users (same as osgar today), although [`stella-server/dev-ssh-access.md`](stella-server/dev-ssh-access.md) says `edison` should have its own key file. **TODO (Dominik):** whether to split. See [`stella-server/wordpress-staging.md`](stella-server/wordpress-staging.md).
+- [ ] **WP staging: `FS_CHMOD_FILE` / `FS_CHMOD_DIR`** — residual risk (UNVERIFIED): WordPress updates that chmod files to `0644` may lower the ACL mask again. Possible mitigation not tested. **TODO (Dominik).** See [`stella-server/wordpress-staging.md`](stella-server/wordpress-staging.md).
+- [ ] **Hetzner Cloud project name for `foxcraft.digital`** — zone moved; ID still `567656`. **TODO (Dominik):** name of the new project (docs previously said `konsoleH`).
+- [ ] **Caddy `propagation_delay` on `dominikliss`** — untested idea after the zone-move ACME delay. Live block does not currently have it (**UNVERIFIED**). **TODO (Dominik):** `grep -n propagation_delay /opt/services/caddy/Caddyfile`.
 
 ---
 

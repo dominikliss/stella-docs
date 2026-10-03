@@ -1,6 +1,6 @@
 # Dev SSH Access — Per-App SSH Containers for Cursor Remote-SSH
 
-**Status:** Implemented 2026-09-01 for `osgar-datahub` (port 2201) and `advoapp.finditoo` (port 2202). Closes the open-gaps TODO "User-based SSH access on Stella."
+**Status:** Implemented 2026-09-01 for `osgar-datahub` (port 2201) and `advoapp.finditoo` (port 2202). Ports 2203 (`advoapp-redesign-ssh`) and 2204 (`dominikliss.foxcraft.digital`, WP staging) added later. Closes the open-gaps TODO "User-based SSH access on Stella."
 
 **Purpose:** give individual devs (Dominik, Pawel) Cursor Remote-SSH access scoped to a single app's source, without exposing the host or other apps/services. Root SSH remains Dominik-only, unchanged.
 
@@ -8,6 +8,7 @@
 
 - Host topology, `DOCKER-USER`, core compose: [`infrastructure.md`](infrastructure.md)
 - .NET app folder / `-dev` pattern: [`dotnet-app-deployment.md`](dotnet-app-deployment.md)
+- WordPress staging SSH variant (`php:8.4-cli`, group `www-data`): [`wordpress-staging.md`](wordpress-staging.md)
 - Edison coding-agent host (sshfs into this container as user `edison`): [`../edison/README.md`](../edison/README.md)
 
 ---
@@ -156,12 +157,14 @@ iptables -A DOCKER-USER -i $WAN_IF -p tcp --dport 22XX -j DROP
 
 **Ports allocated so far:**
 
-| Port | App |
-|---|---|
-| 2201 | osgar-datahub |
-| 2202 | advoapp (finditoo) |
+| Port | App | Container |
+|---|---|---|
+| 2201 | osgar-datahub | `osgar-datahub-ssh` |
+| 2202 | advoapp (finditoo) | `advoapp-ssh` |
+| 2203 | advoapp-redesign | `advoapp-redesign-ssh` (was running; previously undocumented) |
+| 2204 | dominikliss.foxcraft.digital (WP staging) | `dominikliss.foxcraft.digital-ssh` |
 
-Next app gets 2203, and so on. Update the table above when adding one.
+Next free port: **2205**. Update the table above when adding one.
 
 **Verified active** via `iptables -L DOCKER-USER -n -v --line-numbers` — both ACCEPT rules for the two whitelisted IPs, DROP for everyone else, correct order (ACCEPT before DROP, per the three-iteration lesson already documented in [`infrastructure.md`](infrastructure.md)).
 
@@ -179,6 +182,12 @@ Host osgar-datahub
 Host advoapp-finditoo
     HostName 95.217.144.93
     Port 2202
+    User dominik
+    IdentityFile ~/.ssh/id_ed25519
+
+Host dominikliss.foxcraft.digital
+    HostName 95.217.144.93
+    Port 2204
     User dominik
     IdentityFile ~/.ssh/id_ed25519
 ```
@@ -203,7 +212,15 @@ Cursor: `Cmd/Ctrl+Shift+P` → "Remote-SSH: Connect to Host" → pick the host a
 
 Bake this into `Dockerfile.ssh` + compose (useradd, `authorized_keys` for this user only, `./src:/home/edison/app`). If the user was added only in the running container, a rebuild drops it — tracked in [`../open-gaps.md`](../open-gaps.md).
 
-**Firewall:** Stella `DOCKER-USER` ACCEPT for 2201 must include Edison’s public IP (`dev-agent-ip`), not only the laptop/VPN IPs. Placeholder in [`infrastructure.md`](infrastructure.md); record the numeric IP in [`../edison/infrastructure.md`](../edison/infrastructure.md).
+**Firewall:** Stella `DOCKER-USER` ACCEPT for 2201 must include Edison’s public IP (`dev-agent-ip`), not only the laptop/VPN IPs. `178.105.203.54` is already ACCEPTed on 2201 (and on 2204). **ASSUMED** to be Edison; **TODO (Dominik):** confirm, and record it in [`../edison/infrastructure.md`](../edison/infrastructure.md).
+
+---
+
+## WordPress staging variant
+
+WordPress sites do **not** use the .NET `Dockerfile.ssh` above. Base image is `php:8.4-cli`; users are in group `www-data` (GID 33) instead of GID 1000, because WordPress files are owned by `www-data`. Full compose, Dockerfile, permissions, and first-start ACL gotcha: [`wordpress-staging.md`](wordpress-staging.md).
+
+A second per-app SSH container with an `edison` user now exists on port **2204** (`dominikliss.foxcraft.digital`). That image currently copies one shared `authorized_keys` to all three users (same as osgar today). **TODO (Dominik):** whether to split `edison` onto its own key file, as this page requires.
 
 ## Verifying isolation — external checklist
 
@@ -211,7 +228,7 @@ A standalone script exists for manually confirming no port is reachable from a n
 
 ## Adding SSH to a new app — checklist
 
-1. Add `Dockerfile.ssh` + `authorized_keys` next to `Dockerfile.dev` (template above — includes Node.js and `supervisor`).
+1. Add `Dockerfile.ssh` + `authorized_keys` next to `Dockerfile.dev` (template above — includes Node.js and `supervisor`). For WordPress staging, use [`wordpress-staging.md`](wordpress-staging.md) instead (`php:8.4-cli`, group `www-data`).
 2. Fix host `src/` group perms:
    - Step 1: `chgrp 1000` / `g+rwX` / SetGID (one-time fix on existing tree)
    - Step 2: `setfacl` default ACLs (permanent fix for future build artefacts — required, not optional)
