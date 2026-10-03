@@ -1,20 +1,20 @@
-# osgar.datahub — Client IP Access
+# Client IP Access
 
-**Status:** Implemented 2026-09-03. Temporary access grant — see "Removal" below.
+**Status:** Implemented 2026-09-03 for `osgar.datahub.foxcraft.digital`. The two-layer pattern (DOCKER-USER on 443 + per-site Caddy `@blocked`) is the general grant; this page also records later IPs that reach port 443.
 
-**Purpose:** A client needs to open `osgar.datahub.foxcraft.digital` in a browser, without gaining access to SSH (`2201`), any other Caddy-routed subdomain, or any other Stella service.
+**Purpose:** Grant a client browser access to a specific Caddy-routed subdomain, without SSH or other Stella services. First grant: `osgar.datahub.foxcraft.digital`.
 
 **Related:** [`infrastructure.md`](infrastructure.md), [`dev-ssh-access.md`](dev-ssh-access.md)
 
 ---
 
-## Client IPs currently allowed (osgar.datahub only)
+## Client IPs currently allowed on port 443
 
 | IP | Added | Owner / expiry |
 |---|---|---|
 | `213.47.151.242` | 2026-09-03 | client (osgar.datahub) — temporary |
 | `89.67.29.69` | 2026-09-03 | client (osgar.datahub) — temporary |
-| `49.13.27.117` | — | **TODO (Dominik):** owner / expiry |
+| `49.13.27.117` | ACCEPTed on port 443 in `DOCKER-USER` | **TODO (Dominik):** owner / expiry |
 
 ⚠️ **These are temporary and should be removed once the client no longer needs access.** Removal = delete the IP from both places below, then `docker compose restart caddy` (and reapply the firewall script if the IP is being fully retired, not just re-scoped).
 

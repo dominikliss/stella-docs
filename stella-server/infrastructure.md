@@ -78,7 +78,7 @@ Token stored in `/opt/services/caddy/.env` (`chmod 600`), referenced in the Cadd
 
 **foxcraft.digital zone ID:** `567656` (unchanged after the project move; verified with the new token via `GET /v1/zones?name=foxcraft.digital`). **TODO (Dominik): name of the new Hetzner Cloud project** (previously referred to as `konsoleH`).
 
-### Zone moved to another Hetzner Cloud project
+### Zone moved to another Hetzner Cloud project (2026-10-03)
 
 `foxcraft.digital` was moved to a different Hetzner Cloud project. Zone ID stayed `567656`. The token in `/opt/services/caddy/.env` was from the old project and lost access to the zone; the old token was revoked and the `.env` backup deleted.
 
@@ -189,7 +189,7 @@ osgar.datahub.foxcraft.digital {
     # See client-ip-access.md — client IPs are temporary.
     @blocked not remote_ip 194.126.177.181 23.88.90.12 213.47.151.242 89.67.29.69
     respond @blocked 403
-    reverse_proxy osgar.datahub.foxcraft.digital:8080
+    reverse_proxy osgar-datahub-dev:8080
 }
 
 advoapp-redesign.finditoo.foxcraft.digital {
@@ -221,7 +221,7 @@ dominikliss.foxcraft.digital {
 
 > **Per-site IP scoping (2026-09-03):** `@blocked` matchers were added to all site blocks. Blocks other than `osgar.datahub` deny the client IPs outright; `osgar.datahub` uses an allow-list. This is the second layer of a two-layer approach — the first layer (DOCKER-USER) lets client IPs reach port 443 at all; Caddy's matchers then restrict which subdomain they can actually use. See [`client-ip-access.md`](client-ip-access.md) for the full rationale, the list of current client IPs, and removal instructions.
 
-> **Caddyfile reality check (2026-10-03):** port 443 in `DOCKER-USER` also ACCEPTs `49.13.27.117`. Caddy `@blocked` deny-lists contain `49.13.27.117` on `stella`, `stella-deployment-api`, `stella-health-api`, and `dominikliss`, but **not** on `advoapp.finditoo` and `advoapp-redesign.finditoo` (those only deny `213.47.151.242` and `89.67.29.69`), so that IP currently reaches those two. **TODO (Dominik):** who is `49.13.27.117` (client? expiry?) and whether the two advoapp blocks should deny it too.
+> **Caddyfile reality check (2026-10-03):** port 443 in `DOCKER-USER` also ACCEPTs `49.13.27.117`. Caddy `@blocked` deny-lists contain `49.13.27.117` on `stella`, `stella-deployment-api`, `stella-health-api`, and `dominikliss`, but **not** on `advoapp.finditoo` and `advoapp-redesign.finditoo` (those only deny `213.47.151.242` and `89.67.29.69`), so that IP currently reaches those two. **TODO (Dominik):** who is `49.13.27.117` (client? expiry?) and whether the two advoapp blocks should deny it too. The live `osgar.datahub` upstream is `osgar-datahub-dev:8080` (the excerpt previously showed `osgar.datahub.foxcraft.digital:8080`).
 
 **Required template for every new domain block** (copy as-is; only change hostname + upstream). Add the `@blocked` deny-list if any client IPs are in effect — see [`client-ip-access.md`](client-ip-access.md):
 

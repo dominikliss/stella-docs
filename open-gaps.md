@@ -52,9 +52,14 @@ Host + `cursor-agent` container live 2026-09-22. See [`edison/README.md`](edison
 - [ ] **WP staging: split `authorized_keys` for `edison`** — `dominikliss.foxcraft.digital` copies one shared file to all three users (same as osgar today), although [`stella-server/dev-ssh-access.md`](stella-server/dev-ssh-access.md) says `edison` should have its own key file. **TODO (Dominik):** whether to split. See [`stella-server/wordpress-staging.md`](stella-server/wordpress-staging.md).
 - [ ] **WP staging: `FS_CHMOD_FILE` / `FS_CHMOD_DIR`** — residual risk (UNVERIFIED): WordPress updates that chmod files to `0644` may lower the ACL mask again. Possible mitigation not tested. **TODO (Dominik).** See [`stella-server/wordpress-staging.md`](stella-server/wordpress-staging.md).
 - [ ] **Hetzner Cloud project name for `foxcraft.digital`** — zone moved; ID still `567656`. **TODO (Dominik):** name of the new project (docs previously said `konsoleH`).
-- [ ] **Caddy `propagation_delay` on `dominikliss`** — untested idea after the zone-move ACME delay. Live block does not currently have it (**UNVERIFIED**). **TODO (Dominik):** `grep -n propagation_delay /opt/services/caddy/Caddyfile`.
+- [ ] **Caddy `propagation_delay` on `dominikliss`** — untested idea after the zone-move ACME delay. Live block does not currently have it (**UNVERIFIED**). Result of `grep -n propagation_delay /opt/services/caddy/Caddyfile` on Stella: **TODO (Dominik)**.
 
 ---
+
+## Closed 2026-10-03
+
+- **Old Hetzner API token revoked** — done 2026-10-03. Zone `foxcraft.digital` moved to another Cloud project; replacement token is in `/opt/services/caddy/.env`. Token values are not recorded here.
+- **Caddy `.env` backup deleted** — done 2026-10-03.
 
 ## Closed 2026-10-01
 
