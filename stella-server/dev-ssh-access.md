@@ -205,14 +205,18 @@ Cursor: `Cmd/Ctrl+Shift+P` → "Remote-SSH: Connect to Host" → pick the host a
 | | |
 |---|---|
 | User | `edison` |
-| Port | 2201 (same container) |
-| Key | Edison host `~/.ssh/edison_agent.pub` only — **not** in `dominik`/`pawel` `authorized_keys`, and their keys must **not** be in `edison`'s |
-| Working copy | `/home/edison/app` → same host `./src` bind-mount as the other users |
+| Port | 2201 (same container); also 2204 on `dominikliss.foxcraft.digital-ssh` |
+| Key | New `~/.ssh/edison_agent` (ed25519, comment `edison-agent`) generated on the new Edison host 2026-10-09; old key retired. Pubkey replaced the old `edison-agent` line in the shared `authorized_keys` files (osgar + dominikliss); both `-ssh` containers rebuilt. `authorized_keys.bak` left in both folders. |
+| Working copy | `/home/edison/app` → same host `./src` (osgar) / `./html` (WP) bind-mount as the other users |
 | Client | `cursor-agent` container on Edison, via `sshfs` — [`../edison/cursor-agent.md`](../edison/cursor-agent.md) |
 
-Bake this into `Dockerfile.ssh` + compose (useradd, `authorized_keys` for this user only, `./src:/home/edison/app`). If the user was added only in the running container, a rebuild drops it — tracked in [`../open-gaps.md`](../open-gaps.md).
+Both `Dockerfile.ssh` files still `COPY authorized_keys` to all three users (`dominik`, `pawel`, `edison`). Keys are shared across users in each container. **TODO (Dominik):** give `edison` its own key file (still open).
 
-**Firewall:** Stella `DOCKER-USER` ACCEPT for 2201 must include Edison’s public IP (`dev-agent-ip`), not only the laptop/VPN IPs. `178.105.203.54` is already ACCEPTed on 2201 (and on 2204). **ASSUMED** to be Edison; **TODO (Dominik):** confirm, and record it in [`../edison/infrastructure.md`](../edison/infrastructure.md).
+`git config --global --add safe.directory /home/edison/app` was applied manually for user `edison` inside `osgar-datahub-ssh` (repo owned `root:ubuntu`). It lives in `/home/edison/.gitconfig` and is **lost on rebuild**. **TODO (Dominik):** bake into `Dockerfile.ssh`.
+
+Do not write the supervisorctl password into any doc. **TODO (Dominik):** `Dockerfile.ssh` for osgar contains it in plain text; move it to an env/secret and rotate.
+
+**Firewall:** Stella `DOCKER-USER` ACCEPTs Edison’s public IP **`edison-ip` `178.105.203.54`** on 2201 and 2204 (confirmed 2026-10-09 when the address was moved to the new CX33; no Stella firewall change). See [`../edison/infrastructure.md`](../edison/infrastructure.md).
 
 ---
 

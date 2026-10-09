@@ -19,7 +19,7 @@
 - Shares the host SSH key Stella trusts as principal `ddashboard` (deploy-api + health-api)
 
 ### Edison (Hetzner Cloud) — separate machine, not this host
-- **Role:** Coding-agent sandbox (Cursor CLI, later other agents). Must not run on Stella.
+- **Role:** Coding-agent sandbox (Cursor CLI). Rebuilt 2026-10-09 on CX33; Primary IPv4 **`edison-ip` `178.105.203.54`**. Must not run on Stella.
 - **Docs:** [`../edison/README.md`](../edison/README.md)
 
 ---
@@ -506,7 +506,7 @@ Fully decommissioned. See git history / prior doc versions if a vector search fe
 
 - **UFW** — active, default-deny incoming. Ports 22, 443 restricted to `194.126.177.181` and `23.88.90.12`. Port 8001 additionally allows `172.18.0.0/16` (`services_default` bridge subnet) for Caddy's internal proxy calls, **and `172.20.0.0/16` (`edge` bridge subnet, added 2026-08-10)** for `health-api`'s stella-api check. Port 11434's direct-access rules removed 2026-08-10 once Ollama moved fully behind the `edge` network / Caddy — no longer needs a host-level UFW allowance for the old static-IP whitelist. Host SSH (port 22) remains Dominik-only; per-app Cursor SSH uses Docker-published `22XX` ports — [`dev-ssh-access.md`](dev-ssh-access.md).
 - **fail2ban** — running
-- **Docker-published ports (443, 2201, 2202, 2204, and 8081)** — protected via a custom `DOCKER-USER` iptables chain (details below). Per-app SSH containers add a new `22XX` as they are created. Next free SSH port: **2205**. Port 2203 is free (`advoapp-redesign-ssh` removed 2026-10-10). Port 2201 (and 2204) also ACCEPT `178.105.203.54` — **ASSUMED** Edison (`dev-agent-ip`); **TODO (Dominik):** confirm — see [`../edison/infrastructure.md`](../edison/infrastructure.md). Port **8081** has team-IP ACCEPT + DROP; **TODO (Dominik):** what 8081 is.
+- **Docker-published ports (443, 2201, 2202, 2204, and 8081)** — protected via a custom `DOCKER-USER` iptables chain (details below). Per-app SSH containers add a new `22XX` as they are created. Next free SSH port: **2205**. Port 2203 is free (`advoapp-redesign-ssh` removed 2026-10-10). Port 2201 (and 2204) also ACCEPT `178.105.203.54` — Edison **`edison-ip`**, confirmed 2026-10-09 (IPv4 moved with the server; no Stella firewall change). See [`../edison/infrastructure.md`](../edison/infrastructure.md). Port **8081** has team-IP ACCEPT + DROP; **TODO (Dominik):** what 8081 is.
 - **Per-site Caddy `remote_ip` scoping (added 2026-09-03)** — client IPs granted access to `osgar.datahub.foxcraft.digital` only; most other Caddy site blocks explicitly deny those IPs via `@blocked remote_ip` matchers. `49.13.27.117` is ACCEPTed on port 443 and denied on some blocks but **not** on the `advoapp.finditoo` block — see the Caddyfile reality check above and [`client-ip-access.md`](client-ip-access.md).
 
 **Note (2026-09-01):** `imap-sync` no longer publishes `3001`, and `caddy` no longer publishes `8080`. The `DOCKER-USER` rules for those two ports are now dead (the packets never arrive) and can be removed in a future cleanup; they are kept for now, harmless. The `:8080` Caddyfile block was already removed on 2026-08-07.
@@ -551,7 +551,7 @@ iptables -A DOCKER-USER -i $WAN_IF -p tcp --dport 443 -j DROP
 # Port 2203 is free — advoapp-redesign-ssh removed 2026-10-10; firewall rules removed.
 iptables -A DOCKER-USER -i $WAN_IF -s 194.126.177.181 -p tcp --dport 2201 -j ACCEPT
 iptables -A DOCKER-USER -i $WAN_IF -s 23.88.90.12 -p tcp --dport 2201 -j ACCEPT
-iptables -A DOCKER-USER -i $WAN_IF -s 178.105.203.54 -p tcp --dport 2201 -j ACCEPT  # ASSUMED Edison (dev-agent-ip); TODO (Dominik): confirm
+iptables -A DOCKER-USER -i $WAN_IF -s 178.105.203.54 -p tcp --dport 2201 -j ACCEPT  # Edison edison-ip (confirmed 2026-10-09)
 iptables -A DOCKER-USER -i $WAN_IF -p tcp --dport 2201 -j DROP
 
 iptables -A DOCKER-USER -i $WAN_IF -s 194.126.177.181 -p tcp --dport 2202 -j ACCEPT
@@ -560,7 +560,7 @@ iptables -A DOCKER-USER -i $WAN_IF -p tcp --dport 2202 -j DROP
 
 iptables -A DOCKER-USER -i $WAN_IF -s 194.126.177.181 -p tcp --dport 2204 -j ACCEPT
 iptables -A DOCKER-USER -i $WAN_IF -s 23.88.90.12 -p tcp --dport 2204 -j ACCEPT
-iptables -A DOCKER-USER -i $WAN_IF -s 178.105.203.54 -p tcp --dport 2204 -j ACCEPT  # same extra IP as 2201; ASSUMED Edison
+iptables -A DOCKER-USER -i $WAN_IF -s 178.105.203.54 -p tcp --dport 2204 -j ACCEPT  # Edison edison-ip (same as 2201)
 iptables -A DOCKER-USER -i $WAN_IF -p tcp --dport 2204 -j DROP
 
 # Port 8081 — ACCEPT for the two team IPs, then DROP. Not documented anywhere else.
@@ -570,7 +570,7 @@ iptables -A DOCKER-USER -i $WAN_IF -s 23.88.90.12 -p tcp --dport 8081 -j ACCEPT
 iptables -A DOCKER-USER -i $WAN_IF -p tcp --dport 8081 -j DROP
 ```
 
-`2204` rules verified live via `iptables -L` (ACCEPT before DROP). `178.105.203.54` is the same extra IP already ACCEPTed on 2201. **ASSUMED** to be Edison (`dev-agent-ip`); **TODO (Dominik):** confirm, and record it in [`../edison/infrastructure.md`](../edison/infrastructure.md).
+`2204` rules verified live via `iptables -L` (ACCEPT before DROP). `178.105.203.54` is Edison **`edison-ip`** (confirmed 2026-10-09; same ACCEPT already on 2201). See [`../edison/infrastructure.md`](../edison/infrastructure.md).
 
 Port 3001 / 8080 rules above are leftovers from retired publishes (`imap-sync` and Caddy `:8080`, removed 2026-09-01). Harmless; delete in a future cleanup. **Do not** delete 443 or any `22XX` rule that still has a live `-ssh` container.
 

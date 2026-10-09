@@ -44,7 +44,7 @@ iptables -A DOCKER-USER -i $WAN_IF -s 49.13.27.117 -p tcp --dport 443 -j ACCEPT
 iptables -A DOCKER-USER -i $WAN_IF -p tcp --dport 443 -j DROP
 ```
 
-Port 443 also ACCEPTs `49.13.27.117`. No client-IP entry was added for `2201` / `2202` / `2204` — SSH access remains restricted to the two static team IPs (plus `178.105.203.54` on 2201 and 2204; **ASSUMED** Edison — see [`infrastructure.md`](infrastructure.md)). Port 2203 is free (`advoapp-redesign-ssh` removed 2026-10-10; firewall rules removed).
+Port 443 also ACCEPTs `49.13.27.117`. No client-IP entry was added for `2201` / `2202` / `2204` — SSH access remains restricted to the two static team IPs (plus Edison **`edison-ip` `178.105.203.54`** on 2201 and 2204 — confirmed 2026-10-09; see [`infrastructure.md`](infrastructure.md)). Port 2203 is free (`advoapp-redesign-ssh` removed 2026-10-10; firewall rules removed).
 
 Script is systemd-applied on boot; reapply manually after edits with:
 

@@ -14,13 +14,19 @@ Last updated: 2026-10-10
 
 ## Edison (coding-agent server)
 
-Host + `cursor-agent` container live 2026-09-22. See [`edison/README.md`](edison/README.md).
+Host rebuilt 2026-10-09 onto CX33 (`edison-ip` = `178.105.203.54`). See [`edison/README.md`](edison/README.md).
 
-- [ ] **Confirm `178.105.203.54` is Edison (`dev-agent-ip`)** — already ACCEPTed on Stella `DOCKER-USER` ports 2201 and 2204. **TODO (Dominik):** confirm, and record the numeric IP in [`edison/infrastructure.md`](edison/infrastructure.md).
-- [ ] **Bake `edison` user into `osgar-datahub-ssh` image** — if the user was added only in the running container, a rebuild drops it. Same `./src` bind-mount at `/home/edison/app`, dedicated `authorized_keys` for `edison_agent.pub`. See [`stella-server/dev-ssh-access.md`](stella-server/dev-ssh-access.md).
-- [ ] **Persist Cursor-agent SSH config** — `/root/.ssh/config` lives only in the container writable layer; bind-mount it from the Edison host like the key. See [`edison/cursor-agent.md`](edison/cursor-agent.md).
-- [ ] **Web app to drive the agent** — browser UI → Node backend on `edison-net` → spawn `cursor-agent` headless (`--print` or whatever `cursor-agent --help` shows on the installed version) with cwd `/mnt/<host>`. Add an audit trail once runs are no longer watched live.
-- [ ] **Further agent images** — OpenCode, optionally Claude Code: own Dockerfile, tool-named container, same `edison-net` and `/mnt/<full-hostname>` scheme.
+- [x] **Edison public IP confirmed** — closed 2026-10-09. Hetzner Primary IPv4 name is `edison-ip`, address `178.105.203.54` (moved from the old server). Stella `DOCKER-USER` already ACCEPTs it on 2201 and 2204; no Stella firewall change.
+- [x] **Persist Cursor-agent SSH config / login state** — closed 2026-10-09. Host bind-mounts for `ssh-config`, `known_hosts`, `~/.cursor`, `~/.config/cursor`; systemd remounts sshfs at boot. See [`edison/cursor-agent.md`](edison/cursor-agent.md).
+- [ ] **Split `authorized_keys` for `edison`** — both `Dockerfile.ssh` files (osgar and dominikliss) still `COPY` one shared file to `dominik`, `pawel`, and `edison`. **TODO (Dominik):** whether to split. See [`stella-server/dev-ssh-access.md`](stella-server/dev-ssh-access.md).
+- [ ] **Shared live tree / worktree** — agent sshfs-mounts the live osgar `src/`. Must not `checkout` / `switch` / `stash` / `reset` / `commit`. **TODO (Dominik):** design a separate git worktree or clone.
+- [ ] **`git safe.directory` for `edison`** — applied manually in `osgar-datahub-ssh`; lost on rebuild. **TODO (Dominik):** bake into `Dockerfile.ssh`.
+- [ ] **osgar `Dockerfile.ssh` supervisorctl password** — in plain text. **TODO (Dominik):** move to an env/secret and rotate. Do not write the value into docs.
+- [ ] **Default Cursor model** — UNKNOWN. **TODO (Dominik):** `cursor-agent models` / `--help`, set `--model` for reproducible runs.
+- [ ] **`CURSOR_API_KEY` for unattended runs** — not set up yet. Third-party sources say unattended runs should use an API key.
+- [ ] **`dominikliss` sshfs mount** — SSH config entry exists (port 2204); no mount yet.
+- [ ] **Web app to drive the agent** — adapter layer (start / stream / abort / resume) on `edison-net`, so OpenCode (`opencode serve`) can be a second backend later. Audit trail once runs are unattended.
+- [ ] **Further agent images** — OpenCode as a second backend via that adapter; own Dockerfile, tool-named container, same `edison-net` and `/mnt/<full-hostname>` scheme.
 - [ ] **Edison firewall for HTTP/HTTPS** — open only when the web app is exposed; keep IP-restricted. Internal container traffic does not need these rules.
 
 ---
@@ -44,7 +50,7 @@ Host + `cursor-agent` container live 2026-09-22. See [`edison/README.md`](edison
 - [ ] **Old host-side Ollama model files** — can be deleted once `docker exec ollama ollama list` confirms all 13 models are present in the new container volume. Not yet verified as of 2026-08-10 (pull was still in progress — 10/13 confirmed present at last check).
 - [ ] **Remove dead `DOCKER-USER` rules for ports 3001 and 8080** — those publishes were deleted 2026-09-01 (`imap-sync` via Caddy only; Caddy `:8080` already unused). Rules kept as harmless leftovers. See [`stella-server/infrastructure.md`](stella-server/infrastructure.md).
 - [ ] **`advoapp-ssh` — Node.js and supervisord not yet evaluated** — host-key volume fix already applied; Node and the supervisord restart-control pattern (implemented for osgar-datahub only) have not been evaluated for `advoapp-ssh`. Apply from [`stella-server/apps/osgar-datahub/setup.md`](stella-server/apps/osgar-datahub/setup.md) if SCSS builds or SSH-triggered restarts are needed there.
-- [ ] **osgar-datahub `supervisorctl` credentials** — plaintext password baked into both Dockerfiles' build args; acceptable for the current dummy-dev-DB environment, not suitable for any app with production data in `src/`.
+- [ ] **osgar-datahub `supervisorctl` credentials** — plaintext password baked into both Dockerfiles' build args, including `Dockerfile.ssh`. **TODO (Dominik):** move to an env/secret and rotate. Do not write the value into docs. Acceptable for the current dummy-dev-DB environment, not suitable for any app with production data in `src/`.
 - [ ] **osgar-datahub `DataProtection` key-ring warning** — `No XML encryptor configured` on every fresh run; cosmetic for dev, worth fixing before reusing this pattern for anything closer to production.
 - [ ] **Client IP grant for `osgar.datahub.foxcraft.digital` — temporary** — IPs `213.47.151.242` and `89.67.29.69` added 2026-09-03; remove when client no longer needs access. See [`stella-server/client-ip-access.md`](stella-server/client-ip-access.md).
 - [ ] **`49.13.27.117` on port 443** — ACCEPTed in `DOCKER-USER`; Caddy denies it on `stella`, `stella-deployment-api`, `stella-health-api`, and `dominikliss`, but **not** on `advoapp.finditoo`. **TODO (Dominik):** owner / expiry, and whether the `advoapp.finditoo` block should deny it too. See [`stella-server/client-ip-access.md`](stella-server/client-ip-access.md).
@@ -59,6 +65,10 @@ Host + `cursor-agent` container live 2026-09-22. See [`edison/README.md`](edison
 ## Closed 2026-10-10
 
 - **`advoapp-redesign.finditoo.foxcraft.digital` removed from Stella** — containers `advoapp-redesign-dev` and `advoapp-redesign-ssh` stopped and removed; folder deleted; Caddy block removed; DNS A record `advoapp-redesign.finditoo` deleted in zone 567656; port-2203 `DOCKER-USER` rules removed; Cursor SSH config entry removed on Dominik's machine. Port 2203 is free; port 5082 is free again. Port-443 ACCEPT rules unchanged (port-wide, not tied to this app).
+
+## Closed 2026-10-09
+
+- **Edison rebuilt on CX33** — old CPX32 (`edison-old`) deleted; IPv4 `edison-ip` `178.105.203.54` moved; Stella `DOCKER-USER` unchanged. New `edison_agent` key; ssh config / known_hosts / Cursor state persisted on the host; systemd remounts sshfs at boot. See [`edison/README.md`](edison/README.md).
 
 ## Closed 2026-10-03
 
