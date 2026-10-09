@@ -41,7 +41,6 @@ Core Docker-managed services live at `/opt/services/docker-compose.yml`. Dev/sta
 | `osgar-datahub-db` | Docker (MSSQL 2022) | — (internal only) | `mcr.microsoft.com/mssql/server:2022-latest`, data volume `osgar-datahub-mssql-data`; same compose file as `osgar-datahub-dev` |
 | `osgar-datahub-ssh` | Docker (sshd in SDK image) | 2201 | Per-app Cursor Remote-SSH — [`dev-ssh-access.md`](dev-ssh-access.md). **Must not** join `edge` |
 | `advoapp-ssh` | Docker (sshd in SDK image) | 2202 | Same pattern for finditoo advoapp — [`dev-ssh-access.md`](dev-ssh-access.md) |
-| `advoapp-redesign-ssh` | Docker (sshd) | 2203 | Same pattern; was running but previously undocumented — [`dev-ssh-access.md`](dev-ssh-access.md) |
 | `dominikliss.foxcraft.digital` | Docker (`wordpress:php8.4-apache`) | — (Caddy `:80`) | First WP staging site — [`wordpress-staging.md`](wordpress-staging.md) |
 | `dominikliss.foxcraft.digital-db` | Docker (MariaDB 11) | — (internal only) | Never on `edge` |
 | `dominikliss.foxcraft.digital-ssh` | Docker (sshd in `php:8.4-cli`) | 2204 | WP staging SSH — [`wordpress-staging.md`](wordpress-staging.md). **Must not** join `edge` |
@@ -192,19 +191,6 @@ osgar.datahub.foxcraft.digital {
     reverse_proxy osgar-datahub-dev:8080
 }
 
-advoapp-redesign.finditoo.foxcraft.digital {
-    tls {
-        issuer acme {
-            email projects@foxcraft.digital
-            dir https://acme-v02.api.letsencrypt.org/directory
-            dns hetzner {env.HETZNER_API_TOKEN}
-        }
-    }
-    @blocked remote_ip 213.47.151.242 89.67.29.69
-    respond @blocked 403
-    reverse_proxy advoapp-redesign-dev:8080
-}
-
 dominikliss.foxcraft.digital {
     tls {
         issuer acme {
@@ -221,7 +207,7 @@ dominikliss.foxcraft.digital {
 
 > **Per-site IP scoping (2026-09-03):** `@blocked` matchers were added to all site blocks. Blocks other than `osgar.datahub` deny the client IPs outright; `osgar.datahub` uses an allow-list. This is the second layer of a two-layer approach — the first layer (DOCKER-USER) lets client IPs reach port 443 at all; Caddy's matchers then restrict which subdomain they can actually use. See [`client-ip-access.md`](client-ip-access.md) for the full rationale, the list of current client IPs, and removal instructions.
 
-> **Caddyfile reality check (2026-10-03):** port 443 in `DOCKER-USER` also ACCEPTs `49.13.27.117`. Caddy `@blocked` deny-lists contain `49.13.27.117` on `stella`, `stella-deployment-api`, `stella-health-api`, and `dominikliss`, but **not** on `advoapp.finditoo` and `advoapp-redesign.finditoo` (those only deny `213.47.151.242` and `89.67.29.69`), so that IP currently reaches those two. **TODO (Dominik):** who is `49.13.27.117` (client? expiry?) and whether the two advoapp blocks should deny it too. The live `osgar.datahub` upstream is `osgar-datahub-dev:8080` (the excerpt previously showed `osgar.datahub.foxcraft.digital:8080`).
+> **Caddyfile reality check (2026-10-03):** port 443 in `DOCKER-USER` also ACCEPTs `49.13.27.117`. Caddy `@blocked` deny-lists contain `49.13.27.117` on `stella`, `stella-deployment-api`, `stella-health-api`, and `dominikliss`, but **not** on `advoapp.finditoo` (that block only denies `213.47.151.242` and `89.67.29.69`), so that IP currently reaches `advoapp.finditoo`. **TODO (Dominik):** who is `49.13.27.117` (client? expiry?) and whether the `advoapp.finditoo` block should deny it too. The live `osgar.datahub` upstream is `osgar-datahub-dev:8080` (the excerpt previously showed `osgar.datahub.foxcraft.digital:8080`).
 
 **Required template for every new domain block** (copy as-is; only change hostname + upstream). Add the `@blocked` deny-list if any client IPs are in effect — see [`client-ip-access.md`](client-ip-access.md):
 
@@ -242,7 +228,7 @@ dominikliss.foxcraft.digital {
 
 The `dir` line is decisive — without it, Caddy can still fall back internally to `acme-staging-v02.api.letsencrypt.org` even with `issuer acme` set. A global `acme_dns hetzner {env.HETZNER_API_TOKEN}` alone also does **not** lock the issuer.
 
-**Already pinned with `dir`:** `stella.foxcraft.digital`, `advoapp.finditoo.foxcraft.digital`, `stella-deployment-api.foxcraft.digital`, `stella-health-api.foxcraft.digital`, `osgar.datahub.foxcraft.digital`, `advoapp-redesign.finditoo.foxcraft.digital`, `dominikliss.foxcraft.digital`.
+**Already pinned with `dir`:** `stella.foxcraft.digital`, `advoapp.finditoo.foxcraft.digital`, `stella-deployment-api.foxcraft.digital`, `stella-health-api.foxcraft.digital`, `osgar.datahub.foxcraft.digital`, `dominikliss.foxcraft.digital`.
 
 Each new subdomain gets its own block at the bottom, reverse-proxying to a container name on the `edge` network — Caddy handles TLS automatically via DNS-01, no manual cert management needed.
 
@@ -407,7 +393,20 @@ networks:
 7. Check / clear stale `_acme-challenge` TXT if issuance sticks (Issue 2)
 8. `docker compose build && docker compose up -d` (or `docker-compose.dev.yml` for .NET hot-reload — see [`dotnet-app-deployment.md`](dotnet-app-deployment.md)). For WordPress staging, use `/opt/apps/wordpress/<subdomain>/` and the checklist in [`wordpress-staging.md`](wordpress-staging.md) (Caddy upstream port **80**, not 8080; SSH port + `DOCKER-USER` rules required).
 
-No UFW or `DOCKER-USER` changes needed for Caddy-routed HTTP apps — that's the entire point of routing everything through Caddy on the `edge` network. **Exception:** per-app `-ssh` containers publish a host port (`22XX:22`) and **must** get matching `DOCKER-USER` rules. They must **not** join `edge`. See [`dev-ssh-access.md`](dev-ssh-access.md). Next free SSH port: **2205**.
+No UFW or `DOCKER-USER` changes needed for Caddy-routed HTTP apps — that's the entire point of routing everything through Caddy on the `edge` network. **Exception:** per-app `-ssh` containers publish a host port (`22XX:22`) and **must** get matching `DOCKER-USER` rules. They must **not** join `edge`. See [`dev-ssh-access.md`](dev-ssh-access.md). Next free SSH port: **2205**. Port 2203 is free (`advoapp-redesign-ssh` removed 2026-10-10); nothing of that app remains on Stella.
+
+### Removing an app (example: `advoapp-redesign`, 2026-10-10)
+
+`advoapp-redesign.finditoo.foxcraft.digital` was finished and fully removed from Stella on 2026-10-10:
+
+- Containers `advoapp-redesign-dev` (`127.0.0.1:5082→8080`) and `advoapp-redesign-ssh` (`0.0.0.0:2203→22`) stopped and removed via `docker compose -f docker-compose.dev.yml down`.
+- Folder `/opt/apps/dotnet/advoapp-redesign.finditoo.foxcraft.digital` deleted (including `src/`).
+- Caddy block for `advoapp-redesign.finditoo.foxcraft.digital` removed from `/opt/services/caddy/Caddyfile`; Caddy restarted without errors.
+- `DOCKER-USER` rules for port 2203 removed from `/usr/local/bin/docker-user-firewall.sh`; script reapplied and verified. Rules for 443, 2201, 2202 and 2204 are unchanged.
+- DNS A record `advoapp-redesign.finditoo` deleted in Hetzner zone 567656 (verified: no longer listed, no answer from `8.8.8.8`).
+- Cursor SSH config entry removed on Dominik's machine.
+
+Port 2203 is free (may be reused later; next new allocation is still **2205**). Port 5082 (the former localhost binding) is free again. Nothing of this app remains on Stella. The port-443 ACCEPT rules were not changed — they are port-wide and not tied to any single app.
 
 ### Gateway IP depends on which Docker network the caller is on
 
@@ -507,8 +506,8 @@ Fully decommissioned. See git history / prior doc versions if a vector search fe
 
 - **UFW** — active, default-deny incoming. Ports 22, 443 restricted to `194.126.177.181` and `23.88.90.12`. Port 8001 additionally allows `172.18.0.0/16` (`services_default` bridge subnet) for Caddy's internal proxy calls, **and `172.20.0.0/16` (`edge` bridge subnet, added 2026-08-10)** for `health-api`'s stella-api check. Port 11434's direct-access rules removed 2026-08-10 once Ollama moved fully behind the `edge` network / Caddy — no longer needs a host-level UFW allowance for the old static-IP whitelist. Host SSH (port 22) remains Dominik-only; per-app Cursor SSH uses Docker-published `22XX` ports — [`dev-ssh-access.md`](dev-ssh-access.md).
 - **fail2ban** — running
-- **Docker-published ports (443, 2201, 2202, 2203, 2204, and 8081)** — protected via a custom `DOCKER-USER` iptables chain (details below). Per-app SSH containers add a new `22XX` as they are created. Next free SSH port: **2205**. Port 2201 (and 2204) also ACCEPT `178.105.203.54` — **ASSUMED** Edison (`dev-agent-ip`); **TODO (Dominik):** confirm — see [`../edison/infrastructure.md`](../edison/infrastructure.md). Port **8081** has team-IP ACCEPT + DROP; **TODO (Dominik):** what 8081 is.
-- **Per-site Caddy `remote_ip` scoping (added 2026-09-03)** — client IPs granted access to `osgar.datahub.foxcraft.digital` only; most other Caddy site blocks explicitly deny those IPs via `@blocked remote_ip` matchers. `49.13.27.117` is ACCEPTed on port 443 and denied on some blocks but **not** on the two advoapp blocks — see the Caddyfile reality check above and [`client-ip-access.md`](client-ip-access.md).
+- **Docker-published ports (443, 2201, 2202, 2204, and 8081)** — protected via a custom `DOCKER-USER` iptables chain (details below). Per-app SSH containers add a new `22XX` as they are created. Next free SSH port: **2205**. Port 2203 is free (`advoapp-redesign-ssh` removed 2026-10-10). Port 2201 (and 2204) also ACCEPT `178.105.203.54` — **ASSUMED** Edison (`dev-agent-ip`); **TODO (Dominik):** confirm — see [`../edison/infrastructure.md`](../edison/infrastructure.md). Port **8081** has team-IP ACCEPT + DROP; **TODO (Dominik):** what 8081 is.
+- **Per-site Caddy `remote_ip` scoping (added 2026-09-03)** — client IPs granted access to `osgar.datahub.foxcraft.digital` only; most other Caddy site blocks explicitly deny those IPs via `@blocked remote_ip` matchers. `49.13.27.117` is ACCEPTed on port 443 and denied on some blocks but **not** on the `advoapp.finditoo` block — see the Caddyfile reality check above and [`client-ip-access.md`](client-ip-access.md).
 
 **Note (2026-09-01):** `imap-sync` no longer publishes `3001`, and `caddy` no longer publishes `8080`. The `DOCKER-USER` rules for those two ports are now dead (the packets never arrive) and can be removed in a future cleanup; they are kept for now, harmless. The `:8080` Caddyfile block was already removed on 2026-08-07.
 
@@ -549,6 +548,7 @@ iptables -A DOCKER-USER -i $WAN_IF -s 49.13.27.117 -p tcp --dport 443 -j ACCEPT 
 iptables -A DOCKER-USER -i $WAN_IF -p tcp --dport 443 -j DROP
 
 # Per-app SSH containers (see dev-ssh-access.md). Next free port: 2205.
+# Port 2203 is free — advoapp-redesign-ssh removed 2026-10-10; firewall rules removed.
 iptables -A DOCKER-USER -i $WAN_IF -s 194.126.177.181 -p tcp --dport 2201 -j ACCEPT
 iptables -A DOCKER-USER -i $WAN_IF -s 23.88.90.12 -p tcp --dport 2201 -j ACCEPT
 iptables -A DOCKER-USER -i $WAN_IF -s 178.105.203.54 -p tcp --dport 2201 -j ACCEPT  # ASSUMED Edison (dev-agent-ip); TODO (Dominik): confirm
@@ -557,10 +557,6 @@ iptables -A DOCKER-USER -i $WAN_IF -p tcp --dport 2201 -j DROP
 iptables -A DOCKER-USER -i $WAN_IF -s 194.126.177.181 -p tcp --dport 2202 -j ACCEPT
 iptables -A DOCKER-USER -i $WAN_IF -s 23.88.90.12 -p tcp --dport 2202 -j ACCEPT
 iptables -A DOCKER-USER -i $WAN_IF -p tcp --dport 2202 -j DROP
-
-iptables -A DOCKER-USER -i $WAN_IF -s 194.126.177.181 -p tcp --dport 2203 -j ACCEPT
-iptables -A DOCKER-USER -i $WAN_IF -s 23.88.90.12 -p tcp --dport 2203 -j ACCEPT
-iptables -A DOCKER-USER -i $WAN_IF -p tcp --dport 2203 -j DROP
 
 iptables -A DOCKER-USER -i $WAN_IF -s 194.126.177.181 -p tcp --dport 2204 -j ACCEPT
 iptables -A DOCKER-USER -i $WAN_IF -s 23.88.90.12 -p tcp --dport 2204 -j ACCEPT

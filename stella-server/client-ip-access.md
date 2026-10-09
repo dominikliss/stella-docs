@@ -44,7 +44,7 @@ iptables -A DOCKER-USER -i $WAN_IF -s 49.13.27.117 -p tcp --dport 443 -j ACCEPT
 iptables -A DOCKER-USER -i $WAN_IF -p tcp --dport 443 -j DROP
 ```
 
-Port 443 also ACCEPTs `49.13.27.117`. No client-IP entry was added for `2201` / `2202` / `2203` / `2204` — SSH access remains restricted to the two static team IPs (plus `178.105.203.54` on 2201 and 2204; **ASSUMED** Edison — see [`infrastructure.md`](infrastructure.md)).
+Port 443 also ACCEPTs `49.13.27.117`. No client-IP entry was added for `2201` / `2202` / `2204` — SSH access remains restricted to the two static team IPs (plus `178.105.203.54` on 2201 and 2204; **ASSUMED** Edison — see [`infrastructure.md`](infrastructure.md)). Port 2203 is free (`advoapp-redesign-ssh` removed 2026-10-10; firewall rules removed).
 
 Script is systemd-applied on boot; reapply manually after edits with:
 
@@ -62,7 +62,7 @@ sudo iptables -L DOCKER-USER -n -v --line-numbers | grep 443
 
 ## 2. Caddy — `/opt/services/caddy/Caddyfile`
 
-Every site block **except** `osgar.datahub` gets an explicit deny-list matcher for the client IPs. Live Caddyfile (2026-10-03): `stella`, `stella-deployment-api`, `stella-health-api`, and `dominikliss` also deny `49.13.27.117`. `advoapp.finditoo` and `advoapp-redesign.finditoo` only deny `213.47.151.242` and `89.67.29.69`, so `49.13.27.117` currently reaches those two. **TODO (Dominik):** who is `49.13.27.117`, and whether the two advoapp blocks should deny it too.
+Every site block **except** `osgar.datahub` gets an explicit deny-list matcher for the client IPs. Live Caddyfile (2026-10-03): `stella`, `stella-deployment-api`, `stella-health-api`, and `dominikliss` also deny `49.13.27.117`. `advoapp.finditoo` only denies `213.47.151.242` and `89.67.29.69`, so `49.13.27.117` currently reaches `advoapp.finditoo`. **TODO (Dominik):** who is `49.13.27.117`, and whether the `advoapp.finditoo` block should deny it too.
 
 ```caddyfile
 @blocked remote_ip 213.47.151.242 89.67.29.69

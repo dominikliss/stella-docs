@@ -1,6 +1,6 @@
 # Open Gaps & Next Steps
 
-Last updated: 2026-10-03
+Last updated: 2026-10-10
 
 **Cross-system overview:** [integration/system-overview.md](integration/system-overview.md) (Atlas + ddashboard + Stella + Edison). AI-chat path only: [integration/ddashboard-and-stella-server.md](integration/ddashboard-and-stella-server.md).
 
@@ -47,7 +47,7 @@ Host + `cursor-agent` container live 2026-09-22. See [`edison/README.md`](edison
 - [ ] **osgar-datahub `supervisorctl` credentials** — plaintext password baked into both Dockerfiles' build args; acceptable for the current dummy-dev-DB environment, not suitable for any app with production data in `src/`.
 - [ ] **osgar-datahub `DataProtection` key-ring warning** — `No XML encryptor configured` on every fresh run; cosmetic for dev, worth fixing before reusing this pattern for anything closer to production.
 - [ ] **Client IP grant for `osgar.datahub.foxcraft.digital` — temporary** — IPs `213.47.151.242` and `89.67.29.69` added 2026-09-03; remove when client no longer needs access. See [`stella-server/client-ip-access.md`](stella-server/client-ip-access.md).
-- [ ] **`49.13.27.117` on port 443** — ACCEPTed in `DOCKER-USER`; Caddy denies it on `stella`, `stella-deployment-api`, `stella-health-api`, and `dominikliss`, but **not** on `advoapp.finditoo` / `advoapp-redesign.finditoo`. **TODO (Dominik):** owner / expiry, and whether the two advoapp blocks should deny it too. See [`stella-server/client-ip-access.md`](stella-server/client-ip-access.md).
+- [ ] **`49.13.27.117` on port 443** — ACCEPTed in `DOCKER-USER`; Caddy denies it on `stella`, `stella-deployment-api`, `stella-health-api`, and `dominikliss`, but **not** on `advoapp.finditoo`. **TODO (Dominik):** owner / expiry, and whether the `advoapp.finditoo` block should deny it too. See [`stella-server/client-ip-access.md`](stella-server/client-ip-access.md).
 - [ ] **Port 8081 in `docker-user-firewall.sh`** — ACCEPT for the two team IPs, then DROP. Not documented anywhere else. **TODO (Dominik):** say what 8081 is, or mark it as unknown.
 - [ ] **WP staging: split `authorized_keys` for `edison`** — `dominikliss.foxcraft.digital` copies one shared file to all three users (same as osgar today), although [`stella-server/dev-ssh-access.md`](stella-server/dev-ssh-access.md) says `edison` should have its own key file. **TODO (Dominik):** whether to split. See [`stella-server/wordpress-staging.md`](stella-server/wordpress-staging.md).
 - [ ] **WP staging: `FS_CHMOD_FILE` / `FS_CHMOD_DIR`** — residual risk (UNVERIFIED): WordPress updates that chmod files to `0644` may lower the ACL mask again. Possible mitigation not tested. **TODO (Dominik).** See [`stella-server/wordpress-staging.md`](stella-server/wordpress-staging.md).
@@ -55,6 +55,10 @@ Host + `cursor-agent` container live 2026-09-22. See [`edison/README.md`](edison
 - [ ] **Caddy `propagation_delay` on `dominikliss`** — untested idea after the zone-move ACME delay. Live block does not currently have it (**UNVERIFIED**). Result of `grep -n propagation_delay /opt/services/caddy/Caddyfile` on Stella: **TODO (Dominik)**.
 
 ---
+
+## Closed 2026-10-10
+
+- **`advoapp-redesign.finditoo.foxcraft.digital` removed from Stella** — containers `advoapp-redesign-dev` and `advoapp-redesign-ssh` stopped and removed; folder deleted; Caddy block removed; DNS A record `advoapp-redesign.finditoo` deleted in zone 567656; port-2203 `DOCKER-USER` rules removed; Cursor SSH config entry removed on Dominik's machine. Port 2203 is free; port 5082 is free again. Port-443 ACCEPT rules unchanged (port-wide, not tied to this app).
 
 ## Closed 2026-10-03
 

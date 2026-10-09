@@ -1,6 +1,6 @@
 # Dev SSH Access — Per-App SSH Containers for Cursor Remote-SSH
 
-**Status:** Implemented 2026-09-01 for `osgar-datahub` (port 2201) and `advoapp.finditoo` (port 2202). Ports 2203 (`advoapp-redesign-ssh`) and 2204 (`dominikliss.foxcraft.digital`, WP staging) added later. Closes the open-gaps TODO "User-based SSH access on Stella."
+**Status:** Implemented 2026-09-01 for `osgar-datahub` (port 2201) and `advoapp.finditoo` (port 2202). Port 2204 (`dominikliss.foxcraft.digital`, WP staging) added later. Port 2203 (`advoapp-redesign-ssh`) removed 2026-10-10 (project finished). Closes the open-gaps TODO "User-based SSH access on Stella."
 
 **Purpose:** give individual devs (Dominik, Pawel) Cursor Remote-SSH access scoped to a single app's source, without exposing the host or other apps/services. Root SSH remains Dominik-only, unchanged.
 
@@ -161,7 +161,7 @@ iptables -A DOCKER-USER -i $WAN_IF -p tcp --dport 22XX -j DROP
 |---|---|---|
 | 2201 | osgar-datahub | `osgar-datahub-ssh` |
 | 2202 | advoapp (finditoo) | `advoapp-ssh` |
-| 2203 | advoapp-redesign | `advoapp-redesign-ssh` (was running; previously undocumented) |
+| 2203 | free | `advoapp-redesign-ssh` removed 2026-10-10 (project finished), firewall rules removed |
 | 2204 | dominikliss.foxcraft.digital (WP staging) | `dominikliss.foxcraft.digital-ssh` |
 
 Next free port: **2205**. Update the table above when adding one.
