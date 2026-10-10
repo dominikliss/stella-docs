@@ -76,7 +76,7 @@ ddashboard returns WordPress role slugs. Atlas uses its own set (`DdashboardToke
 
 - Empty list → no IP filter (local/dev only).
 - Non-empty and client IP not listed → **403** `Access denied.`
-- `GET /api/health` is registered **without** this middleware so monitors / Docker healthchecks work from non-allowlisted IPs.
+- `GET /api/health` skips this middleware (the class early-returns, and the route also excludes it) so monitors / Docker healthchecks work from non-allowlisted IPs.
 
 Login/refresh/logout **are** IP-filtered.
 
