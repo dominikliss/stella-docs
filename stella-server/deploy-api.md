@@ -158,6 +158,7 @@ Example job response once populated:
 ## Networking / access
 
 - Reachable only via Caddy (`stella-deployment-api.foxcraft.digital`, port 443) — no other port exposed. Inherits the same IP restriction as every other Caddy-routed service.
+- Live Atlas caller is `https://atlas.foxcraft.digital` (`2.31.42.13`). Stella `DOCKER-USER` ACCEPTs that IP on 443 (after the `23.88.90.12` line). See [`infrastructure.md`](infrastructure.md).
 - ddashboard's outbound IP is already one of the two whitelisted static IPs, so no additional firewall work was needed for ddashboard specifically to reach this.
 - SSH-signature auth is a second, independent layer on top of the IP restriction — even a request from an authorized IP is rejected without a valid signature from the `ddashboard` principal's key.
 
@@ -193,9 +194,11 @@ From ddashboard, using its existing `~/.ssh/id_ed25519`:
 2. Initial `git pull` failed (`Host key verification failed`) — fixed by mounting `/root/.ssh` into the container
 3. Re-ran → `git pull`, `dotnet publish`, zip, and Azure deploy all progressed correctly through the SSE stream in real time, ending in a successful Azure deployment
 
-**2026-08-07 — full Atlas integration confirmed**
-From Atlas (dev.atlas.foxcraft.digital), using the SSH key configured in Settings → GitHub:
+**2026-08-07 — full Atlas integration confirmed** (historical; Atlas then lived at `dev.atlas.foxcraft.digital` on the managed host)
+From Atlas (`dev.atlas.foxcraft.digital`), using the SSH key configured in Settings → GitHub:
 1. `POST /apps` (signed `list-apps`) → returned `{"apps":["advoapp-production"]}` ✓
 2. Atlas form populated the app dropdown from the live list ✓
 3. Deploy triggered via Atlas UI → Stella queued it, polled to completion, `commit_sha` and `commit_message` captured and stored on the run record ✓
 4. History row in Atlas showed correct commit SHA, duration, and Success status ✓
+
+**2026-10-10 — reconfirmed from the new Atlas host** (`https://atlas.foxcraft.digital`, `2.31.42.13`): signed deploy-api calls work with the same `ddashboard` principal / `atlas-prod` key. See [`../atlas/server.md`](../atlas/server.md).

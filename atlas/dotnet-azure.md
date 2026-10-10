@@ -23,7 +23,7 @@ Atlas UI / POST /api/deploy/runs
                           └── az webapp deploy → Azure App Service
 ```
 
-Confirmed from Atlas (`dev.atlas.foxcraft.digital`) on 2026-08-07: app list, trigger, poll to completion, commit SHA + message stored on the run. See the verification note in [`../stella-server/deploy-api.md`](../stella-server/deploy-api.md).
+Live Atlas caller is `https://atlas.foxcraft.digital`. Confirmed from Atlas (`dev.atlas.foxcraft.digital`, then on the managed host) on 2026-08-07: app list, trigger, poll to completion, commit SHA + message stored on the run. Reconfirmed from the new host on 2026-10-10. See the verification notes in [`../stella-server/deploy-api.md`](../stella-server/deploy-api.md).
 
 ---
 

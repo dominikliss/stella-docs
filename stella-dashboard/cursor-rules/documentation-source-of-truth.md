@@ -41,7 +41,7 @@ When your change affects **how the system works** (not purely internal refactors
 | Stella server, compose, API behaviour | `stella-server/README.md`, `stella-server/infrastructure.md`, `stella-server/stella-api.md`; SSH access: `stella-server/dev-ssh-access.md` |
 | WordPress staging on Stella | `stella-server/wordpress-staging.md` |
 | osgar-datahub (or other app on Stella) | `stella-server/apps/<app>/` |
-| **Atlas** platform, modules, env, API surface | `atlas/README.md`, `atlas/architecture.md`; cross-system: `integration/system-overview.md` |
+| **Atlas** platform, modules, env, API surface | `atlas/README.md`, `atlas/architecture.md`; host/runbook: `atlas/server.md`; cross-system: `integration/system-overview.md` |
 | Atlas login / ddashboard tokens / IP allowlist | `atlas/auth.md` |
 | Atlas deploy types, runs, SSH / deploy-api | `atlas/deploy-pipeline.md`; Stella: `stella-server/deploy-api.md` |
 | Atlas Stella health / WP uptime / Brevo alerts | `atlas/monitoring.md`; Stella: `stella-server/health-api.md` |

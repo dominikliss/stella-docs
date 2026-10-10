@@ -8,17 +8,17 @@ Companion to [`README.md`](README.md). This page is the **code and hosting** map
 
 | Item | Value |
 |------|-------|
-| Public URL | `https://dev.atlas.foxcraft.digital` |
-| Host | Hetzner managed, Linux user `foxcrr` |
-| App path | `/usr/home/foxcrr/public_html/dev.atlas.foxcraft.digital` |
-| PHP | 8.2+ (Laravel 12) |
-| MySQL | `atlas_dev` |
-| Redis | cache + token verify cache (`CACHE_STORE=redis`) |
-| Cron | `schedule:run` every minute; `scripts/queue-deployments.sh` for the deploy queue |
-| Worker log | `/usr/home/foxcrr/logs/queue-worker.log` |
-| Queue lock | `/usr/home/foxcrr/tmp/atlas-deploy-queue.lock` |
+| Public URL | `https://atlas.foxcraft.digital` (old: `https://dev.atlas.foxcraft.digital`) |
+| Host | Hetzner Cloud CX33 `atlas`, `2.31.42.13`, Ubuntu 26.04, user `atlas`. Runbook: [`server.md`](server.md) |
+| App path | `/var/www/atlas` |
+| PHP | 8.5.4-FPM (pool `atlas`, socket `/run/php/atlas.sock`) |
+| Laravel | 12.61 |
+| MySQL | 8.4 `atlas_prod` (migrated from managed-host `dev_atlas_foxcraft_digital`; docs previously said `atlas_dev`) |
+| Redis | cache + token verify cache (`CACHE_STORE=redis`) — localhost only, **not** the deploy queue |
+| Cron | `/etc/cron.d/atlas` → `schedule:run` every minute as `atlas` |
+| Queue | systemd `atlas-queue.service` — `queue:work database --queue=deployments` (not cron + `flock`) |
 
-Same managed account as **ddashboard**. They share the host SSH key that Stella trusts as principal `ddashboard`.
+Not the same host as **ddashboard**. Atlas reuses the old managed-host SSH key Stella trusts as principal `ddashboard` (key comment `atlas-prod`). The managed host still holds that key.
 
 ---
 
@@ -99,10 +99,10 @@ Login / refresh / logout skip token middleware (still IP-filtered) and proxy to 
 
 | Mechanism | Transport | Used for |
 |-----------|-----------|----------|
-| `scripts/queue-deployments.sh` | `queue:work database --queue=deployments --stop-when-empty` | `DeployRunJob` only |
-| Laravel scheduler (`dispatchSync`) | In-process during `schedule:run` | `CheckStellaHealth`, `CheckWpSiteUptime` |
+| systemd `atlas-queue.service` | `queue:work database --queue=deployments --sleep=3 --timeout=7200 --max-time=3500` | `DeployRunJob` only |
+| Laravel scheduler (`dispatchSync`) | In-process during `schedule:run` | `CheckStellaHealth`, `CheckWpSiteUptime`, `wp-sites:drive-backups` (backups still in development) |
 
-Do not assume Horizon / Redis queues are driving deploys. The cron script **hard-codes** `database` and the `deployments` queue.
+Do not assume Horizon / Redis queues are driving deploys. Production **hard-codes** `database` and the `deployments` queue. `scripts/queue-deployments.sh` no longer applies on `atlas`.
 
 ---
 

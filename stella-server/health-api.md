@@ -2,7 +2,7 @@
 
 **Purpose:** gives Atlas (or any other trusted caller) a single signed endpoint to poll for the live status of every container, HTTP service, TLS cert, and disk on Stella — closes the gap exposed on 2026-08-10 when `advoapp-dev` silently died and stayed down for 3 days with nothing monitoring it.
 
-**Live at:** `https://stella-health-api.foxcraft.digital` — given its own subdomain 2026-08-10, same day as initial build, once it became clear Atlas (running on a separate host, `dev.atlas.foxcraft.digital`) can't reach an internal Docker network IP on Stella directly. Routed through Caddy like every other public-facing service; still no host port published by the container itself — Caddy is the only thing with a route to it.
+**Live at:** `https://stella-health-api.foxcraft.digital` — given its own subdomain 2026-08-10, same day as initial build, once it became clear Atlas (then at `dev.atlas.foxcraft.digital`; live caller is now `https://atlas.foxcraft.digital`) can't reach an internal Docker network IP on Stella directly. Routed through Caddy like every other public-facing service; still no host port published by the container itself — Caddy is the only thing with a route to it. Stella `DOCKER-USER` ACCEPTs Atlas (`2.31.42.13`) on 443.
 
 **`STELLA_HEALTH_API_URL=https://stella-health-api.foxcraft.digital`**
 
@@ -65,7 +65,7 @@ health-api:
   restart: unless-stopped
 ```
 
-**Reuses `deploy-api`'s `allowed_signers` file** (mounted read-only) rather than maintaining a second copy — same `ddashboard`/Atlas principal is already trusted there, and it's confirmed that ddashboard and Atlas run on the same host and share the same SSH keypair, so no new key setup was needed to bring Atlas onto this endpoint.
+**Reuses `deploy-api`'s `allowed_signers` file** (mounted read-only) rather than maintaining a second copy — same `ddashboard`/Atlas principal is already trusted there. Atlas and ddashboard no longer share a host. Atlas reuses the old managed-host keypair (principal `ddashboard`, key comment `atlas-prod`) so no new signer was added. The managed host still holds a copy of that key.
 
 **Dockerfile requires `docker-ce-cli` specifically, not `docker.io`.** The `docker.io` apt package only ships `dockerd` and support binaries — not the `docker` CLI client. Install via Docker's official apt repo the same way `deploy-api` does:
 
@@ -110,7 +110,9 @@ stella-health-api.foxcraft.digital {
 
 2. **Caddy fell back to the staging CA on its automatic retry, despite the `dir` pin being correctly present in the Caddyfile the whole time.** This is new — previously, "no `dir` pin" was the only known cause of staging fallback (Issue 3). Here the pin was verified present via `awk`/`grep` before and after, ruling that out. The retry that fell to staging happened ~60 seconds after the first failure, on Caddy's own internal retry cycle — not a config-reload restart. **A full `docker compose restart caddy` (not just waiting out Caddy's internal retry) after confirming DNS had fully propagated resolved it on the next attempt, landing correctly on `acme-v02.api.letsencrypt.org`.** Cause not fully confirmed — possibly stale internal retry state that a full restart clears but an internal retry doesn't. If this recurs on a future subdomain, don't just wait it out — force a restart once DNS is confirmed live.
 
-**No new UFW rules for the public subdomain.** `stella-health-api.foxcraft.digital` routes through Caddy on port 443, which is already whitelisted for the two static IPs — no new UFW rule was needed for the public route itself. The earlier UFW fix (`172.20.0.0/16` on port 8001) was a separate, internal concern — `health-api` reaching `stella-api` directly — unrelated to Atlas's external access path through Caddy.
+**No new UFW rules for the public subdomain.** `stella-health-api.foxcraft.digital` routes through Caddy on port 443 (Docker-published, so `DOCKER-USER` is the filter that matters). Atlas (`2.31.42.13`) is ACCEPTed there; the two static team IPs remain. No new UFW rule was needed for the public route itself. The earlier UFW fix (`172.20.0.0/16` on port 8001) was a separate, internal concern — `health-api` reaching `stella-api` directly — unrelated to Atlas's external access path through Caddy.
+
+**2026-10-10:** signed health-api check from the new Atlas host (`https://atlas.foxcraft.digital`) returned status ok, 21 services. See [`../atlas/server.md`](../atlas/server.md).
 
 ---
 

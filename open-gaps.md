@@ -9,6 +9,12 @@ Last updated: 2026-10-10
 ## Atlas documentation
 
 - [x] **System-level Atlas docs** — closed 2026-10-01. Atlas is no longer only a folder of module notes. See [`atlas/README.md`](atlas/README.md), [`atlas/architecture.md`](atlas/architecture.md), [`atlas/auth.md`](atlas/auth.md), [`atlas/atlas-connect/`](atlas/atlas-connect/), [`atlas/tools.md`](atlas/tools.md), and [`integration/system-overview.md`](integration/system-overview.md). `atlas/dotnet-azure.md` now describes the live `stella_deploy_api` path (the old “post-deploy hook, not yet signed” plan is obsolete).
+- [ ] **Atlas production host move (2026-10-10)** — live at `https://atlas.foxcraft.digital` on Hetzner Cloud CX33 `atlas` (`2.31.42.13`). Runbook: [`atlas/server.md`](atlas/server.md). Open items:
+  - **TODO (Dominik):** confirm `dev.atlas.foxcraft.digital` crons (`queue-deployments.sh`, `schedule:run`) are deactivated and decide when to retire the managed-host instance.
+  - **TODO (Dominik):** remove `23.88.90.12` from `ATLAS_ALLOWED_IPS` unless something on the managed host really calls Atlas; reason for each entry unverified.
+  - **TODO (Dominik):** fix `@types/node@^22` in the Atlas repo (`npm ci` currently needs `--legacy-peer-deps`).
+  - **TODO (Dominik):** name of the Atlas Hetzner Cloud project (separate from Edison).
+  - Backups: `wp-sites:drive-backups` is scheduled every minute; backup driver not finished.
 
 ---
 
@@ -58,6 +64,7 @@ Host rebuilt 2026-10-09 onto CX33 (`edison-ip` = `178.105.203.54`). See [`edison
 - [ ] **WP staging: split `authorized_keys` for `edison`** — `dominikliss.foxcraft.digital` copies one shared file to all three users (same as osgar today), although [`stella-server/dev-ssh-access.md`](stella-server/dev-ssh-access.md) says `edison` should have its own key file. **TODO (Dominik):** whether to split. See [`stella-server/wordpress-staging.md`](stella-server/wordpress-staging.md).
 - [ ] **WP staging: `FS_CHMOD_FILE` / `FS_CHMOD_DIR`** — residual risk (UNVERIFIED): WordPress updates that chmod files to `0644` may lower the ACL mask again. Possible mitigation not tested. **TODO (Dominik).** See [`stella-server/wordpress-staging.md`](stella-server/wordpress-staging.md).
 - [ ] **Hetzner Cloud project name for `foxcraft.digital`** — zone moved; ID still `567656`. **TODO (Dominik):** name of the new project (docs previously said `konsoleH`).
+- [ ] **Stella `DOCKER-USER` 443 ACCEPT for Atlas** — add `2.31.42.13` after the `23.88.90.12` line (script copy updated in docs). After recreating `/usr/local/bin/docker-user-firewall.sh` it must be `chmod 755`. **TODO (Dominik):** confirm the live script on Stella has the atlas line.
 - [ ] **Caddy `propagation_delay` on `dominikliss`** — untested idea after the zone-move ACME delay. Live block does not currently have it (**UNVERIFIED**). Result of `grep -n propagation_delay /opt/services/caddy/Caddyfile` on Stella: **TODO (Dominik)**.
 
 ---

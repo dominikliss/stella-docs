@@ -6,9 +6,9 @@ It is **not** the business dashboard. Clients, invoices, mail, and projects live
 
 **How Atlas sits in the company stack:** [`../integration/system-overview.md`](../integration/system-overview.md)
 
-**Live at:** `https://dev.atlas.foxcraft.digital`  
-**Host:** Hetzner managed (same account as ddashboard, `foxcrr`)  
-**Repo:** `git@github.com:foxcraftdigital/atlas.git`
+**Live at:** `https://atlas.foxcraft.digital` (replaces `https://dev.atlas.foxcraft.digital` on the managed host)  
+**Host:** Hetzner Cloud CX33 `atlas` (`2.31.42.13`) — own Cloud project, not the managed `foxcrr` host, not Edison. Runbook: [`server.md`](server.md)  
+**Repo:** `git@github.com:foxcraftdigital/atlas.git` (not `foxcraft/atlas`; that repo did not exist before 2026-10-10)
 
 ---
 
@@ -16,13 +16,13 @@ It is **not** the business dashboard. Clients, invoices, mail, and projects live
 
 | Layer | What actually runs |
 |-------|--------------------|
-| Backend | Laravel 12, PHP 8.2, domain folders under `app/Domain/*` |
+| Backend | Laravel 12.61, PHP 8.5.4-FPM (pool `atlas`), domain folders under `app/Domain/*` |
 | Frontend | Vite + React 18 SPA (`resources/js`), **TanStack Router** + TanStack Query. Served from a Laravel Blade shell. Inertia packages are leftover from the Breeze starter — they are **not** the live router. |
 | Auth | ddashboard tokens (`/dls/v1/auth/*`). Not Sanctum for the API. See [`auth.md`](auth.md). |
-| Database | MySQL (`atlas_dev`) |
-| Cache | Redis (`token:{sha256}` cache after login, general cache) |
-| Deploy queue | **Database** queue `deployments`, drained by cron + `flock` (not Horizon, not a long-lived worker) |
-| Scheduler | `php artisan schedule:run` every minute — Stella health, WP uptime, WP backup drive (`wp-sites:drive-backups`) |
+| Database | MySQL 8.4 (`atlas_prod`; old managed-host name was `dev_atlas_foxcraft_digital`, not `atlas_dev`) |
+| Cache | Redis localhost only (`token:{sha256}` cache after login, general cache) — **not** the deploy queue |
+| Deploy queue | **Database** queue `deployments`, drained by systemd `atlas-queue.service` (not Horizon, not cron + `flock`) |
+| Scheduler | `/etc/cron.d/atlas` → `php artisan schedule:run` every minute as user `atlas` |
 
 ---
 
@@ -42,6 +42,7 @@ It is **not** the business dashboard. Clients, invoices, mail, and projects live
 | Document | Contents |
 |----------|----------|
 | [architecture.md](architecture.md) | Domains, SPA routes, hosting, queue |
+| [server.md](server.md) | Production host runbook (stack, Caddy, systemd, deploy) |
 | [auth.md](auth.md) | ddashboard token proxy, roles, IP allowlist |
 | [atlas-connect/](atlas-connect/) | WP plugin: login + backups |
 | [deploy-pipeline.md](deploy-pipeline.md) | ssh_rsync and stella_deploy_api |
@@ -128,26 +129,23 @@ Both health loops run via `php artisan schedule:run` (cron every minute). They u
 |----------|-----|--------|
 | every 5 min | `CheckStellaHealth` | Signed health-api request; store `StellaHealthCheck` + per-service `StellaServiceUptimeLog`. Public-endpoint probes if health-api is down. Prune older than 30 days. |
 | every 5 min | `CheckWpSiteUptime` (once per site) | `HEAD https://{domain}`; `up` / `degraded` (>1 s) / `down`. Brevo email on first `down` transition. Prune logs older than 7 days. |
+| every minute | `wp-sites:drive-backups` | Backups feature still in development; backup driver not finished |
 
 ---
 
 ## Queue worker
 
-Deploys only run if the worker script is invoked. Cron + `flock` prevents overlap:
+On production (`atlas`), deploys run via systemd **`atlas-queue.service`** (User=`atlas`, `Restart=always`):
 
 ```bash
-/usr/home/foxcrr/public_html/dev.atlas.foxcraft.digital/scripts/queue-deployments.sh
+php artisan queue:work database --queue=deployments --sleep=3 --timeout=7200 --max-time=3500
 ```
 
-It runs `php artisan queue:work database --queue=deployments --stop-when-empty` — drain pending jobs, then exit. Not a long-lived daemon. Redis in `.env` is for **cache**, not this worker.
+Logs: `journalctl -u atlas-queue`. Redis is **cache only**, not this worker.
 
-Manual kick (stuck `pending` run):
+This replaces cron + `flock` `scripts/queue-deployments.sh`. That script and its lock/log paths under `/usr/home/foxcrr/` no longer apply on `atlas`. See [`server.md`](server.md).
 
-```bash
-bash /usr/home/foxcrr/public_html/dev.atlas.foxcraft.digital/scripts/queue-deployments.sh
-```
-
-Log: `/usr/home/foxcrr/logs/queue-worker.log`
+The old managed-host instance still has those two crons until they are deactivated. **TODO (Dominik):** confirm deactivated and decide when to retire `dev.atlas.foxcraft.digital`.
 
 ---
 
@@ -173,7 +171,9 @@ One key, three jobs:
 2. SSH/rsync to destination servers
 3. Sign requests to Stella deploy-api and health-api (`ssh-keygen -Y sign -n deploy`)
 
-Configured in **Settings → GitHub** (`app_settings.deploy_ssh_key_path`). Falls back to `config/deploy.php` / `DEPLOY_SSH_KEY_PATH`.
+Configured in **Settings → GitHub** (`app_settings.deploy_ssh_key_path` = `/home/atlas/.ssh/id_ed25519` on production; the DB value overrides `.env`). Falls back to `config/deploy.php` / `DEPLOY_SSH_KEY_PATH`.
+
+Production reuses the same keypair as the old managed-host Atlas (principal `ddashboard`, key comment `atlas-prod`) so the 28 rows in `deploy_servers` did not need new `authorized_keys`. The managed host still holds that key and can still deploy/sign. Rotation was considered and deferred.
 
 The **public** key must be in:
 
@@ -264,14 +264,14 @@ The **public** key must be in:
 
 ## Required env (Atlas-specific)
 
-See `.env.example` in the Atlas repo. The ones that wire Atlas into the rest of the system:
+See `.env.example` in the Atlas repo. The ones that wire Atlas into the rest of the system. Production `ATLAS_ALLOWED_IPS` is `194.126.177.181`, `23.88.90.12` (managed host), `95.217.144.93` (Stella). **TODO (Dominik):** remove `23.88.90.12` unless something on the managed host really calls Atlas; reason for each entry unverified.
 
 ```
-ATLAS_ALLOWED_IPS=
+ATLAS_ALLOWED_IPS=194.126.177.181,23.88.90.12,95.217.144.93
 ATLAS_DDASHBOARD_URL=https://<ddashboard-host>
 ATLAS_DEMO_MODE=false
 
-DEPLOY_SSH_KEY_PATH=/home/atlas/.ssh/id_rsa
+DEPLOY_SSH_KEY_PATH=/home/atlas/.ssh/id_ed25519
 STELLA_DEPLOY_API_URL=https://stella-deployment-api.foxcraft.digital
 STELLA_HEALTH_API_URL=https://stella-health-api.foxcraft.digital
 STELLA_IMAP_SYNC_URL=https://stella.foxcraft.digital/imap-sync
@@ -291,6 +291,7 @@ BACKUP_S3_SECRET_KEY=
 
 ## Further reading
 
+- [`server.md`](server.md) — production host runbook
 - [`architecture.md`](architecture.md) — domains, SPA routes, hosting, demo mode
 - [`auth.md`](auth.md) — ddashboard token proxy, roles, IP allowlist
 - [`atlas-connect/`](atlas-connect/) — WP plugin: login + backups (Atlas driver + Settings vault + WP Sites UI)

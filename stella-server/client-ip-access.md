@@ -38,13 +38,14 @@ Client IPs added as ACCEPT rules in the port-443 block, alongside the two static
 ```bash
 iptables -A DOCKER-USER -i $WAN_IF -s 194.126.177.181 -p tcp --dport 443 -j ACCEPT
 iptables -A DOCKER-USER -i $WAN_IF -s 23.88.90.12 -p tcp --dport 443 -j ACCEPT
+iptables -A DOCKER-USER -i $WAN_IF -s 2.31.42.13 -p tcp --dport 443 -j ACCEPT  # atlas
 iptables -A DOCKER-USER -i $WAN_IF -s 213.47.151.242 -p tcp --dport 443 -j ACCEPT
 iptables -A DOCKER-USER -i $WAN_IF -s 89.67.29.69 -p tcp --dport 443 -j ACCEPT
 iptables -A DOCKER-USER -i $WAN_IF -s 49.13.27.117 -p tcp --dport 443 -j ACCEPT
 iptables -A DOCKER-USER -i $WAN_IF -p tcp --dport 443 -j DROP
 ```
 
-Port 443 also ACCEPTs `49.13.27.117`. No client-IP entry was added for `2201` / `2202` / `2204` — SSH access remains restricted to the two static team IPs (plus Edison **`edison-ip` `178.105.203.54`** on 2201 and 2204 — confirmed 2026-10-09; see [`infrastructure.md`](infrastructure.md)). Port 2203 is free (`advoapp-redesign-ssh` removed 2026-10-10; firewall rules removed).
+Port 443 also ACCEPTs `2.31.42.13` (**atlas** — server caller for deploy-api / health-api, not a client browser) and `49.13.27.117`. No client-IP entry was added for `2201` / `2202` / `2204` — SSH access remains restricted to the two static team IPs (plus Edison **`edison-ip` `178.105.203.54`** on 2201 and 2204 — confirmed 2026-10-09; see [`infrastructure.md`](infrastructure.md)). Port 2203 is free (`advoapp-redesign-ssh` removed 2026-10-10; firewall rules removed). After recreating the firewall script it must be `chmod 755`.
 
 Script is systemd-applied on boot; reapply manually after edits with:
 

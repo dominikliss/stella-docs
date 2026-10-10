@@ -2,6 +2,8 @@
 
 Dedicated AI / services host. No general-purpose UI — **Atlas** and **ddashboard** are the HTTP clients.
 
+**Atlas** is a separate Hetzner Cloud host (`atlas`, `2.31.42.13`, `https://atlas.foxcraft.digital`) — not this machine, not the managed `foxcrr` host, not Edison. Runbook: [`../atlas/server.md`](../atlas/server.md). Stella `DOCKER-USER` ACCEPTs `2.31.42.13` on 443 so Atlas can reach deploy-api and health-api.
+
 **System map:** [`../integration/system-overview.md`](../integration/system-overview.md)
 
 ---
