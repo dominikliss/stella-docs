@@ -145,7 +145,7 @@ Atlas reuses the same keypair as the old managed-host Atlas (principal `ddashboa
 
 ## Deploy code
 
-Current release: **tag `1.0.2`**.
+Current release: **tag `1.0.4`**.
 
 The manual steps below are automated by `/usr/local/bin/atlas-deploy` (ref argument, default `main`, exclusive `flock` on `/var/lock/atlas-deploy.lock`, early exit when HEAD is unchanged). The same script can be triggered from Atlas dev through the host API. See [`host-api.md`](host-api.md). Keep the commands here as the fallback.
 

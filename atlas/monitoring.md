@@ -170,12 +170,17 @@ The UI is the pink **Server: atlas** card on the dashboard and `/monitoring/atla
 | `GET` | `/api/monitoring/atlas` | Latest `AtlasHealthCheck` with service logs |
 | `POST` | `/api/monitoring/atlas/check` | On-demand check |
 | `GET` | `/api/monitoring/atlas/metrics` | Recent check history for charts |
+| `POST` | `/api/monitoring/atlas/deploy` | Start a production deploy (atlas.dev only; 404 when the flag is off) |
+| `GET` | `/api/monitoring/atlas/deploy/status` | Poll deploy status + `log_tail` (atlas.dev only; 404 when the flag is off) |
+
+`ATLAS_SELF_DEPLOY_ENABLED` must stay `false` on production. When true (atlas.dev), the Server: atlas card shows **Deploy production**. The Laravel client signs `deploy-atlas` / `deploy-status` against `ATLAS_HOST_API_URL`. The host API has no SSE; the UI polls status. See [`host-api.md`](host-api.md).
 
 ```
 ATLAS_HOST_API_URL=https://api.atlas.foxcraft.digital
 ATLAS_HOST_API_TIMEOUT=60
 ATLAS_HOST_CPU_THREADS=4
 ATLAS_HEALTH_RETENTION_DAYS=30
+ATLAS_SELF_DEPLOY_ENABLED=false
 ```
 
 ---

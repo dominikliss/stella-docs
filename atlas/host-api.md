@@ -135,6 +135,8 @@ Manual fallback (same script, run on the host): [`server.md`](server.md#deploy-c
 
 **2026-10-10 (health):** host API live at `https://api.atlas.foxcraft.digital`. Atlas-side client `CheckAtlasHealth` stores `atlas_health_checks` / `atlas_service_uptime_logs` and renders the dashboard card + `/monitoring/atlas`. See [`monitoring.md`](monitoring.md).
 
+**2026-10-11 (Atlas dev deploy client):** `ATLAS_SELF_DEPLOY_ENABLED` gates `POST /api/monitoring/atlas/deploy` and `GET /api/monitoring/atlas/deploy/status`. Off on prod (404). On atlas.dev the Server: atlas card shows a Deploy production button that signs `deploy-atlas` / `deploy-status` and toasts success or failure. No SSE — the UI polls `log_tail`.
+
 **2026-10-10 (deploy):**
 
 - Dev key from Stella: `POST /system/deploy` accepted, status `success`, exit code 0, log `already at b087616`, about 2.5 s.
@@ -159,5 +161,4 @@ Manual fallback (same script, run on the host): [`server.md`](server.md#deploy-c
 
 - Atlas prod via the public API URL: test `https://api.atlas.foxcraft.digital` from Atlas itself (hairpin risk), otherwise use `127.0.0.1:8090` locally.
 - First real deploy through the host API (new commits) — record the result in the Verified list above.
-- Atlas dev app: deploy client + UI, behind a flag that is off on prod (proposal: `ATLAS_SELF_DEPLOY_ENABLED`, not implemented), route returns 404 when off.
 - Patch `/usr/local/bin/atlas-deploy`: `queue:restart` instead of `systemctl restart atlas-queue`; reject refs starting with `-`.

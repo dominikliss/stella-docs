@@ -30,7 +30,7 @@ Business code lives under `app/Domain/{Name}/` (controllers, models, jobs, servi
 |--------|----------------|
 | `Auth` | Login proxy, token middleware, IP allowlist, `DdashboardTokenDriver` / `FakeTokenAuthDriver` |
 | `Deploy` | Configs, servers, runs, rsync, Stella deploy-api client, SSH signer, GitHub branches, folder browser |
-| `Monitoring` | Signed health-api client, public-probe fallback, history + prune |
+| `Monitoring` | Stella health-api + public-probe fallback; Atlas host-api health + optional self-deploy; history + prune |
 | `WpSites` | Site registry, uptime job, Atlas Connect login, down-alert mail, backup driver + explorer — see [`atlas-connect/backups.md`](atlas-connect/backups.md) |
 | `Tools` | IMAP migration proxy to Stella `imap-sync` |
 | `Settings` | `app_settings` key/value (SSH path, Brevo, backup S3 + X25519 vault) |
@@ -46,10 +46,11 @@ Entry: `resources/views/app.blade.php` → Vite → `resources/js/routes/index.t
 | Route | Page |
 |-------|------|
 | `/login` | `domains/auth/LoginPage` |
-| `/dashboard` | `domains/dashboard/DashboardPage` (+ `StellaServerStatus`) |
+| `/dashboard` | `domains/dashboard/DashboardPage` (+ `StellaServerStatus`, `AtlasServerStatus`) |
 | `/deployments` | `domains/deployments/DeploymentsPage` |
 | `/wp-sites` | `domains/wp-sites/WpSitesPage` |
 | `/monitoring/stella` | `domains/monitoring/StellaDetailPage` |
+| `/monitoring/atlas` | `domains/monitoring/AtlasDetailPage` |
 | `/tools` | `domains/tools/ToolsPage` |
 | `/tools/imap-migration` | `domains/tools/imap-migration/ImapMigrationPage` |
 | `/settings` | `domains/settings/SettingsPage` |
@@ -100,7 +101,7 @@ Login / refresh / logout skip token middleware (still IP-filtered) and proxy to 
 | Mechanism | Transport | Used for |
 |-----------|-----------|----------|
 | systemd `atlas-queue.service` | `queue:work database --queue=deployments --sleep=3 --timeout=7200 --max-time=3500` | `DeployRunJob` only |
-| Laravel scheduler (`dispatchSync`) | In-process during `schedule:run` | `CheckStellaHealth`, `CheckWpSiteUptime`, `wp-sites:drive-backups` (backups still in development) |
+| Laravel scheduler (`dispatchSync`) | In-process during `schedule:run` | `CheckStellaHealth`, `CheckAtlasHealth`, `CheckWpSiteUptime`, `wp-sites:drive-backups` (backups still in development) |
 
 Do not assume Horizon / Redis queues are driving deploys. Production **hard-codes** `database` and the `deployments` queue. `scripts/queue-deployments.sh` no longer applies on `atlas`.
 

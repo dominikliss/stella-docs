@@ -241,6 +241,8 @@ The **public** key must be in:
 | `GET` | `/api/monitoring/atlas` | Latest Atlas host health check with service logs |
 | `POST` | `/api/monitoring/atlas/check` | On-demand Atlas host check |
 | `GET` | `/api/monitoring/atlas/metrics` | Recent Atlas host history (charts) |
+| `POST` | `/api/monitoring/atlas/deploy` | Start a production deploy (atlas.dev; 404 when `ATLAS_SELF_DEPLOY_ENABLED` is off) |
+| `GET` | `/api/monitoring/atlas/deploy/status` | Poll production deploy status (atlas.dev; 404 when off) |
 
 ### Tools
 
@@ -282,6 +284,7 @@ DEPLOY_SSH_KEY_PATH=/home/atlas/.ssh/id_ed25519
 STELLA_DEPLOY_API_URL=https://stella-deployment-api.foxcraft.digital
 STELLA_HEALTH_API_URL=https://stella-health-api.foxcraft.digital
 ATLAS_HOST_API_URL=https://api.atlas.foxcraft.digital
+ATLAS_SELF_DEPLOY_ENABLED=false
 STELLA_IMAP_SYNC_URL=https://stella.foxcraft.digital/imap-sync
 
 # Fallback public probes (also used when health-api is down):
@@ -306,7 +309,7 @@ BACKUP_S3_SECRET_KEY=
 - [`auth.md`](auth.md) — ddashboard token proxy, roles, IP allowlist
 - [`atlas-connect/`](atlas-connect/) — WP plugin: login + backups (Atlas driver + Settings vault + WP Sites UI)
 - [`deploy-pipeline.md`](deploy-pipeline.md) — ssh_rsync and stella_deploy_api
-- [`monitoring.md`](monitoring.md) — Stella health + WP uptime
+- [`monitoring.md`](monitoring.md) — Stella health, Atlas host health, WP uptime
 - [`tools.md`](tools.md) — IMAP migration via Stella
 - [`dotnet-azure.md`](dotnet-azure.md) — .NET / Azure via `stella_deploy_api`
 - [`../integration/system-overview.md`](../integration/system-overview.md) — full company map

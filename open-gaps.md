@@ -81,7 +81,7 @@ Host rebuilt 2026-10-09 onto CX33 (`edison-ip` = `178.105.203.54`). See [`edison
 - [ ] **Edison host API** — same pattern as Atlas (hostname `api.edison.foxcraft.digital` planned), not started.
 - [ ] **Patch `/usr/local/bin/atlas-deploy`:** `queue:restart` instead of `systemctl restart atlas-queue`; reject refs starting with `-`
 - [ ] **First real deploy through the host API** (new commits) and record the result in [`atlas/host-api.md`](atlas/host-api.md)
-- [ ] **Atlas dev app: deploy client + UI behind a flag, off on prod** (proposal: `ATLAS_SELF_DEPLOY_ENABLED`, not implemented; route returns 404 when off)
+- [x] **Atlas dev app: deploy client + UI behind a flag, off on prod** — `ATLAS_SELF_DEPLOY_ENABLED` (404 when off). Button on the Server: atlas card; toasts on terminal status. See [`atlas/monitoring.md`](atlas/monitoring.md).
 
 ---
 

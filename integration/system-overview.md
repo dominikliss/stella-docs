@@ -120,9 +120,9 @@ Atlas **does not** call `stella-api` `/chat/*`. That path is ddashboard’s.
 
 | Caller | URL | Auth | Contract |
 |--------|-----|------|----------|
-| Atlas dev/prod (health), Atlas dev only (deploy) | `https://api.atlas.foxcraft.digital` | SSH signature, payload `system-health:{ts}` | [`../atlas/host-api.md`](../atlas/host-api.md) |
+| Atlas dev/prod (health), Atlas dev only (deploy) | `https://api.atlas.foxcraft.digital` | SSH signature, `system-health:{ts}` / `deploy-atlas:{ref}:{ts}` / `deploy-status:{ts}` | [`../atlas/host-api.md`](../atlas/host-api.md) |
 
-No Atlas-side client exists yet (no Laravel client, history tables, or dashboard view).
+Laravel `CheckAtlasHealth` stores `atlas_health_checks` / `atlas_service_uptime_logs` and renders the dashboard card + `/monitoring/atlas`. On atlas.dev only, `ATLAS_SELF_DEPLOY_ENABLED` exposes `POST /api/monitoring/atlas/deploy` and `GET /api/monitoring/atlas/deploy/status` (404 when off). See [`../atlas/monitoring.md`](../atlas/monitoring.md).
 
 ### ddashboard → Stella (AI)
 
