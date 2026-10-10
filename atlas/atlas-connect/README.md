@@ -101,8 +101,8 @@ The plugin contract is live. Atlas still needs:
 | Area | Today | Implement |
 |---|---|---|
 | Login | `POST /api/wp-sites/{id}/login` → plugin `generate-token` | Switch path from `dl-connect/v1` to **`atlas-connect/v1`**. Always send `user`. Treat plugin `401` as auth (incl. IP) |
-| Backup | Not implemented (`last_backup_at` is unused) | Driver in [`backups.md`](backups.md): start → loop chunk → read `manifest.json` from the bucket. Vault holds S3 + private key |
-| WP Sites UI | Secret + optional user | Require `wp_user`. Add backup start / progress / history |
+| Backup | Implemented: `WpSiteBackupDriver` + `RunWpSiteBackupJob`; Settings vault; WP Sites start / progress / history / explorer | Keep in line with [`backups.md`](backups.md) |
+| WP Sites UI | Secret + `wp_user`; backup panel | — |
 
 ---
 

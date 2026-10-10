@@ -22,7 +22,7 @@ It is **not** the business dashboard. Clients, invoices, mail, and projects live
 | Database | MySQL (`atlas_dev`) |
 | Cache | Redis (`token:{sha256}` cache after login, general cache) |
 | Deploy queue | **Database** queue `deployments`, drained by cron + `flock` (not Horizon, not a long-lived worker) |
-| Scheduler | `php artisan schedule:run` every minute — Stella health + WP uptime |
+| Scheduler | `php artisan schedule:run` every minute — Stella health, WP uptime, WP backup drive (`wp-sites:drive-backups`) |
 
 ---
 
@@ -32,10 +32,10 @@ It is **not** the business dashboard. Clients, invoices, mail, and projects live
 |--------|----------|--------------|
 | **Dashboard** | `/dashboard` | Home + Stella status summary |
 | **Deployments** | `/deployments` | SSH rsync deploys and Stella deploy-api deploys |
-| **WP Sites** | `/wp-sites` | Register sites, 5-min uptime, Atlas Connect login (backups: plugin ready) |
+| **WP Sites** | `/wp-sites` | Register sites, 5-min uptime, Atlas Connect login, start/list/explore backups |
 | **Monitoring** | `/monitoring/stella` | Stella health grid + history charts |
 | **Tools → IMAP Migration** | `/tools/imap-migration` | Trigger / poll `imapsync` jobs on Stella |
-| **Settings** | `/settings` | SSH/GitHub key path, Brevo transactional email |
+| **Settings** | `/settings` | SSH/GitHub key path, Brevo transactional email, backup S3 + X25519 vault |
 
 ## Documents in this folder
 
@@ -220,6 +220,12 @@ The **public** key must be in:
 | `DELETE` | `/api/wp-sites/{id}` | Remove a WP site |
 | `POST` | `/api/wp-sites/{id}/login` | One-time WP admin URL via Atlas Connect |
 | `POST` | `/api/wp-sites/{id}/refresh` | Immediate uptime check |
+| `GET` | `/api/wp-sites/{id}/backups` | List site backups |
+| `POST` | `/api/wp-sites/{id}/backups` | Start a backup (`full` / `db` / `files`) |
+| `GET` | `/api/wp-sites/{id}/backups/{backup}` | Show one backup |
+| `GET` | `/api/wp-sites/{id}/backups/{backup}/tree` | List objects in the backup prefix |
+| `POST` | `/api/wp-sites/{id}/backups/{backup}/objects` | Decrypt one backup object |
+| `POST` | `/api/wp-sites/{id}/backups/{backup}/cancel` | Cancel a running backup |
 
 ### Monitoring
 
@@ -250,6 +256,9 @@ The **public** key must be in:
 | `GET` | `/api/settings/email` | Show Brevo email settings |
 | `PATCH` | `/api/settings/email` | Update Brevo settings |
 | `POST` | `/api/settings/email/test` | Send a test email via Brevo |
+| `GET` | `/api/settings/backups` | Show backup vault (S3 + public key; private key hidden) |
+| `PATCH` | `/api/settings/backups` | Update backup S3 / keys |
+| `POST` | `/api/settings/backups/generate-key` | Generate an X25519 key pair |
 
 ---
 
@@ -273,6 +282,9 @@ STELLA_OLLAMA_URL=https://stella.foxcraft.digital/ollama
 STELLA_CADDY_URL=https://stella.foxcraft.digital
 STELLA_ADVOAPP_URL=https://advoapp.finditoo.foxcraft.digital
 STELLA_OSGAR_URL=https://osgar.datahub.foxcraft.digital
+
+BACKUP_S3_ACCESS_KEY=
+BACKUP_S3_SECRET_KEY=
 ```
 
 ---
@@ -281,7 +293,7 @@ STELLA_OSGAR_URL=https://osgar.datahub.foxcraft.digital
 
 - [`architecture.md`](architecture.md) — domains, SPA routes, hosting, demo mode
 - [`auth.md`](auth.md) — ddashboard token proxy, roles, IP allowlist
-- [`atlas-connect/`](atlas-connect/) — WP plugin: login + backups (Atlas still implements the backup driver)
+- [`atlas-connect/`](atlas-connect/) — WP plugin: login + backups (Atlas driver + Settings vault + WP Sites UI)
 - [`deploy-pipeline.md`](deploy-pipeline.md) — ssh_rsync and stella_deploy_api
 - [`monitoring.md`](monitoring.md) — Stella health + WP uptime
 - [`tools.md`](tools.md) — IMAP migration via Stella

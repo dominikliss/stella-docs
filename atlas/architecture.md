@@ -31,9 +31,9 @@ Business code lives under `app/Domain/{Name}/` (controllers, models, jobs, servi
 | `Auth` | Login proxy, token middleware, IP allowlist, `DdashboardTokenDriver` / `FakeTokenAuthDriver` |
 | `Deploy` | Configs, servers, runs, rsync, Stella deploy-api client, SSH signer, GitHub branches, folder browser |
 | `Monitoring` | Signed health-api client, public-probe fallback, history + prune |
-| `WpSites` | Site registry, uptime job, Atlas Connect login, down-alert mail. Backup driver not implemented yet — see [`atlas-connect/backups.md`](atlas-connect/backups.md) |
+| `WpSites` | Site registry, uptime job, Atlas Connect login, down-alert mail, backup driver + explorer — see [`atlas-connect/backups.md`](atlas-connect/backups.md) |
 | `Tools` | IMAP migration proxy to Stella `imap-sync` |
-| `Settings` | `app_settings` key/value (SSH path, Brevo) |
+| `Settings` | `app_settings` key/value (SSH path, Brevo, backup S3 + X25519 vault) |
 
 `App\Providers\AtlasServiceProvider` binds `TokenAuthDriver`. With `ATLAS_DEMO_MODE=true` it binds `FakeTokenAuthDriver` instead so the UI can be exercised without ddashboard.
 
