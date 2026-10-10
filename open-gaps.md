@@ -18,6 +18,8 @@ Last updated: 2026-10-10
   - **TODO (Dominik):** test deployments from `atlas.dev` against one throwaway target (untested by design today).
   - **TODO (Dominik):** Atlas (`2.31.42.13`) gets 401 from ddashboard; Stella (`95.217.144.93`) gets 403 from the managed host’s Apache. Find the IP allowlist (probably `.htaccess` under `public_html`) and add Stella if Stella should call ddashboard.
   - Backups: `wp-sites:drive-backups` is scheduled every minute; backup driver not finished.
+- [ ] **Optional: deploy trigger via API on the atlas host.** Constraints decided so far: must run as a separate process (`atlas-deploy` restarts `atlas-queue`, so it can't run inside an Atlas queue job; use `systemd-run`), signed requests like Stella deploy-api, kept separate from the planned atlas health-api (health read-only/unprivileged, deploy privileged), Hetzner firewall currently allows only my IP on 22/80/443. Not built. Open question: who triggers it (Atlas UI, Stella, GitHub Actions).
+- [ ] **Planned: health-api for the atlas host.**
 
 ---
 

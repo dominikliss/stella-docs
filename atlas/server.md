@@ -141,7 +141,66 @@ Atlas reuses the same keypair as the old managed-host Atlas (principal `ddashboa
 
 Current release: **tag `1.0.2`**.
 
-As user `atlas` in `/var/www/atlas` (`sudo -u atlas …` from root — never as root):
+**Not yet verified** — confirm a successful run before treating this as proven.
+
+As **root** on host `atlas`:
+
+```bash
+atlas-deploy              # main
+atlas-deploy <tag|branch>
+```
+
+Script: `/usr/local/bin/atlas-deploy`. Git, artisan, and npm run as user `atlas` (`sudo -u atlas …`), never as root (dubious ownership; root has no GitHub key).
+
+Behavior:
+
+- Ref must match `^[A-Za-z0-9._/-]+$` or the script exits (`invalid ref`).
+- Exclusive `flock` on `/var/lock/atlas-deploy.lock`; if another deploy is running it exits (`deploy already running`).
+- Fetches tags, checks out the ref, and `git pull --ff-only` when HEAD is a branch.
+- Exits early if HEAD did not change.
+- Then as `atlas`: `composer install --no-dev --optimize-autoloader`, `php artisan migrate --force`, `php artisan config:clear`, `npm ci --legacy-peer-deps && npm run build`.
+- Then as root: `systemctl reload php8.5-fpm` and `systemctl restart atlas-queue`.
+
+```bash
+#!/usr/bin/env bash
+# /usr/local/bin/atlas-deploy
+set -euo pipefail
+
+APP=/var/www/atlas
+REF="${1:-main}"
+
+[[ "$REF" =~ ^[A-Za-z0-9._/-]+$ ]] || { echo "invalid ref"; exit 1; }
+
+exec 9>/var/lock/atlas-deploy.lock
+flock -n 9 || { echo "deploy already running"; exit 1; }
+
+as_atlas() { sudo -u atlas bash -c "cd $APP && $*"; }
+
+OLD=$(as_atlas "git rev-parse HEAD")
+
+as_atlas "git fetch --tags origin"
+as_atlas "git checkout $REF"
+as_atlas "if git symbolic-ref -q HEAD >/dev/null; then git pull --ff-only origin $REF; fi"
+
+NEW=$(as_atlas "git rev-parse HEAD")
+[ "$OLD" = "$NEW" ] && { echo "already at ${NEW:0:7}"; exit 0; }
+
+as_atlas "composer install --no-dev --optimize-autoloader"
+as_atlas "php artisan migrate --force"
+as_atlas "php artisan config:clear"
+as_atlas "npm ci --legacy-peer-deps && npm run build"
+
+systemctl reload php8.5-fpm
+systemctl restart atlas-queue
+
+echo "deployed ${OLD:0:7} -> ${NEW:0:7} ($REF)"
+```
+
+`npm ci` fails with `ERESOLVE` (`@types/node` ^18 vs vite 7 peer `^20.19 || >=22.12`). Workaround `--legacy-peer-deps`. Real fix in the Atlas repo: `@types/node@^22`. **TODO (Dominik):** bump to `@types/node@^22`.
+
+### Manual fallback
+
+If the script is unavailable, as user `atlas` in `/var/www/atlas` (`sudo -u atlas …` from root — never as root):
 
 ```bash
 git pull
@@ -162,8 +221,6 @@ Then as **root**:
 systemctl reload php8.5-fpm
 systemctl restart atlas-queue
 ```
-
-`npm ci` fails with `ERESOLVE` (`@types/node` ^18 vs vite 7 peer `^20.19 || >=22.12`). Workaround `--legacy-peer-deps`. Real fix in the Atlas repo: `@types/node@^22`. **TODO (Dominik):** bump to `@types/node@^22`.
 
 ### Repo fixes in tag `1.0.1` (commit `3027079`)
 
