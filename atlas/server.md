@@ -2,7 +2,7 @@
 
 Hetzner Cloud server **`atlas`**. Moved off the Hetzner managed host (`dev.atlas.foxcraft.digital`, user `foxcrr`) on 2026-10-10. Not containerized. Separate Hetzner Cloud project from Edison. **TODO (Dominik):** name of the Atlas Cloud project.
 
-**Related:** [`README.md`](README.md) (product), [`architecture.md`](architecture.md) (code map), Stella firewall [`../stella-server/infrastructure.md`](../stella-server/infrastructure.md).
+**Related:** [`README.md`](README.md) (product), [`architecture.md`](architecture.md) (code map), [`host-api.md`](host-api.md) (Atlas host API), Stella firewall [`../stella-server/infrastructure.md`](../stella-server/infrastructure.md).
 
 Admin work as **root** via `ssh atlas`. App runs as Linux user **`atlas`**.
 
@@ -37,6 +37,7 @@ Admin work as **root** via `ssh atlas`. App runs as Linux user **`atlas`**.
 | Redis | 8.0, localhost only — **cache only** (not the deploy queue) |
 | Node | 22 / npm 9.2 (Vite build) |
 | Caddy | 2.11.7, built with xcaddy + `github.com/caddy-dns/hetzner/v2`, binary `/usr/bin/caddy`, `apt-mark hold caddy` |
+| Host API | Python/FastAPI, user `atlasapi`, systemd `atlas-api`, `127.0.0.1:8090` — see [`host-api.md`](host-api.md) |
 
 Old DB name on the managed host was `dev_atlas_foxcraft_digital` (docs previously said `atlas_dev`). Migrated via phpMyAdmin dump (MariaDB 10.11 → MySQL 8.4) into `atlas_prod`, 27 tables, all migrations Ran. Import used `mysql --default-character-set=utf8mb4`. A dump from MariaDB imports into MySQL 8.4 when it has no `DEFINER` and no `CREATE DATABASE` / `USE` lines.
 
@@ -53,6 +54,8 @@ Old DB name on the managed host was `dev_atlas_foxcraft_digital` (docs previousl
 Ubuntu’s `caddy.service` uses `--environ`, which writes the Hetzner API token into the journal. The override removes `--environ`. Vacuum the journal if it already leaked.
 
 Site block follows the standard Stella template (DNS-01, `dir` pinned to Let's Encrypt production). Root `/var/www/atlas/public`, `php_fastcgi unix//run/php/atlas.sock`. **No** `@blocked` matcher — Hetzner firewall + `ATLAS_ALLOWED_IPS` do the filtering.
+
+A second site block `api.atlas.foxcraft.digital` fronts the host API (`atlas-api` on `127.0.0.1:8090`). See [`host-api.md`](host-api.md). After `rm` + recreate of `/etc/caddy/Caddyfile`, `chmod 644 /etc/caddy/Caddyfile` is required (`atlasapi` reads it).
 
 ```caddyfile
 atlas.foxcraft.digital {
@@ -80,6 +83,7 @@ Ubuntu apt Caddy is 2.6.2 with no Hetzner plugin. caddyserver.com’s download A
 | Rule | Source |
 |------|--------|
 | TCP/22, TCP/80, TCP/443 | `194.126.177.181` only |
+| TCP/443 | `95.217.144.93` (Stella, Atlas dev → host API) |
 | ICMP | `194.126.177.181` only |
 
 ---
@@ -92,6 +96,8 @@ systemd **`atlas-queue.service`** — replaces cron + `flock` `scripts/queue-dep
 - `WorkingDirectory=/var/www/atlas`
 - `php artisan queue:work database --queue=deployments --sleep=3 --timeout=7200 --max-time=3500`
 - `Restart=always`
+
+`restart_count` rises ~24/day because of `--max-time=3500` (clean exit, `Restart=always`). Do not alert on it.
 
 Logs: `journalctl -u atlas-queue`.
 
@@ -258,3 +264,4 @@ The Stella-hosted **dev** instance is a different machine: [`dev-instance.md`](d
 7. Do not use apt Caddy for DNS-01; build with xcaddy.
 8. MariaDB phpMyAdmin dump → MySQL 8.4: fine if no `DEFINER` and no `CREATE DATABASE` / `USE`. Import with `mysql --default-character-set=utf8mb4`.
 9. Check **both directions** of access: Atlas (`2.31.42.13`) gets **401** from ddashboard, but Stella (`95.217.144.93`) gets **403** from the managed host’s Apache. **TODO (Dominik):** find the IP allowlist rule (probably `.htaccess` under `public_html`) and add Stella if Stella should call ddashboard.
+10. Caddy ACME staging fallback on `api.atlas` was caused by missing `propagation_delay` (NXDOMAIN on `_acme-challenge` TXT during secondary validation). Fix: `propagation_delay 90s` + `propagation_timeout 5m` in the `issuer acme` block, then stop/start caddy. See [`host-api.md`](host-api.md).

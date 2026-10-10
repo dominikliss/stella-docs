@@ -43,6 +43,7 @@ It is **not** the business dashboard. Clients, invoices, mail, and projects live
 |----------|----------|
 | [architecture.md](architecture.md) | Domains, SPA routes, hosting, queue |
 | [server.md](server.md) | Production host runbook (stack, Caddy, systemd, deploy) |
+| [host-api.md](host-api.md) | Atlas host API (`api.atlas.foxcraft.digital`) |
 | [dev-instance.md](dev-instance.md) | Stella-hosted `atlas.dev.foxcraft.digital` |
 | [auth.md](auth.md) | ddashboard token proxy, roles, IP allowlist |
 | [atlas-connect/](atlas-connect/) | WP plugin: login + backups |
@@ -160,7 +161,7 @@ Authorization: Bearer {access_token}
 
 The token is a **ddashboard** access token. Atlas proxies login to `ATLAS_DDASHBOARD_URL` and caches a successful verify. See [`auth.md`](auth.md).
 
-Inbound HTTP is also filtered by `ATLAS_ALLOWED_IPS` (`AllowedIpMiddleware`). `/api/health` is excluded so uptime monitors can reach it.
+Inbound HTTP is also filtered by `ATLAS_ALLOWED_IPS` (`AllowedIpMiddleware`, prepended globally in `bootstrap/app.php`). `withoutMiddleware()` on `GET /api/health` never took effect; the route returns early inside the middleware (`$request->is('api/health')`). Fixed and deployed 2026-10-10. **TODO (Dominik):** commit hash / tag. See [`auth.md`](auth.md).
 
 ---
 
@@ -294,6 +295,7 @@ BACKUP_S3_SECRET_KEY=
 ## Further reading
 
 - [`server.md`](server.md) — production host runbook
+- [`host-api.md`](host-api.md) — Atlas host API (`api.atlas.foxcraft.digital`)
 - [`dev-instance.md`](dev-instance.md) — Stella-hosted `atlas.dev`
 - [`architecture.md`](architecture.md) — domains, SPA routes, hosting, demo mode
 - [`auth.md`](auth.md) — ddashboard token proxy, roles, IP allowlist

@@ -64,7 +64,7 @@ Shell / nav: `resources/js/components/AppShell.tsx`, `SidebarDrawer.tsx`.
 
 ```
 HTTP
-  → AllowedIpMiddleware     (all API routes except GET /api/health)
+  → AllowedIpMiddleware     (global prepend; GET /api/health returns early inside the class)
   → TokenAuthMiddleware     (auth.token group)
        1. Laravel actingAs (tests)
        2. Cache hit  token:{sha256(bearer)} → local User

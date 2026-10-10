@@ -76,7 +76,9 @@ ddashboard returns WordPress role slugs. Atlas uses its own set (`DdashboardToke
 
 - Empty list → no IP filter (local/dev only).
 - Non-empty and client IP not listed → **403** `Access denied.`
-- `GET /api/health` skips this middleware (the class early-returns, and the route also excludes it) so monitors / Docker healthchecks work from non-allowlisted IPs.
+- `GET /api/health` is reachable from non-allowlisted IPs (monitors / Docker healthchecks). The middleware is registered globally in `bootstrap/app.php` via `prepend()`, so `withoutMiddleware()` on the route never worked. `/api/health` now returns early inside `AllowedIpMiddleware` (`$request->is('api/health')`). Fixed and deployed 2026-10-10. **TODO (Dominik):** commit hash / tag.
+
+`routes/api.php` still comments that the health route “Must remain OUTSIDE AllowedIpMiddleware”; the real bypass is the early return in the middleware class, not `withoutMiddleware()`.
 
 Login/refresh/logout **are** IP-filtered.
 

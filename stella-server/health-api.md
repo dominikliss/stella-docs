@@ -134,7 +134,7 @@ stella-health-api.foxcraft.digital {
 
 ## Auth — same scheme as `deploy-api`, own signers file
 
-Same SSH-signature scheme (`ssh-keygen -Y sign`/`-Y verify`, namespace `deploy`), hardcoded principal `ddashboard`. See [`deploy-api.md`](deploy-api.md#auth-mechanism) for why this pattern was chosen over a bearer token. The signers file is **not** shared with deploy-api (see Architecture above).
+Same SSH-signature scheme (`ssh-keygen -Y sign`/`-Y verify`, namespace `deploy`), hardcoded principal `ddashboard`. See [`deploy-api.md`](deploy-api.md#auth-mechanism) for why this pattern was chosen over a bearer token. The signers file is **not** shared with deploy-api (see Architecture above). The Atlas host API reuses the same scheme and the same two signer keys — see [`../atlas/host-api.md`](../atlas/host-api.md).
 
 **Endpoint:**
 

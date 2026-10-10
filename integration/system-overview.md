@@ -6,6 +6,7 @@ This is the **cross-system map** for foxcraft.digital: who owns what, which host
 
 - Atlas platform: [`../atlas/README.md`](../atlas/README.md)
 - Atlas production host: [`../atlas/server.md`](../atlas/server.md)
+- Atlas host API: [`../atlas/host-api.md`](../atlas/host-api.md)
 - Atlas dev instance: [`../atlas/dev-instance.md`](../atlas/dev-instance.md)
 - Atlas architecture: [`../atlas/architecture.md`](../atlas/architecture.md)
 - Atlas ↔ ddashboard login: [`../atlas/auth.md`](../atlas/auth.md)
@@ -115,6 +116,14 @@ Details: [`../atlas/auth.md`](../atlas/auth.md).
 
 Atlas **does not** call `stella-api` `/chat/*`. That path is ddashboard’s.
 
+### Atlas → Atlas host API
+
+| Caller | URL | Auth | Contract |
+|--------|-----|------|----------|
+| Atlas dev/prod → Atlas host API | `https://api.atlas.foxcraft.digital` | SSH signature, payload `system-health:{ts}` | [`../atlas/host-api.md`](../atlas/host-api.md) |
+
+No Atlas-side client exists yet (no Laravel client, history tables, or dashboard view).
+
 ### ddashboard → Stella (AI)
 
 | Feature | Stella service | Auth |
@@ -154,7 +163,7 @@ Atlas uses **one SSH private key** (Settings → GitHub, `app_settings.deploy_ss
 2. **Destination servers** — rsync
 3. **Stella** — `ssh-keygen -Y sign -n deploy` for deploy-api and health-api
 
-Stella’s `deploy-api/allowed_signers` lists this public key as principal **`ddashboard`**. health-api has its **own** file (`/opt/services/health-api/allowed_signers`) with two `ddashboard` lines (`atlas-prod` and `atlas-dev`). The principal name is historical; health-api hardcodes `ddashboard` / namespace `deploy`. Production Atlas reuses the old managed-host key (`/home/atlas/.ssh/id_ed25519`, comment `atlas-prod`) so the 28 deploy servers did not need new `authorized_keys`. The managed host still holds the same key and can still deploy/sign. Rotation was considered and deferred. Dev instance: [`../atlas/dev-instance.md`](../atlas/dev-instance.md).
+Stella’s `deploy-api/allowed_signers` lists this public key as principal **`ddashboard`**. health-api has its **own** file (`/opt/services/health-api/allowed_signers`) with two `ddashboard` lines (`atlas-prod` and `atlas-dev`). The same `atlas-prod` and `atlas-dev` keys are also in `/opt/atlas-api/allowed_signers` (principal `ddashboard`, namespace `deploy`). The principal name is historical; health-api hardcodes `ddashboard` / namespace `deploy`. Production Atlas reuses the old managed-host key (`/home/atlas/.ssh/id_ed25519`, comment `atlas-prod`) so the 28 deploy servers did not need new `authorized_keys`. The managed host still holds the same key and can still deploy/sign. Rotation was considered and deferred. Dev instance: [`../atlas/dev-instance.md`](../atlas/dev-instance.md).
 
 The private key never crosses the network. Only a short-lived signed payload (`action:unix_timestamp`, 60 s replay window on Stella) is posted.
 
@@ -197,6 +206,7 @@ Hetzner managed (foxcrr)
 Hetzner Cloud  (own project, not Edison)
 └── atlas  CX33  2.31.42.13
     │     https://atlas.foxcraft.digital
+    │     api.atlas.foxcraft.digital → atlas-api (127.0.0.1:8090), allowlist 2.31.42.13 + 95.217.144.93
     │     Laravel 12.61, PHP 8.5.4-FPM, MySQL `atlas_prod`, Redis (cache)
     │     systemd atlas-queue.service  →  queue:work database --queue=deployments
     │     /etc/cron.d/atlas → schedule:run (health + WP uptime + drive-backups)
@@ -230,6 +240,7 @@ Hetzner Cloud
 | **stella-api** | FastAPI app — `/chat/*` only |
 | **deploy-api** | FastAPI app — signed deploy trigger + status |
 | **health-api** | FastAPI app — signed system-status snapshot |
+| **atlas-api / Atlas host API** | FastAPI on the Atlas host (`https://api.atlas.foxcraft.digital` → `127.0.0.1:8090`). Signed `system-health` snapshot of the Atlas box. See [`../atlas/host-api.md`](../atlas/host-api.md) |
 | **imap-sync** | Express + `imapsync` mailbox copy |
 | **Edison** | Separate coding-agent host |
 | **`ddashboard` principal** | Name in Stella `allowed_signers` for Atlas’s SSH key (same keypair as the old managed-host Atlas; comment `atlas-prod`) |
