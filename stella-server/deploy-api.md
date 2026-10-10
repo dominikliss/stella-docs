@@ -51,6 +51,8 @@ ddashboard ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIOpVG5e5AzGVVKU9uIWEACauLbP/w+SOT
 ```
 Format: `<principal> <key-type> <base64-key>`. `ddashboard` is the "principal" name checked against on every verification call.
 
+This file is **unchanged** for the Atlas Cloud move and does **not** contain the `atlas-dev` key. The Stella-hosted `atlas.dev` instance therefore cannot call deploy-api. health-api has a separate file with both keys — see [`health-api.md`](health-api.md).
+
 **Payload format:** `<action>:<unix_timestamp>`. `action` identifies what's being authorized:
 - `list-apps` for `POST /apps`
 - `deploy-<app_name>` for `POST /deploy/{app_name}`, e.g. `deploy-advoapp-production`

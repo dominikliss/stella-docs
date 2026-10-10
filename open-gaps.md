@@ -9,11 +9,14 @@ Last updated: 2026-10-10
 ## Atlas documentation
 
 - [x] **System-level Atlas docs** — closed 2026-10-01. Atlas is no longer only a folder of module notes. See [`atlas/README.md`](atlas/README.md), [`atlas/architecture.md`](atlas/architecture.md), [`atlas/auth.md`](atlas/auth.md), [`atlas/atlas-connect/`](atlas/atlas-connect/), [`atlas/tools.md`](atlas/tools.md), and [`integration/system-overview.md`](integration/system-overview.md). `atlas/dotnet-azure.md` now describes the live `stella_deploy_api` path (the old “post-deploy hook, not yet signed” plan is obsolete).
-- [ ] **Atlas production host move (2026-10-10)** — live at `https://atlas.foxcraft.digital` on Hetzner Cloud CX33 `atlas` (`2.31.42.13`). Runbook: [`atlas/server.md`](atlas/server.md). Open items:
+- [ ] **Atlas production host move (2026-10-10)** — live at `https://atlas.foxcraft.digital` on Hetzner Cloud CX33 `atlas` (`2.31.42.13`). Runbook: [`atlas/server.md`](atlas/server.md). Dev instance on Stella: [`atlas/dev-instance.md`](atlas/dev-instance.md). Open items:
   - **TODO (Dominik):** confirm `dev.atlas.foxcraft.digital` crons (`queue-deployments.sh`, `schedule:run`) are deactivated and decide when to retire the managed-host instance.
   - **TODO (Dominik):** remove `23.88.90.12` from `ATLAS_ALLOWED_IPS` unless something on the managed host really calls Atlas; reason for each entry unverified.
-  - **TODO (Dominik):** fix `@types/node@^22` in the Atlas repo (`npm ci` currently needs `--legacy-peer-deps`).
+  - **TODO (Dominik):** bump `@types/node` to `^22` in the Atlas repo (`npm ci` currently needs `--legacy-peer-deps`).
   - **TODO (Dominik):** name of the Atlas Hetzner Cloud project (separate from Edison).
+  - **TODO (Dominik):** rotate the reused `atlas-prod` SSH key (managed host still holds a copy). Deferred.
+  - **TODO (Dominik):** test deployments from `atlas.dev` against one throwaway target (untested by design today).
+  - **TODO (Dominik):** Atlas (`2.31.42.13`) gets 401 from ddashboard; Stella (`95.217.144.93`) gets 403 from the managed host’s Apache. Find the IP allowlist (probably `.htaccess` under `public_html`) and add Stella if Stella should call ddashboard.
   - Backups: `wp-sites:drive-backups` is scheduled every minute; backup driver not finished.
 
 ---
@@ -64,7 +67,7 @@ Host rebuilt 2026-10-09 onto CX33 (`edison-ip` = `178.105.203.54`). See [`edison
 - [ ] **WP staging: split `authorized_keys` for `edison`** — `dominikliss.foxcraft.digital` copies one shared file to all three users (same as osgar today), although [`stella-server/dev-ssh-access.md`](stella-server/dev-ssh-access.md) says `edison` should have its own key file. **TODO (Dominik):** whether to split. See [`stella-server/wordpress-staging.md`](stella-server/wordpress-staging.md).
 - [ ] **WP staging: `FS_CHMOD_FILE` / `FS_CHMOD_DIR`** — residual risk (UNVERIFIED): WordPress updates that chmod files to `0644` may lower the ACL mask again. Possible mitigation not tested. **TODO (Dominik).** See [`stella-server/wordpress-staging.md`](stella-server/wordpress-staging.md).
 - [ ] **Hetzner Cloud project name for `foxcraft.digital`** — zone moved; ID still `567656`. **TODO (Dominik):** name of the new project (docs previously said `konsoleH`).
-- [ ] **Stella `DOCKER-USER` 443 ACCEPT for Atlas** — add `2.31.42.13` after the `23.88.90.12` line (script copy updated in docs). After recreating `/usr/local/bin/docker-user-firewall.sh` it must be `chmod 755`. **TODO (Dominik):** confirm the live script on Stella has the atlas line.
+- [x] **Stella `DOCKER-USER` 443 ACCEPT for Atlas** — `2.31.42.13` added. After any `rm` + nano recreation of `/usr/local/bin/docker-user-firewall.sh` it must be `chmod 755`. Port **2205** added (Dominik’s IP, managed host, Edison). Next free SSH port: **2206**.
 - [ ] **Caddy `propagation_delay` on `dominikliss`** — untested idea after the zone-move ACME delay. Live block does not currently have it (**UNVERIFIED**). Result of `grep -n propagation_delay /opt/services/caddy/Caddyfile` on Stella: **TODO (Dominik)**.
 
 ---
@@ -72,6 +75,8 @@ Host rebuilt 2026-10-09 onto CX33 (`edison-ip` = `178.105.203.54`). See [`edison
 ## Closed 2026-10-10
 
 - **`advoapp-redesign.finditoo.foxcraft.digital` removed from Stella** — containers `advoapp-redesign-dev` and `advoapp-redesign-ssh` stopped and removed; folder deleted; Caddy block removed; DNS A record `advoapp-redesign.finditoo` deleted in zone 567656; port-2203 `DOCKER-USER` rules removed; Cursor SSH config entry removed on Dominik's machine. Port 2203 is free; port 5082 is free again. Port-443 ACCEPT rules unchanged (port-wide, not tied to this app).
+- **health-api own `allowed_signers`** — no longer reuses deploy-api’s file. Two `ddashboard` lines (`atlas-prod`, `atlas-dev`). See [`stella-server/health-api.md`](stella-server/health-api.md).
+- **Atlas dev instance on Stella** — `https://atlas.dev.foxcraft.digital`, SSH port 2205. See [`atlas/dev-instance.md`](atlas/dev-instance.md).
 
 ## Closed 2026-10-09
 

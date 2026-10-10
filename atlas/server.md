@@ -18,7 +18,8 @@ Admin work as **root** via `ssh atlas`. App runs as Linux user **`atlas`**.
 | **IP** | `2.31.42.13` |
 | **URL** | `https://atlas.foxcraft.digital` (replaces `https://dev.atlas.foxcraft.digital`) |
 | **App path** | `/var/www/atlas` |
-| **App user** | `atlas` |
+| **App user** | `atlas` (uid/gid 1000). Run git / artisan / npm as `atlas` (`sudo -u atlas …`), never as root (dubious ownership; root has no GitHub key). |
+| **DNS** | A record `atlas` in zone `567656` → `2.31.42.13`. Let's Encrypt production via DNS-01. |
 | **Repo** | `git@github.com:foxcraftdigital/atlas.git` — **not** `foxcraft/atlas` (that repo did not exist before 2026-10-10) |
 | **Submodules** | `docs/stella-docs` and `docs/dev-docs` are **not** checked out on production |
 | **Backups** | Hetzner Cloud backups **enabled** |
@@ -33,11 +34,11 @@ Admin work as **root** via `ssh atlas`. App runs as Linux user **`atlas`**.
 | PHP | 8.5.4-FPM, pool `atlas`, socket `/run/php/atlas.sock`, pool file `/etc/php/8.5/fpm/pool.d/atlas.conf` |
 | App | Laravel 12.61 |
 | MySQL | 8.4, database `atlas_prod`, user `atlas`, localhost only |
-| Redis | localhost only — **cache only** (not the deploy queue) |
+| Redis | 8.0, localhost only — **cache only** (not the deploy queue) |
 | Node | 22 / npm 9.2 (Vite build) |
 | Caddy | 2.11.7, built with xcaddy + `github.com/caddy-dns/hetzner/v2`, binary `/usr/bin/caddy`, `apt-mark hold caddy` |
 
-Old DB name on the managed host was `dev_atlas_foxcraft_digital` (docs previously said `atlas_dev`). Migrated via phpMyAdmin dump (MariaDB 10.11 → MySQL 8.4) into `atlas_prod`, 27 tables, all migrations Ran. A dump from MariaDB imports into MySQL 8.4 when it has no `DEFINER` and no `CREATE DATABASE` / `USE` lines.
+Old DB name on the managed host was `dev_atlas_foxcraft_digital` (docs previously said `atlas_dev`). Migrated via phpMyAdmin dump (MariaDB 10.11 → MySQL 8.4) into `atlas_prod`, 27 tables, all migrations Ran. Import used `mysql --default-character-set=utf8mb4`. A dump from MariaDB imports into MySQL 8.4 when it has no `DEFINER` and no `CREATE DATABASE` / `USE` lines.
 
 ---
 
@@ -120,6 +121,7 @@ Do not write secret values here.
 | `DB_HOST` | `127.0.0.1` |
 | `DB_DATABASE` | `atlas_prod` |
 | `DEPLOY_SSH_KEY_PATH` | `/home/atlas/.ssh/id_ed25519` |
+| `ATLAS_DDASHBOARD_URL` | `https://data3.dominikliss.com/wp-json` |
 
 `APP_KEY` was carried over unchanged from the old instance (needed for encrypted `app_settings` values). `app_settings.deploy_ssh_key_path` was updated to `/home/atlas/.ssh/id_ed25519` (the DB value overrides `.env`).
 
@@ -137,19 +139,36 @@ Atlas reuses the same keypair as the old managed-host Atlas (principal `ddashboa
 
 ## Deploy code
 
-As user `atlas` in `/var/www/atlas`:
+Current release: **tag `1.0.1`**.
+
+As user `atlas` in `/var/www/atlas` (`sudo -u atlas …` from root — never as root):
 
 ```bash
 git pull
-composer install --no-dev --optimize-autoloader
-npm ci --legacy-peer-deps && npm run build
-php artisan migrate --force
-php artisan config:cache
+php artisan config:clear
+npm ci --legacy-peer-deps && npm run build   # public/build is gitignored
 ```
 
-Then restart the queue: `systemctl restart atlas-queue`.
+If `composer.lock` or migrations changed, also (as `atlas`):
 
-`npm ci` fails with `ERESOLVE` (`@types/node` ^18 vs vite 7 peer `^20.19 \|\| >=22.12`). Workaround `--legacy-peer-deps`. Real fix in the Atlas repo: `@types/node@^22`. **TODO (Dominik):** fix in repo.
+```bash
+composer install --no-dev --optimize-autoloader
+php artisan migrate --force
+```
+
+Then as **root**:
+
+```bash
+systemctl reload php8.5-fpm
+systemctl restart atlas-queue
+```
+
+`npm ci` fails with `ERESOLVE` (`@types/node` ^18 vs vite 7 peer `^20.19 || >=22.12`). Workaround `--legacy-peer-deps`. Real fix in the Atlas repo: `@types/node@^22`. **TODO (Dominik):** bump to `@types/node@^22`.
+
+### Repo fixes in tag `1.0.1` (commit `3027079`)
+
+- `config/deploy.php`: `ssh_key_path` default no longer reads `$_SERVER['HOME']` unguarded (`$_SERVER['HOME'] ?? getenv('HOME') ?: '/var/www'`).
+- Migration `2026_05_28_120003_create_deploy_run_destinations_table`: `longText` default is `DB::raw("('')")` for MySQL 8.4.
 
 ---
 
@@ -165,7 +184,9 @@ Then restart the queue: `systemctl restart atlas-queue`.
 
 ## Old instance (`dev.atlas.foxcraft.digital`)
 
-Still on the managed host. Its two cron jobs (`queue-deployments.sh`, `schedule:run`) are to be deactivated. **TODO (Dominik):** confirm deactivated and decide when to retire the instance.
+Still on the managed host. That instance is to be retired. Its two cron jobs (`queue-deployments.sh`, `schedule:run`) are to be deactivated. **TODO (Dominik):** confirm deactivated and decide when to retire the instance.
+
+The Stella-hosted **dev** instance is a different machine: [`dev-instance.md`](dev-instance.md) (`https://atlas.dev.foxcraft.digital`).
 
 ---
 
@@ -178,4 +199,5 @@ Still on the managed host. Its two cron jobs (`queue-deployments.sh`, `schedule:
 5. Repo `.gitignore` check before first push: no `.env`, `vendor`, `node_modules`, storage logs in the repo (verified clean).
 6. `npm ci` ERESOLVE — see deploy section above.
 7. Do not use apt Caddy for DNS-01; build with xcaddy.
-8. MariaDB phpMyAdmin dump → MySQL 8.4: fine if no `DEFINER` and no `CREATE DATABASE` / `USE`.
+8. MariaDB phpMyAdmin dump → MySQL 8.4: fine if no `DEFINER` and no `CREATE DATABASE` / `USE`. Import with `mysql --default-character-set=utf8mb4`.
+9. Check **both directions** of access: Atlas (`2.31.42.13`) gets **401** from ddashboard, but Stella (`95.217.144.93`) gets **403** from the managed host’s Apache. **TODO (Dominik):** find the IP allowlist rule (probably `.htaccess` under `public_html`) and add Stella if Stella should call ddashboard.

@@ -58,14 +58,27 @@ health-api:
   container_name: health-api
   volumes:
     - /var/run/docker.sock:/var/run/docker.sock
-    - ./deploy-api/allowed_signers:/opt/services/health-api/allowed_signers:ro
+    - ./health-api/allowed_signers:/opt/services/health-api/allowed_signers:ro
     - /:/hostroot:ro
   networks:
     - edge
   restart: unless-stopped
 ```
 
-**Reuses `deploy-api`'s `allowed_signers` file** (mounted read-only) rather than maintaining a second copy — same `ddashboard`/Atlas principal is already trusted there. Atlas and ddashboard no longer share a host. Atlas reuses the old managed-host keypair (principal `ddashboard`, key comment `atlas-prod`) so no new signer was added. The managed host still holds a copy of that key.
+**Own `allowed_signers` file** at `/opt/services/health-api/allowed_signers` (compose line ~82: `./health-api/allowed_signers:/opt/services/health-api/allowed_signers:ro`). It no longer reuses deploy-api’s file.
+
+The file has **two** `ddashboard` lines:
+
+| Comment | Who |
+|---------|-----|
+| `atlas-prod` | Production Atlas key (same keypair as the old managed-host Atlas; that host still holds a copy) |
+| `atlas-dev` | Dev instance on Stella (`atlas.dev.foxcraft.digital`) |
+
+health-api verifies with a **hardcoded** principal `ddashboard` and namespace `deploy` (`main.py`: `PRINCIPAL`, `NAMESPACE`). Atlas sends no principal. A second signer line for a new key must therefore also use the principal `ddashboard`.
+
+deploy-api’s `allowed_signers` is unchanged and does **not** contain the dev key, so `atlas.dev` can read health-api and cannot call deploy-api. See [`dev-instance.md`](../atlas/dev-instance.md).
+
+**Editing a single-file bind mount:** append or edit in place. Never `rm` + recreate — the container keeps the old inode. After changes: `docker compose up -d health-api` in `/opt/services`.
 
 **Dockerfile requires `docker-ce-cli` specifically, not `docker.io`.** The `docker.io` apt package only ships `dockerd` and support binaries — not the `docker` CLI client. Install via Docker's official apt repo the same way `deploy-api` does:
 
@@ -116,9 +129,9 @@ stella-health-api.foxcraft.digital {
 
 ---
 
-## Auth — identical mechanism to `deploy-api`
+## Auth — same scheme as `deploy-api`, own signers file
 
-Same SSH-signature scheme (`ssh-keygen -Y sign`/`-Y verify`, namespace `deploy`), same `ddashboard` principal. See [`deploy-api.md`](deploy-api.md#auth-mechanism) for the full explanation of why this pattern was chosen over a bearer token.
+Same SSH-signature scheme (`ssh-keygen -Y sign`/`-Y verify`, namespace `deploy`), hardcoded principal `ddashboard`. See [`deploy-api.md`](deploy-api.md#auth-mechanism) for why this pattern was chosen over a bearer token. The signers file is **not** shared with deploy-api (see Architecture above).
 
 **Endpoint:**
 

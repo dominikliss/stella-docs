@@ -93,7 +93,7 @@ Production values: `194.126.177.181`, `23.88.90.12` (managed host), `95.217.144.
 ## Config
 
 ```
-ATLAS_DDASHBOARD_URL=https://<ddashboard-host>   # no trailing slash; Atlas appends /dls/v1/auth/*
+ATLAS_DDASHBOARD_URL=https://data3.dominikliss.com/wp-json   # no trailing slash; Atlas appends /dls/v1/auth/*
 ATLAS_ALLOWED_IPS=1.2.3.4,5.6.7.8
 ATLAS_HTTP_TIMEOUT=30
 ATLAS_DEMO_MODE=false

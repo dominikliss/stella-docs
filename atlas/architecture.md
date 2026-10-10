@@ -14,7 +14,7 @@ Companion to [`README.md`](README.md). This page is the **code and hosting** map
 | PHP | 8.5.4-FPM (pool `atlas`, socket `/run/php/atlas.sock`) |
 | Laravel | 12.61 |
 | MySQL | 8.4 `atlas_prod` (migrated from managed-host `dev_atlas_foxcraft_digital`; docs previously said `atlas_dev`) |
-| Redis | cache + token verify cache (`CACHE_STORE=redis`) — localhost only, **not** the deploy queue |
+| Redis | 8.0, cache + token verify cache (`CACHE_STORE=redis`) — localhost only, **not** the deploy queue |
 | Cron | `/etc/cron.d/atlas` → `schedule:run` every minute as `atlas` |
 | Queue | systemd `atlas-queue.service` — `queue:work database --queue=deployments` (not cron + `flock`) |
 
@@ -122,7 +122,9 @@ POST JSON { payload, signature }
 | `StellaDeployApiService::trigger` | `deploy-{app}:` |
 | `StellaHealthApiClient::fetchSystemHealth` | `system-health:` |
 
-Stella verifies against `allowed_signers` with principal `ddashboard` and namespace `deploy`. Replay window is 60 seconds on Stella.
+Stella verifies with principal `ddashboard` and namespace `deploy` (health-api hardcodes both in `main.py`; Atlas sends no principal). Replay window is 60 seconds on Stella.
+
+deploy-api and health-api each have their **own** `allowed_signers` file. health-api’s file has two `ddashboard` lines (`atlas-prod` and `atlas-dev`). deploy-api’s file has only the production key. See [`../stella-server/health-api.md`](../stella-server/health-api.md) and [`dev-instance.md`](dev-instance.md).
 
 ---
 

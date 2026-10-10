@@ -36,3 +36,4 @@ App-specific runbooks (not Stella-the-product) live under [`apps/`](apps/).
 | osgar-datahub | [`apps/osgar-datahub/`](apps/osgar-datahub/) |
 | advoapp | Pattern in [dotnet-app-deployment.md](dotnet-app-deployment.md) (no separate folder yet) |
 | dominikliss (WP staging) | [wordpress-staging.md](wordpress-staging.md) |
+| atlas.dev | [`../atlas/dev-instance.md`](../atlas/dev-instance.md) |

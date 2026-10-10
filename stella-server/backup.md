@@ -19,7 +19,7 @@
 
 ### `/opt/services` — recursive, zero-maintenance
 
-The entire `/opt/services` tree is backed up unconditionally. Every Dockerfile, `main.py`/`health.py`/etc. source file, `.env`, `allowed_signers`, and `docker-compose.yml` under `/opt/services` is covered the moment it exists on disk — no changes to `run.sh` needed when a new service is added here.
+The entire `/opt/services` tree is backed up unconditionally. Every Dockerfile, `main.py`/`health.py`/etc. source file, `.env`, `allowed_signers` (including health-api’s own file at `/opt/services/health-api/allowed_signers`, separate from deploy-api’s), and `docker-compose.yml` under `/opt/services` is covered the moment it exists on disk — no changes to `run.sh` needed when a new service is added here.
 
 **Excluded via restic `--exclude`:** `ollama-models` (re-pullable), `*/logs`, `*/node_modules`, `*/__pycache__`, `*/.git`, `*/venv` (Python virtualenvs — fully reproducible via `pip install -r requirements.txt`).
 

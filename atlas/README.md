@@ -43,6 +43,7 @@ It is **not** the business dashboard. Clients, invoices, mail, and projects live
 |----------|----------|
 | [architecture.md](architecture.md) | Domains, SPA routes, hosting, queue |
 | [server.md](server.md) | Production host runbook (stack, Caddy, systemd, deploy) |
+| [dev-instance.md](dev-instance.md) | Stella-hosted `atlas.dev.foxcraft.digital` |
 | [auth.md](auth.md) | ddashboard token proxy, roles, IP allowlist |
 | [atlas-connect/](atlas-connect/) | WP plugin: login + backups |
 | [deploy-pipeline.md](deploy-pipeline.md) | ssh_rsync and stella_deploy_api |
@@ -179,7 +180,8 @@ The **public** key must be in:
 
 - GitHub (deploy key or account key) — clone
 - Each destination `~/.ssh/authorized_keys` — rsync
-- Stella `deploy-api/allowed_signers` as principal **`ddashboard`** — signed APIs (health-api mounts the same file)
+- Stella `deploy-api/allowed_signers` as principal **`ddashboard`** — deploy-api (production key only)
+- Stella `health-api/allowed_signers` as principal **`ddashboard`** — health-api’s **own** file (production `atlas-prod` plus dev `atlas-dev`). See [`../stella-server/health-api.md`](../stella-server/health-api.md).
 
 ---
 
@@ -268,7 +270,7 @@ See `.env.example` in the Atlas repo. The ones that wire Atlas into the rest of 
 
 ```
 ATLAS_ALLOWED_IPS=194.126.177.181,23.88.90.12,95.217.144.93
-ATLAS_DDASHBOARD_URL=https://<ddashboard-host>
+ATLAS_DDASHBOARD_URL=https://data3.dominikliss.com/wp-json
 ATLAS_DEMO_MODE=false
 
 DEPLOY_SSH_KEY_PATH=/home/atlas/.ssh/id_ed25519
@@ -292,6 +294,7 @@ BACKUP_S3_SECRET_KEY=
 ## Further reading
 
 - [`server.md`](server.md) — production host runbook
+- [`dev-instance.md`](dev-instance.md) — Stella-hosted `atlas.dev`
 - [`architecture.md`](architecture.md) — domains, SPA routes, hosting, demo mode
 - [`auth.md`](auth.md) — ddashboard token proxy, roles, IP allowlist
 - [`atlas-connect/`](atlas-connect/) — WP plugin: login + backups (Atlas driver + Settings vault + WP Sites UI)

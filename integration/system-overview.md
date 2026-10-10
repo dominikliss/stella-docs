@@ -6,6 +6,7 @@ This is the **cross-system map** for foxcraft.digital: who owns what, which host
 
 - Atlas platform: [`../atlas/README.md`](../atlas/README.md)
 - Atlas production host: [`../atlas/server.md`](../atlas/server.md)
+- Atlas dev instance: [`../atlas/dev-instance.md`](../atlas/dev-instance.md)
 - Atlas architecture: [`../atlas/architecture.md`](../atlas/architecture.md)
 - Atlas ↔ ddashboard login: [`../atlas/auth.md`](../atlas/auth.md)
 - Atlas ↔ WordPress sites: [`../atlas/atlas-connect/`](../atlas/atlas-connect/)
@@ -153,7 +154,7 @@ Atlas uses **one SSH private key** (Settings → GitHub, `app_settings.deploy_ss
 2. **Destination servers** — rsync
 3. **Stella** — `ssh-keygen -Y sign -n deploy` for deploy-api and health-api
 
-Stella’s `deploy-api/allowed_signers` lists this public key as principal **`ddashboard`**. health-api mounts the same file read-only. The principal name is historical. Production Atlas reuses the old managed-host key (`/home/atlas/.ssh/id_ed25519`, comment `atlas-prod`) so the 28 deploy servers did not need new `authorized_keys`. The managed host still holds the same key and can still deploy/sign. Rotation was considered and deferred.
+Stella’s `deploy-api/allowed_signers` lists this public key as principal **`ddashboard`**. health-api has its **own** file (`/opt/services/health-api/allowed_signers`) with two `ddashboard` lines (`atlas-prod` and `atlas-dev`). The principal name is historical; health-api hardcodes `ddashboard` / namespace `deploy`. Production Atlas reuses the old managed-host key (`/home/atlas/.ssh/id_ed25519`, comment `atlas-prod`) so the 28 deploy servers did not need new `authorized_keys`. The managed host still holds the same key and can still deploy/sign. Rotation was considered and deferred. Dev instance: [`../atlas/dev-instance.md`](../atlas/dev-instance.md).
 
 The private key never crosses the network. Only a short-lived signed payload (`action:unix_timestamp`, 60 s replay window on Stella) is posted.
 
@@ -205,8 +206,9 @@ Hetzner Cloud  (own project, not Edison)
     │               ├── stella.foxcraft.digital/stella      → stella-api   (ddashboard)
     │               ├── stella.foxcraft.digital/imap-sync   → imap-sync    (Atlas)
     │               ├── stella.foxcraft.digital/ollama      → ollama
-    │               ├── stella-deployment-api.foxcraft.digital → deploy-api (Atlas)
-    │               └── stella-health-api.foxcraft.digital     → health-api (Atlas)
+    │               ├── stella-deployment-api.foxcraft.digital → deploy-api (Atlas prod)
+    │               ├── stella-health-api.foxcraft.digital     → health-api (Atlas prod + atlas.dev)
+    │               └── atlas.dev.foxcraft.digital             → Atlas Laravel dev (port 2205 SSH)
     │
     ├── SSH ──► GitHub, rsync destinations (28 deploy_servers)
     └── HTTPS ──► registered WP sites (uptime + Atlas Connect)
@@ -222,7 +224,7 @@ Hetzner Cloud
 | Term | Meaning |
 |------|---------|
 | **ddashboard** | WordPress theme / business product |
-| **Atlas** | Laravel ops platform at `atlas.foxcraft.digital` (old URL `dev.atlas.foxcraft.digital` still on the managed host until retired) |
+| **Atlas** | Laravel ops platform at `atlas.foxcraft.digital` (old URL `dev.atlas.foxcraft.digital` still on the managed host until retired). Dev instance: `atlas.dev.foxcraft.digital` on Stella |
 | **Atlas Connect** | WordPress plugin on each managed site; one-time admin login + encrypted S3 backups (`atlas-connect/v1`). Site never phones home |
 | **Stella** | Dedicated server hosting AI and ops services |
 | **stella-api** | FastAPI app — `/chat/*` only |
