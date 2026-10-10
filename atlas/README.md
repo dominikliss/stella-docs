@@ -8,7 +8,7 @@ It is **not** the business dashboard. Clients, invoices, mail, and projects live
 
 **Live at:** `https://dev.atlas.foxcraft.digital`  
 **Host:** Hetzner managed (same account as ddashboard, `foxcrr`)  
-**Repo:** `git@github.com:foxcraft/atlas.git`
+**Repo:** `git@github.com:foxcraftdigital/atlas.git`
 
 ---
 
