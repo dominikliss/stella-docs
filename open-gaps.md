@@ -18,8 +18,8 @@ Last updated: 2026-10-10
   - **TODO (Dominik):** test deployments from `atlas.dev` against one throwaway target (untested by design today).
   - **TODO (Dominik):** Atlas (`2.31.42.13`) gets 401 from ddashboard; Stella (`95.217.144.93`) gets 403 from the managed host’s Apache. Find the IP allowlist (probably `.htaccess` under `public_html`) and add Stella if Stella should call ddashboard.
   - Backups: `wp-sites:drive-backups` is scheduled every minute; backup driver not finished.
-- [ ] **Optional: deploy trigger via API on the atlas host.** Constraints decided so far: must run as a separate process (`atlas-deploy` restarts `atlas-queue`, so it can't run inside an Atlas queue job; use `systemd-run`), signed requests like Stella deploy-api, kept separate from the planned atlas health-api (health read-only/unprivileged, deploy privileged), Hetzner firewall currently allows only my IP on 22/80/443. Not built. Open question: who triggers it (Atlas UI, Stella, GitHub Actions).
-- [ ] **Planned: health-api for the atlas host.** Live 2026-10-10 as the Atlas host API (`https://api.atlas.foxcraft.digital`). See [`atlas/host-api.md`](atlas/host-api.md). Atlas-side client still open (Infrastructure).
+- [x] **Optional: deploy trigger via API on the atlas host.** Live 2026-10-10 on the host API (`POST /system/deploy`, `atlas-dev` key only). See [`atlas/host-api.md`](atlas/host-api.md). Remaining work under Infrastructure.
+- [x] **Planned: health-api for the atlas host.** Live 2026-10-10 as the Atlas host API (`https://api.atlas.foxcraft.digital`). See [`atlas/host-api.md`](atlas/host-api.md). Atlas-side client live (Infrastructure).
 
 ---
 
@@ -75,9 +75,13 @@ Host rebuilt 2026-10-09 onto CX33 (`edison-ip` = `178.105.203.54`). See [`edison
 - [ ] **Stella full restore test** — runbook at [`stella-server/restore.md`](stella-server/restore.md). **UNVERIFIED** end-to-end. **TODO (Dominik):** test on a throwaway Hetzner Cloud server.
 - [ ] **Off-server backup secrets** — restic password, Storage Box access, Hetzner API token, DNS records. **TODO (Dominik):** store them in the password manager. Do not write values into docs.
 - [ ] **Backup failure email** — **UNVERIFIED** whether a failed Stella backup sends an email via Brevo (docs only describe emails for WP site `down`). **TODO (Dominik):** check whether the fake-failure test produced an email; if not, decide on an Atlas-side alert. See [`atlas/monitoring.md`](atlas/monitoring.md).
-- [ ] **Atlas client for the host API** — Laravel client like `CheckStellaHealth`, history tables, dashboard view. **TODO (Dominik).** See [`atlas/host-api.md`](atlas/host-api.md).
+- [x] **Atlas client for the host API** — Laravel `CheckAtlasHealth`, `atlas_health_checks` / `atlas_service_uptime_logs`, dashboard card + `/monitoring/atlas`. See [`atlas/monitoring.md`](atlas/monitoring.md). Hairpin from Atlas to the public URL still open below.
+- [x] **Atlas host-api.md** — runbook at [`atlas/host-api.md`](atlas/host-api.md) (health + deploy, 2026-10-10).
 - [ ] **Atlas prod via the public API URL** — test `https://api.atlas.foxcraft.digital` from Atlas itself (hairpin risk), otherwise use `127.0.0.1:8090` locally.
 - [ ] **Edison host API** — same pattern as Atlas (hostname `api.edison.foxcraft.digital` planned), not started.
+- [ ] **Patch `/usr/local/bin/atlas-deploy`:** `queue:restart` instead of `systemctl restart atlas-queue`; reject refs starting with `-`
+- [ ] **First real deploy through the host API** (new commits) and record the result in [`atlas/host-api.md`](atlas/host-api.md)
+- [ ] **Atlas dev app: deploy client + UI behind a flag, off on prod** (proposal: `ATLAS_SELF_DEPLOY_ENABLED`, not implemented; route returns 404 when off)
 
 ---
 

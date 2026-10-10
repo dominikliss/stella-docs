@@ -147,7 +147,14 @@ Atlas reuses the same keypair as the old managed-host Atlas (principal `ddashboa
 
 Current release: **tag `1.0.2`**.
 
-**Not yet verified** — confirm a successful run before treating this as proven.
+The manual steps below are automated by `/usr/local/bin/atlas-deploy` (ref argument, default `main`, exclusive `flock` on `/var/lock/atlas-deploy.lock`, early exit when HEAD is unchanged). The same script can be triggered from Atlas dev through the host API. See [`host-api.md`](host-api.md). Keep the commands here as the fallback.
+
+| Path | Role |
+|------|------|
+| `/usr/local/bin/atlas-deploy` | Deploy script (`root:root`, mode 750) |
+| `/etc/sudoers.d/atlas-api` | `atlasapi ALL=(root) NOPASSWD: /usr/local/bin/atlas-deploy` (mode 440) |
+
+**Not yet verified** — a deploy that pulls new commits (composer, migrate, npm build, reload, queue restart) started through the API. A no-op run (`already at b087616`) via `POST /system/deploy` from Stella succeeded 2026-10-10. Confirm a real pull before treating the full path as proven.
 
 As **root** on host `atlas`:
 

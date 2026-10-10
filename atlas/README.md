@@ -33,7 +33,7 @@ It is **not** the business dashboard. Clients, invoices, mail, and projects live
 | **Dashboard** | `/dashboard` | Home + Stella status summary |
 | **Deployments** | `/deployments` | SSH rsync deploys and Stella deploy-api deploys |
 | **WP Sites** | `/wp-sites` | Register sites, 5-min uptime, Atlas Connect login, start/list/explore backups |
-| **Monitoring** | `/monitoring/stella` | Stella health grid + history charts |
+| **Monitoring** | `/monitoring/stella`, `/monitoring/atlas` | Stella and Atlas host health grids + history charts |
 | **Tools → IMAP Migration** | `/tools/imap-migration` | Trigger / poll `imapsync` jobs on Stella |
 | **Settings** | `/settings` | SSH/GitHub key path, Brevo transactional email, backup S3 + X25519 vault |
 
@@ -130,6 +130,7 @@ Both health loops run via `php artisan schedule:run` (cron every minute). They u
 | Schedule | Job | Effect |
 |----------|-----|--------|
 | every 5 min | `CheckStellaHealth` | Signed health-api request; store `StellaHealthCheck` + per-service `StellaServiceUptimeLog`. Public-endpoint probes if health-api is down. Prune older than 30 days. |
+| every 5 min | `CheckAtlasHealth` | Signed host-api request; store `AtlasHealthCheck` + per-service `AtlasServiceUptimeLog`. Prune older than 30 days. |
 | every 5 min | `CheckWpSiteUptime` (once per site) | `HEAD https://{domain}`; `up` / `degraded` (>1 s) / `down`. Brevo email on first `down` transition. Prune logs older than 7 days. |
 | every minute | `wp-sites:drive-backups` | Backups feature still in development; backup driver not finished |
 
@@ -237,6 +238,9 @@ The **public** key must be in:
 | `GET` | `/api/monitoring/stella` | Latest Stella health check with service logs |
 | `POST` | `/api/monitoring/stella/check` | On-demand health check |
 | `GET` | `/api/monitoring/stella/metrics` | Recent health history (charts) |
+| `GET` | `/api/monitoring/atlas` | Latest Atlas host health check with service logs |
+| `POST` | `/api/monitoring/atlas/check` | On-demand Atlas host check |
+| `GET` | `/api/monitoring/atlas/metrics` | Recent Atlas host history (charts) |
 
 ### Tools
 
@@ -277,6 +281,7 @@ ATLAS_DEMO_MODE=false
 DEPLOY_SSH_KEY_PATH=/home/atlas/.ssh/id_ed25519
 STELLA_DEPLOY_API_URL=https://stella-deployment-api.foxcraft.digital
 STELLA_HEALTH_API_URL=https://stella-health-api.foxcraft.digital
+ATLAS_HOST_API_URL=https://api.atlas.foxcraft.digital
 STELLA_IMAP_SYNC_URL=https://stella.foxcraft.digital/imap-sync
 
 # Fallback public probes (also used when health-api is down):

@@ -1,9 +1,10 @@
 # Atlas Monitoring
 
-Atlas monitors two things on a 5-minute cron loop:
+Atlas monitors three things on a 5-minute cron loop:
 
 1. **Stella server health** — signed requests to Stella's health-api; dynamic container list, Caddyfile certs, disk/CPU/RAM/Ollama, backup
-2. **WP site uptime** — plain HTTPS HEAD ping to each registered WordPress site
+2. **Atlas host health** — signed requests to the Atlas host API (`https://api.atlas.foxcraft.digital`); systemd units, certs, disk/CPU/RAM, optional backup
+3. **WP site uptime** — plain HTTPS HEAD ping to each registered WordPress site
 
 ---
 
@@ -138,6 +139,44 @@ STELLA_OSGAR_URL=https://osgar.datahub.foxcraft.digital
 ```
 
 **Stella-side health-api docs:** [`../stella-server/health-api.md`](../stella-server/health-api.md)
+
+---
+
+## Atlas host monitoring
+
+`CheckAtlasHealth` runs every 5 minutes. It signs `system-health:{timestamp}` and POSTs to `ATLAS_HOST_API_URL` (`https://api.atlas.foxcraft.digital/system/health` by default). Timeout 60s. No public-probe fallback — a failed call is stored as `source=host-api-error`.
+
+Hairpin from Atlas itself to the public hostname may fail. Use `ATLAS_HOST_API_URL=http://127.0.0.1:8090` on the Atlas box if that happens. See [`host-api.md`](host-api.md).
+
+### Data model
+
+```
+AtlasHealthCheck
+  id, status (ok|degraded|down), source, response_ms, payload (JSON), error, checked_at
+
+AtlasServiceUptimeLog
+  id, atlas_health_check_id (FK cascade), service_id, service_label, category,
+  status, response_ms, message, meta (JSON), checked_at
+```
+
+**Retention:** `ATLAS_HEALTH_RETENTION_DAYS` (default 30).
+
+The UI is the pink **Server: atlas** card on the dashboard and `/monitoring/atlas`. CPU% is `load_1m / ATLAS_HOST_CPU_THREADS` (default 4, CX33).
+
+### API endpoints
+
+| Method | Path | Purpose |
+|---|---|---|
+| `GET` | `/api/monitoring/atlas` | Latest `AtlasHealthCheck` with service logs |
+| `POST` | `/api/monitoring/atlas/check` | On-demand check |
+| `GET` | `/api/monitoring/atlas/metrics` | Recent check history for charts |
+
+```
+ATLAS_HOST_API_URL=https://api.atlas.foxcraft.digital
+ATLAS_HOST_API_TIMEOUT=60
+ATLAS_HOST_CPU_THREADS=4
+ATLAS_HEALTH_RETENTION_DAYS=30
+```
 
 ---
 

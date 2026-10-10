@@ -120,7 +120,7 @@ Atlas **does not** call `stella-api` `/chat/*`. That path is ddashboard’s.
 
 | Caller | URL | Auth | Contract |
 |--------|-----|------|----------|
-| Atlas dev/prod → Atlas host API | `https://api.atlas.foxcraft.digital` | SSH signature, payload `system-health:{ts}` | [`../atlas/host-api.md`](../atlas/host-api.md) |
+| Atlas dev/prod (health), Atlas dev only (deploy) | `https://api.atlas.foxcraft.digital` | SSH signature, payload `system-health:{ts}` | [`../atlas/host-api.md`](../atlas/host-api.md) |
 
 No Atlas-side client exists yet (no Laravel client, history tables, or dashboard view).
 
@@ -163,7 +163,7 @@ Atlas uses **one SSH private key** (Settings → GitHub, `app_settings.deploy_ss
 2. **Destination servers** — rsync
 3. **Stella** — `ssh-keygen -Y sign -n deploy` for deploy-api and health-api
 
-Stella’s `deploy-api/allowed_signers` lists this public key as principal **`ddashboard`**. health-api has its **own** file (`/opt/services/health-api/allowed_signers`) with two `ddashboard` lines (`atlas-prod` and `atlas-dev`). The same `atlas-prod` and `atlas-dev` keys are also in `/opt/atlas-api/allowed_signers` (principal `ddashboard`, namespace `deploy`). The principal name is historical; health-api hardcodes `ddashboard` / namespace `deploy`. Production Atlas reuses the old managed-host key (`/home/atlas/.ssh/id_ed25519`, comment `atlas-prod`) so the 28 deploy servers did not need new `authorized_keys`. The managed host still holds the same key and can still deploy/sign. Rotation was considered and deferred. Dev instance: [`../atlas/dev-instance.md`](../atlas/dev-instance.md).
+Stella’s `deploy-api/allowed_signers` lists this public key as principal **`ddashboard`**. health-api has its **own** file (`/opt/services/health-api/allowed_signers`) with two `ddashboard` lines (`atlas-prod` and `atlas-dev`). The same `atlas-prod` and `atlas-dev` keys are also in `/opt/atlas-api/allowed_signers` (principal `ddashboard`, namespace `deploy`). `allowed_signers_deploy` contains only the atlas-dev key. The principal name is historical; health-api hardcodes `ddashboard` / namespace `deploy`. Production Atlas reuses the old managed-host key (`/home/atlas/.ssh/id_ed25519`, comment `atlas-prod`) so the 28 deploy servers did not need new `authorized_keys`. The managed host still holds the same key and can still deploy/sign. Rotation was considered and deferred. Dev instance: [`../atlas/dev-instance.md`](../atlas/dev-instance.md).
 
 The private key never crosses the network. Only a short-lived signed payload (`action:unix_timestamp`, 60 s replay window on Stella) is posted.
 
