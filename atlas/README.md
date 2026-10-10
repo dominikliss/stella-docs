@@ -7,7 +7,7 @@ It is **not** the business dashboard. Clients, invoices, mail, and projects live
 **How Atlas sits in the company stack:** [`../integration/system-overview.md`](../integration/system-overview.md)
 
 **Live at:** `https://atlas.foxcraft.digital` (replaces `https://dev.atlas.foxcraft.digital` on the managed host)  
-**Host:** Hetzner Cloud CX33 `atlas` (`2.31.42.13`) — own Cloud project, not the managed `foxcrr` host, not Edison. Runbook: [`server.md`](server.md)  
+**Host:** Hetzner Cloud CX33 `atlas` (`2.31.42.13`) — same Cloud project as Edison, not the managed `foxcrr` host. Runbook: [`server.md`](server.md)  
 **Repo:** `git@github.com:foxcraftdigital/atlas.git` (not `foxcraft/atlas`; that repo did not exist before 2026-10-10)
 
 ---
@@ -35,7 +35,7 @@ It is **not** the business dashboard. Clients, invoices, mail, and projects live
 | **WP Sites** | `/wp-sites` | Register sites, 5-min uptime, Atlas Connect login, start/list/explore backups |
 | **Monitoring** | `/monitoring/stella`, `/monitoring/atlas` | Stella and Atlas host health grids + history charts |
 | **Tools → IMAP Migration** | `/tools/imap-migration` | Trigger / poll `imapsync` jobs on Stella |
-| **Settings** | `/settings` | SSH/GitHub key path, Brevo transactional email, backup S3 + X25519 vault |
+| **Settings** | `/settings` | SSH/GitHub key path, Brevo transactional email, Hetzner Cloud token, backup S3 + X25519 vault |
 
 ## Documents in this folder
 
@@ -268,6 +268,9 @@ The **public** key must be in:
 | `GET` | `/api/settings/backups` | Show backup vault (S3 + public key; private key hidden) |
 | `PATCH` | `/api/settings/backups` | Update backup S3 / keys |
 | `POST` | `/api/settings/backups/generate-key` | Generate an X25519 key pair |
+| `GET` | `/api/settings/hetzner` | Show Hetzner Cloud token status (never the token) |
+| `PATCH` | `/api/settings/hetzner` | Save the read-only Cloud token (encrypted) |
+| `POST` | `/api/settings/hetzner/test` | List servers in the project |
 
 ---
 

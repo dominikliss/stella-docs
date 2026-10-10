@@ -26,7 +26,7 @@ Servers use One Piece Vegapunk-satellite names. Firewalls, IPs, and networks use
 | **ddashboard** | Internal business app (CRM, accounting, mail, PM, AI chat) | Hetzner managed WordPress (`foxcrr`) | Relational business data, WP sessions, `dls/v1` auth tokens |
 | **Atlas** | Internal ops platform (deploys, Stella health, WP uptime, IMAP migration) | Hetzner Cloud CX33 `atlas` (`2.31.42.13`) — `https://atlas.foxcraft.digital` | Deploy history, health history, WP-site registry, IMAP job history |
 | **Stella** | Dedicated AI / services machine | Hetzner dedicated | Ollama, stella-api, deploy-api, health-api, imap-sync, Caddy, .NET dev apps |
-| **Edison** | Coding-agent sandbox | Hetzner Cloud (separate machine) | Cursor CLI container, sshfs mounts. **Must not** run on Stella. Atlas does not call Edison today. |
+| **Edison** | Coding-agent sandbox | Hetzner Cloud (same project as Atlas) | Cursor CLI container, sshfs mounts. **Must not** run on Stella. Atlas reads Cloud API status/backups; no agent control. |
 
 Neither Atlas nor ddashboard replaces the other:
 
@@ -203,7 +203,7 @@ ddashboard **kept** its own IMAP **import** into MySQL (`dls_mail_*`). That is n
 Hetzner managed (foxcrr)
 └── ddashboard          WordPress theme + dls/v1
 
-Hetzner Cloud  (own project, not Edison)
+Hetzner Cloud  (same project as Edison)
 └── atlas  CX33  2.31.42.13
     │     https://atlas.foxcraft.digital
     │     api.atlas.foxcraft.digital → atlas-api (127.0.0.1:8090), allowlist 2.31.42.13 + 95.217.144.93
@@ -223,8 +223,8 @@ Hetzner Cloud  (own project, not Edison)
     ├── SSH ──► GitHub, rsync destinations (28 deploy_servers)
     └── HTTPS ──► registered WP sites (uptime + Atlas Connect)
 
-Hetzner Cloud
-└── Edison              coding-agent host (not on Atlas’s call graph today)
+Hetzner Cloud  (same project)
+└── Edison              coding-agent host — Atlas reads Cloud backups/status only
 ```
 
 ---

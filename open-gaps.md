@@ -13,7 +13,7 @@ Last updated: 2026-10-10
   - **TODO (Dominik):** confirm `dev.atlas.foxcraft.digital` crons (`queue-deployments.sh`, `schedule:run`) are deactivated and decide when to retire the managed-host instance.
   - **TODO (Dominik):** remove `23.88.90.12` from `ATLAS_ALLOWED_IPS` unless something on the managed host really calls Atlas; reason for each entry unverified.
   - **TODO (Dominik):** bump `@types/node` to `^22` in the Atlas repo (`npm ci` currently needs `--legacy-peer-deps`).
-  - **TODO (Dominik):** name of the Atlas Hetzner Cloud project (separate from Edison).
+  - **TODO (Dominik):** name of the Hetzner Cloud project that holds Atlas and Edison.
   - **TODO (Dominik):** rotate the reused `atlas-prod` SSH key (managed host still holds a copy). Deferred.
   - **TODO (Dominik):** test deployments from `atlas.dev` against one throwaway target (untested by design today).
   - **TODO (Dominik):** Atlas (`2.31.42.13`) gets 401 from ddashboard; Stella (`95.217.144.93`) gets 403 from the managed host’s Apache. Find the IP allowlist (probably `.htaccess` under `public_html`) and add Stella if Stella should call ddashboard.
@@ -78,7 +78,8 @@ Host rebuilt 2026-10-09 onto CX33 (`edison-ip` = `178.105.203.54`). See [`edison
 - [x] **Atlas client for the host API** — Laravel `CheckAtlasHealth`, `atlas_health_checks` / `atlas_service_uptime_logs`, dashboard card + `/monitoring/atlas`. See [`atlas/monitoring.md`](atlas/monitoring.md). Hairpin from Atlas to the public URL still open below.
 - [x] **Atlas host-api.md** — runbook at [`atlas/host-api.md`](atlas/host-api.md) (health + deploy, 2026-10-10).
 - [ ] **Atlas prod via the public API URL** — test `https://api.atlas.foxcraft.digital` from Atlas itself (hairpin risk), otherwise use `127.0.0.1:8090` locally.
-- [ ] **Edison host API** — same pattern as Atlas (hostname `api.edison.foxcraft.digital` planned), not started.
+- [x] **Hetzner Cloud API in Atlas** — read-only `HETZNER_CLOUD_TOKEN` lists atlas + edison, Cloud backups, snapshots, volumes. Dashboard Edison card + `/monitoring/edison`. See [`atlas/monitoring.md`](atlas/monitoring.md).
+- [ ] **Edison host API** — same pattern as Atlas (hostname `api.edison.foxcraft.digital` planned), not started. Cloud API covers power/backup status until then.
 - [ ] **Patch `/usr/local/bin/atlas-deploy`:** `queue:restart` instead of `systemctl restart atlas-queue`; reject refs starting with `-`
 - [ ] **First real deploy through the host API** (new commits) and record the result in [`atlas/host-api.md`](atlas/host-api.md)
 - [x] **Atlas dev app: deploy client + UI behind a flag, off on prod** — `ATLAS_SELF_DEPLOY_ENABLED` (404 when off). Button on the Server: atlas card; toasts on terminal status. See [`atlas/monitoring.md`](atlas/monitoring.md).

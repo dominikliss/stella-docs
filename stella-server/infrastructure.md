@@ -12,7 +12,7 @@
 ### ddashboard (Hetzner Managed)
 - **Role:** WordPress — ddashboard theme, Stella **chat** client, REST `dls/v1` (including auth tokens consumed by Atlas)
 
-### Atlas (Hetzner Cloud, own project — not this host, not Edison)
+### Atlas (Hetzner Cloud, same project as Edison — not this host)
 - **Role:** Ops platform — deploys, Stella health polling, WP site uptime, IMAP migration UI
 - **Host:** CX33 `atlas`, `2.31.42.13`, Ubuntu 26.04, not containerized
 - **URL:** `https://atlas.foxcraft.digital` (replaces `https://dev.atlas.foxcraft.digital` on the managed `foxcrr` host)

@@ -30,10 +30,10 @@ Business code lives under `app/Domain/{Name}/` (controllers, models, jobs, servi
 |--------|----------------|
 | `Auth` | Login proxy, token middleware, IP allowlist, `DdashboardTokenDriver` / `FakeTokenAuthDriver` |
 | `Deploy` | Configs, servers, runs, rsync, Stella deploy-api client, SSH signer, GitHub branches, folder browser |
-| `Monitoring` | Stella health-api + public-probe fallback; Atlas host-api health + optional self-deploy; history + prune |
+| `Monitoring` | Stella health-api + public-probe fallback; Atlas host-api health + optional self-deploy; Hetzner Cloud (atlas + edison backups); history + prune |
 | `WpSites` | Site registry, uptime job, Atlas Connect login, down-alert mail, backup driver + explorer — see [`atlas-connect/backups.md`](atlas-connect/backups.md) |
 | `Tools` | IMAP migration proxy to Stella `imap-sync` |
-| `Settings` | `app_settings` key/value (SSH path, Brevo, backup S3 + X25519 vault) |
+| `Settings` | `app_settings` key/value (SSH path, Brevo, Hetzner Cloud token, backup S3 + X25519 vault) |
 
 `App\Providers\AtlasServiceProvider` binds `TokenAuthDriver`. With `ATLAS_DEMO_MODE=true` it binds `FakeTokenAuthDriver` instead so the UI can be exercised without ddashboard.
 
@@ -46,11 +46,12 @@ Entry: `resources/views/app.blade.php` → Vite → `resources/js/routes/index.t
 | Route | Page |
 |-------|------|
 | `/login` | `domains/auth/LoginPage` |
-| `/dashboard` | `domains/dashboard/DashboardPage` (+ `StellaServerStatus`, `AtlasServerStatus`) |
+| `/dashboard` | `domains/dashboard/DashboardPage` (+ `StellaServerStatus`, `AtlasServerStatus`, `EdisonServerStatus`) |
 | `/deployments` | `domains/deployments/DeploymentsPage` |
 | `/wp-sites` | `domains/wp-sites/WpSitesPage` |
 | `/monitoring/stella` | `domains/monitoring/StellaDetailPage` |
 | `/monitoring/atlas` | `domains/monitoring/AtlasDetailPage` |
+| `/monitoring/edison` | `domains/monitoring/EdisonDetailPage` |
 | `/tools` | `domains/tools/ToolsPage` |
 | `/tools/imap-migration` | `domains/tools/imap-migration/ImapMigrationPage` |
 | `/settings` | `domains/settings/SettingsPage` |
@@ -85,7 +86,7 @@ Login / refresh / logout skip token middleware (still IP-filtered) and proxy to 
 |---------------|---------|
 | `users`, `teams`, Spatie permission tables | Local user projection of ddashboard identity |
 | `personal_access_tokens` | Sanctum leftover — **not** the live Atlas API auth path |
-| `app_settings` | SSH key path/passphrase, Brevo keys and alert recipient |
+| `app_settings` | SSH key path/passphrase, Brevo keys, Hetzner Cloud token (encrypted), alert recipient |
 | `deploy_configs`, `deploy_destinations`, `deploy_servers` | What/where to deploy |
 | `deploy_runs`, `deploy_run_destinations` | Run history + per-target logs / `stella_job_id` |
 | `stella_health_checks`, `stella_service_uptime_logs` | 5-min Stella snapshots (30-day retention) |
@@ -146,5 +147,5 @@ Pest feature tests under `tests/Feature/{Auth,Deploy}/` and unit tests under `te
 - Not a WordPress theme and not a ddashboard module
 - Not the Stella UI
 - Not an identity provider
-- Not responsible for Edison / Cursor agents (no code path today)
+- Not responsible for Edison / Cursor agents (Cloud API reads server + backup status only; no agent control)
 - Not the mailbox **importer** (ddashboard `dls_mail_*`); Atlas only starts **mailbox copies** on Stella

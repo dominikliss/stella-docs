@@ -172,6 +172,8 @@ The UI is the pink **Server: atlas** card on the dashboard and `/monitoring/atla
 | `GET` | `/api/monitoring/atlas/metrics` | Recent check history for charts |
 | `POST` | `/api/monitoring/atlas/deploy` | Start a production deploy (atlas.dev only; 404 when the flag is off) |
 | `GET` | `/api/monitoring/atlas/deploy/status` | Poll deploy status + `log_tail` (atlas.dev only; 404 when the flag is off) |
+| `GET` | `/api/monitoring/hetzner` | Live Hetzner Cloud snapshot (atlas + edison + extras, cached) |
+| `POST` | `/api/monitoring/hetzner/refresh` | Drop the cache and refetch |
 
 `ATLAS_SELF_DEPLOY_ENABLED` must stay `false` on production. When true (atlas.dev), the Server: atlas card shows **Deploy production**. The Laravel client signs `deploy-atlas` / `deploy-status` against `ATLAS_HOST_API_URL`. The host API has no SSE; the UI polls status. See [`host-api.md`](host-api.md).
 
@@ -182,6 +184,44 @@ ATLAS_HOST_CPU_THREADS=4
 ATLAS_HEALTH_RETENTION_DAYS=30
 ATLAS_SELF_DEPLOY_ENABLED=false
 ```
+
+---
+
+## Hetzner Cloud (Atlas + Edison)
+
+Atlas and Edison are CX33s in the **same** Hetzner Cloud project. Atlas reads that project through `api.hetzner.cloud` (read-only token) and shows server facts plus automatic Cloud backups.
+
+This is a different layer from Stella’s restic → Storage Box backups and from the optional Atlas host-api `backup` object.
+
+`GET /api/monitoring/hetzner` (cached 120s). `POST /api/monitoring/hetzner/refresh` drops the cache. The token is never returned to the browser.
+
+| Field | Source |
+|---|---|
+| status, type, cores, RAM, disk, location, IPv4 | `GET /servers` |
+| backup window / enabled | `server.backup_window` (`null` = backups off) |
+| Cloud backup images | `GET /images?type=backup` (`bound_to` = server id) |
+| Snapshots | `GET /images?type=snapshot` (`created_from.id`) |
+| Volumes | `GET /volumes` |
+
+Servers are matched by name (`atlas`, `edison`), then by IPv4 (`2.31.42.13`, `178.105.203.54`). Extra servers in the project are listed without a role.
+
+| `backup_status` | When |
+|---|---|
+| `ok` | Backups enabled, newest image ≤ 36 h |
+| `degraded` | Newest image 36–72 h |
+| `down` | Enabled but no image, or newest > 72 h |
+| `unconfigured` | `backup_window` is null |
+
+Token (read-only) lives in **Settings → Hetzner Cloud** (`app_settings.hetzner_cloud_token`, encrypted). `HETZNER_CLOUD_TOKEN` in `.env` is a fallback only. The token is never returned to the browser.
+
+```
+HETZNER_CLOUD_ATLAS_NAME=atlas
+HETZNER_CLOUD_ATLAS_IPV4=2.31.42.13
+HETZNER_CLOUD_EDISON_NAME=edison
+HETZNER_CLOUD_EDISON_IPV4=178.105.203.54
+```
+
+UI: Settings → Hetzner Cloud (save + test); Atlas detail page **Hetzner Cloud** section; dashboard **Server: edison** card + `/monitoring/edison`. Edison has no host API yet — Cloud is the only live signal.
 
 ---
 

@@ -1,6 +1,6 @@
 # Atlas production host
 
-Hetzner Cloud server **`atlas`**. Moved off the Hetzner managed host (`dev.atlas.foxcraft.digital`, user `foxcrr`) on 2026-10-10. Not containerized. Separate Hetzner Cloud project from Edison. **TODO (Dominik):** name of the Atlas Cloud project.
+Hetzner Cloud server **`atlas`**. Moved off the Hetzner managed host (`dev.atlas.foxcraft.digital`, user `foxcrr`) on 2026-10-10. Not containerized. Same Hetzner Cloud project as Edison. **TODO (Dominik):** name of that Cloud project.
 
 **Related:** [`README.md`](README.md) (product), [`architecture.md`](architecture.md) (code map), [`host-api.md`](host-api.md) (Atlas host API), Stella firewall [`../stella-server/infrastructure.md`](../stella-server/infrastructure.md).
 

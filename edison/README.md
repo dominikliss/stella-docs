@@ -2,7 +2,7 @@
 
 **Status:** Rebuilt 2026-10-09 on a **CX33** (old CPX32 renamed `edison-old`, then deleted). Host + `cursor-agent` container live. Web UI for headless runs is not built yet.
 
-**Edison** is a dedicated Hetzner Cloud box for coding agents (Cursor CLI today; OpenCode later as a second backend). It is **not** part of Stella. Agents run here so Stella’s LLM / RAG load and the agent sandbox do not starve each other.
+**Edison** is a dedicated Hetzner Cloud box for coding agents (Cursor CLI today; OpenCode later as a second backend). It is **not** part of Stella. Same Cloud project as Atlas — Atlas reads power/backup status via the Cloud API (`/monitoring/edison`). Agents run here so Stella’s LLM / RAG load and the agent sandbox do not starve each other.
 
 **Used for:** Cursor CLI sessions against remote staging trees (first target: `osgar.datahub.foxcraft.digital`). The agent process lives on Edison; the files it edits are a live `sshfs` mount of the remote app — no local git checkout.
 
