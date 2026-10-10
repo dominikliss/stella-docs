@@ -12,7 +12,7 @@
 
 **Fully confirmed, tested directly:**
 - `GET /health` — basic liveness, tested both internally (container IP) and via the public route. Returns `{"status":"ok"}`.
-- `POST /system/health` — full signed request/response cycle, tested via internal container IP with a temporary test principal (`stella-local`, since removed). Returned complete, correct JSON covering all checks active at that point: 8 container statuses, 2 HTTP checks, 4 TLS certs, disk, Ollama model count.
+- `POST /system/health` — full signed request/response cycle, tested via internal container IP with a temporary test principal (`stella-local`, since removed). Returned complete, correct JSON covering all checks active at that point (original 2026-08-10 test: 8 container statuses, 2 HTTP checks, 4 TLS certs, disk, Ollama model count). As of 2026-10-10 the container and cert lists are dynamic — see below.
 - **Auth correctly rejects invalid signatures** — confirmed when a request signed with Stella's own untrusted key (`stella-server`, not in `allowed_signers`) was correctly rejected with `401 signature verification failed`. This is the production-correct behavior: only `ddashboard` (Atlas's principal) should ever pass.
 - Public subdomain `stella-health-api.foxcraft.digital` — live, valid Let's Encrypt production cert (not staging), reachable.
 
@@ -37,7 +37,7 @@ ollama_resource_usage: <paste result>
 Originally built as a route bolted onto `deploy-api` (`POST /system/health`), then split out deliberately:
 
 - `deploy-api` already holds the highest-privilege access on the server — mounted Docker socket, mounted SSH key, Azure service principal credentials. Bundling health-checks into it means the monitoring system shares fate with the most sensitive service on the box: if `deploy-api` crashes or is mid-rebuild, the dashboard goes dark at exactly the moment visibility matters most.
-- `health-api` only needs the Docker socket (read access to container state) and a read-only mount of the host root (disk stats) — genuinely lower privilege. No SSH key, no cloud credentials, no `/opt/apps` write access.
+- `health-api` needs the Docker socket (read access to container state), a read-only host root (disk stats), a read-only Caddyfile (cert domain list), a read-only backup dir (`last-run.json` / `history.jsonl` / `last-verify.json`), and a writable `/state` for `seen.json`. Still no SSH key, no cloud credentials, no `/opt/apps` write access.
 - A bug in one no longer takes down the other — proven directly during build/test, when `deploy-api` briefly broke from an unrelated edit and `health-api` was unaffected once split apart.
 
 ---
@@ -60,6 +60,9 @@ health-api:
     - /var/run/docker.sock:/var/run/docker.sock
     - ./health-api/allowed_signers:/opt/services/health-api/allowed_signers:ro
     - /:/hostroot:ro
+    - ./caddy/Caddyfile:/etc/caddy/Caddyfile:ro
+    - ./health-api/state:/state
+    - ./backup:/opt/services/backup:ro
   networks:
     - edge
   restart: unless-stopped
@@ -125,7 +128,7 @@ stella-health-api.foxcraft.digital {
 
 **No new UFW rules for the public subdomain.** `stella-health-api.foxcraft.digital` routes through Caddy on port 443 (Docker-published, so `DOCKER-USER` is the filter that matters). Atlas (`2.31.42.13`) is ACCEPTed there; the two static team IPs remain. No new UFW rule was needed for the public route itself. The earlier UFW fix (`172.20.0.0/16` on port 8001) was a separate, internal concern — `health-api` reaching `stella-api` directly — unrelated to Atlas's external access path through Caddy.
 
-**2026-10-10:** signed health-api check from the new Atlas host (`https://atlas.foxcraft.digital`) returned status ok, 21 services. See [`../atlas/server.md`](../atlas/server.md).
+**2026-10-10:** signed health-api check from the new Atlas host (`https://atlas.foxcraft.digital`) returned status ok, 21 services (Atlas host-move check, before the dynamic container/cert change). Later the same day, after containers and certs became dynamic: **20 containers all `up`** (6 core + 14 discovered) and **7 certs ok**, plus HTTP checks for `stella-api` and `ollama` up. See [`../atlas/server.md`](../atlas/server.md) and the check table below.
 
 ---
 
@@ -162,7 +165,7 @@ print(json.dumps({'payload': payload, 'signature': sig}))
 
 Internal edge-network callers can still use `http://health-api:8080/system/health`.
 
-**Response can take longer than a typical API call** — the full check suite (Docker daemon, 8 container inspects, 2 HTTP probes, TLS handshakes for each cert domain including this subdomain, `docker exec ollama ollama list`, `docker stats`, host CPU/RAM/disk) can run 10-20+ seconds depending on load, especially if Ollama is busy. Set client timeouts to at least 60s, not the usual 5-15s default.
+**Response can take longer than a typical API call** — the full check suite (Docker daemon, every discovered container, HTTP probes, TLS handshakes for each Caddyfile site including this subdomain, `docker exec ollama ollama list`, `docker stats`, host CPU/RAM/disk, backup dump/verify) can run 10-20+ seconds depending on load, especially if Ollama is busy. Set client timeouts to at least 60s, not the usual 5-15s default.
 
 ---
 
@@ -170,16 +173,60 @@ Internal edge-network callers can still use `http://health-api:8080/system/healt
 
 | Category | How | Notes |
 |---|---|---|
-| **Docker daemon** | `docker info` | Reported separately from container checks — if the daemon itself is down/restarting (the actual root cause of the Aug 7 `advoapp-dev` outage), this shows the real cause distinctly instead of all 8 container checks failing with the same generic "missing" error and no indication of *why*. |
-| **Container status** | `docker inspect <name>` via mounted socket | Status, `StartedAt`, `RestartCount` for all 8 core/app containers |
-| **HTTP health** | `stella-api` and `ollama` endpoints | See addressing notes below — neither is reachable via naive `127.0.0.1` |
-| **TLS cert expiry** | Raw `ssl`/`socket`, connects to `caddy:443` with SNI for each domain | Domains include `stella.foxcraft.digital`, `advoapp.finditoo.foxcraft.digital`, `stella-deployment-api.foxcraft.digital`, `osgar.datahub.foxcraft.digital`, and **`stella-health-api.foxcraft.digital`** (self). See hairpin NAT note below — connecting to the public domain/IP directly times out |
+| **Docker daemon** | `docker info` | Reported separately from container checks — if the daemon itself is down/restarting (the actual root cause of the Aug 7 `advoapp-dev` outage), this shows the real cause distinctly instead of every container check failing with the same generic "missing" error and no indication of *why*. |
+| **Container status** | Static `CORE_CONTAINERS` in `health.py` + `docker ps -a` discovery | Status, `StartedAt`, `RestartCount`. No hardcoded app list — see below. |
+| **HTTP health** | `stella-api` and `ollama` endpoints, plus optional `health.http` labels | See addressing notes below — neither core probe is reachable via naive `127.0.0.1`. Extra HTTP probes only work for containers on `edge`. |
+| **TLS cert expiry** | Raw `ssl`/`socket`, connects to `caddy:443` with SNI for each Caddyfile site | Domains are parsed from the live Caddyfile (mounted read-only at `/etc/caddy/Caddyfile` from `/opt/services/caddy/Caddyfile`). A new site block gets a cert check automatically. See hairpin NAT note below — connecting to the public domain/IP directly times out. |
 | **Ollama model count** | `docker exec ollama ollama list`, compares against `EXPECTED_OLLAMA_MODELS = 13` | Flags `incomplete` if fewer than expected — catches a partial/broken pull |
 | **Ollama resource usage** | `docker stats ollama --no-stream` | Live CPU%/memory usage for the Ollama container specifically — the actionable number given the CPU cap added the same day (`cpus: "6"`). Host-wide load average (below) doesn't tell you whether Ollama itself is the thing near its ceiling. |
 | **Host CPU load / RAM** | Reads `/proc/loadavg` and `/proc/meminfo` through the `/hostroot` mount already used for disk stats | `load_1m` near `12.0` on this 12-thread box means fully saturated. No new mount required — same `/:/hostroot:ro` volume already in place. |
 | **Disk usage** | `os.statvfs` on `/hostroot` (mounted read-only host root) | Total/free/used% |
-| **Backup status** | Reads `/opt/services/backup/last-run.json` (mounted read-only) | Flags `stale` if last successful run >26h old, `failed` if last run's status wasn't success, `unknown` if the file has never been written — see [`backup.md`](backup.md) |
-| **Backup history** | Reads `/opt/services/backup/history.jsonl` (mounted read-only) | `get_backup_history()` returns the last 30 runs most-recent-first as `backup_history` in the response payload — same `{status, duration_seconds, timestamp}` shape as `last-run.json` |
+| **Backup status** | `last-run.json` + dump files + `history.jsonl` shrink check + `last-verify.json` | Possible `backup.status` values: `ok`, `warning`, `failed`, `stale` (last success older than 26h), `unknown`. Response includes a `problems` list and a `verify` object — see below and [`backup.md`](backup.md). Atlas shows `problems` on the dashboard and `/monitoring/stella` (2026-10-10). |
+| **Backup history** | Reads `/opt/services/backup/history.jsonl` (mounted read-only) | `get_backup_history()` returns the last 30 runs most-recent-first as `backup_history` in the response payload. Atlas dashboard tile "BACKUPS 30/30" counts these 30 entries, not a retention limit. |
+
+### Containers — static core list + live discovery (2026-10-10)
+
+health-api no longer uses a hardcoded container list for the whole host.
+
+**`CORE_CONTAINERS` in `health.py`** (required; report `missing` when absent):
+
+| Display name | Running container |
+|---|---|
+| `caddy` | `services-caddy-1` |
+| `stella-api` | `services-stella-api-1` |
+| `imap-sync` | `services-imap-sync-1` |
+| `deploy-api` | `deploy-api` |
+| `ollama` | `ollama` |
+| `backup` | `backup` |
+
+Every other container is discovered via `docker ps -a`. Opt out with the label `health.enable=false`. Optional labels:
+
+| Label | Effect |
+|---|---|
+| `health.name` | Display name in the health payload |
+| `health.http=<url>` | Adds an HTTP probe. **Only works for containers on `edge`.** |
+
+**Last-seen state:** discovered containers are stored in `/opt/services/health-api/state/seen.json` (mounted at `/state`). A previously seen container that disappears reports `missing`. To retire one on purpose, delete its entry from `seen.json`.
+
+**Verified 2026-10-10:** 20 containers all `up` — 6 core + 14 discovered (`advoapp-dev`, `advoapp-ssh`, the 5 `atlas.dev` containers, the 3 `dominikliss` containers, `health-api`, `osgar-datahub-db` / `-dev` / `-ssh`). HTTP checks for `stella-api` and `ollama` up.
+
+### Certs — parsed from the live Caddyfile (2026-10-10)
+
+Domains are parsed from the Caddyfile mounted read-only at `/etc/caddy/Caddyfile` (from `/opt/services/caddy/Caddyfile`). Any new site block gets a cert check automatically. There is no hardcoded domain list in `health.py`.
+
+Currently 7 domains: `stella`, `advoapp.finditoo`, `stella-deployment-api`, `osgar.datahub`, `stella-health-api`, `dominikliss`, `atlas.dev` (all `.foxcraft.digital`). If the Caddyfile is unreadable or has no site blocks, `certs.caddyfile` reports `error`.
+
+**Verified 2026-10-10:** 7 certs ok.
+
+### Backup check — dump files, shrink, weekly verify (2026-10-10)
+
+Besides `last-run.json`, health-api now:
+
+1. Verifies each dump file listed in `last-run.json` exists in `/opt/services/backup/dumps`, is at least 1 KB and under 26h old, and that `complete` is true.
+2. Flags a snapshot whose `snapshot_bytes` is below 70% of the median of the previous successful runs (from `history.jsonl`) as `warning`.
+3. Reads `/opt/services/backup/last-verify.json` and flags a failed weekly restic check as `failed`, or one older than 192 hours as `warning`.
+
+Possible `backup.status` values: `ok`, `warning`, `failed`, `stale` (last success older than 26h), `unknown`. A `problems` list and a `verify` object are included in the response. Atlas displays both on the dashboard tile and `/monitoring/stella` (2026-10-10).
 
 ### Addressing gotchas hit during build — know these before adding new checks
 
@@ -224,7 +271,12 @@ Internal edge-network callers can still use `http://health-api:8080/system/healt
   "ollama_models": {"count": 13, "expected": 13, "status": "ok"},
   "ollama_resource_usage": {"cpu_pct": "412.30%", "mem_usage": "38.2GiB / 62GiB", "mem_pct": "61.61%"},
   "disk": {"total_gb": 1001.6, "free_gb": 645.7, "used_pct": 35.5},
-  "cpu_ram": {"load_1m": 4.2, "load_5m": 3.8, "load_15m": 3.1, "ram_total_gb": 124.0, "ram_available_gb": 78.3, "ram_used_pct": 36.9}
+  "cpu_ram": {"load_1m": 4.2, "load_5m": 3.8, "load_15m": 3.1, "ram_total_gb": 124.0, "ram_available_gb": 78.3, "ram_used_pct": 36.9},
+  "backup": {
+    "status": "ok",
+    "problems": [],
+    "verify": {"status": "ok", "timestamp": "2026-10-10T03:05:00+00:00"}
+  }
 }
 ```
 

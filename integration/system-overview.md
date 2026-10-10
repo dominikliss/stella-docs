@@ -167,7 +167,7 @@ The private key never crosses the network. Only a short-lived signed payload (`a
 | Users, roles, passwords | **ddashboard** (WordPress) | Atlas `users` + Spatie roles (synced on login / verify) |
 | Clients, invoices, mail, PM | **ddashboard** MySQL | — |
 | Deploy configs, runs, logs | **Atlas** MySQL | Stella deploy-api keeps its own in-memory/job logs during a run |
-| Stella health snapshots | **Atlas** (`stella_health_checks`, `stella_service_uptime_logs`) | health-api is live-only; it does not store history |
+| Stella health snapshots | **Atlas** (`stella_health_checks`, `stella_service_uptime_logs`) | health-api is live-only except last-seen container names in `seen.json`; Atlas stores the snapshots |
 | WP site registry + uptime | **Atlas** (`wp_sites`, `wp_site_uptime_logs`) | Site itself does not push status (Atlas pulls) |
 | IMAP migration job history | **Atlas** (`imap_migration_jobs`, **no passwords**) | Stella `imap-sync` holds live job + log in memory (lost on restart, 4 h TTL) |
 | LLM inference | **Stella** Ollama | ddashboard stores chat transcripts |

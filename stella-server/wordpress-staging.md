@@ -101,6 +101,8 @@ volumes:
 
 `$$` is Compose escaping for the PHP `$`.
 
+New WP containers are discovered by health-api and included in the restic backup automatically (MariaDB is dumped; the raw `db-data` volume is excluded). Opt out with `health.enable=false` / `backup.exclude=true` if needed. See [`health-api.md`](health-api.md) and [`backup.md`](backup.md).
+
 **Password gotcha:** the DB password ends up in plain text in `html/wp-config.php` after first start. Later `.env` changes do **not** propagate to `wp-config.php` or to MariaDB, which only reads its passwords on first start with an empty volume.
 
 ---

@@ -104,7 +104,7 @@ Stella `DOCKER-USER` ACCEPTs port **2205** from Dominik’s IP, the managed host
 ## Verified
 
 - Login
-- `stella:check-health` (source health-api, 21 services)
+- `stella:check-health` (source health-api, 21 services at first check). Later 2026-10-10, after health-api became dynamic: 20 containers + 7 certs. See [`../stella-server/health-api.md`](../stella-server/health-api.md).
 - Scheduler
 - Queue
 - 0 pending migrations

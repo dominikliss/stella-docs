@@ -109,5 +109,5 @@ No `supervisorctl`, no Docker, no host access needed — plain file read over th
 ## If this pattern is copied to a future `.NET` app
 
 - Add `app-logs/` to `.gitignore` (log content, not source).
-- Do **not** add `app-logs` to the `backup.volumes` label — it's regenerable runtime output, not data worth restoring (same reasoning already applied to `src/` being excluded from backups in [`../../backup.md`](../../backup.md)).
+- Keep `app-logs/` out of restic if possible — it is regenerable runtime output. As of 2026-10-10 the backup includes the whole of `/opt/apps` (including `src/`); restic already excludes `*/logs`. A directory named `app-logs` does **not** match that pattern, so either put logs under a `logs/` path or accept they get backed up. Do not treat `backup.volumes` as the only scope. See [`../../backup.md`](../../backup.md).
 - If the app's own log output volume is high, consider a shorter `stdout_logfile_backups` count, or route to a proper log file inside the app's own logging config rather than relying on supervisord's rotation.

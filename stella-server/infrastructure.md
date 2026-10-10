@@ -250,7 +250,7 @@ Each new subdomain gets its own block at the bottom, reverse-proxying to a conta
 
 **After any Caddyfile edit:** `docker compose restart caddy` is required (not `up -d` alone — Compose does not recreate/reload on bind-mounted file content changes). Restart mid-retry is fine; Caddy simply restarts the attempt for the affected domain.
 
-**`caddy-data` volume (added 2026-09-01):** Caddy stores ACME certificates under `/data`. Before this volume existed, every `docker compose up -d --force-recreate caddy` (or `down`/`up`) wiped all certs and forced a full re-issuance across every domain. That is what happened when the leftover `8080`/`3001` port publishes were removed — a multi-domain recert storm, including a transient Let's Encrypt staging fallback on `stella-deployment-api.foxcraft.digital` (resolved after clearing one stale `_acme-challenge` TXT record and waiting out normal DNS-01 retries — same Issue 2/3 pattern, no new failure mode). The named volume is declared next to `ollama-models` under the top-level `volumes:` key. **This should prevent the whole-fleet-recert issue from recurring on any future Caddy recreate.** The volume lives outside `/opt/services`, so restic does not currently back it up — see [`backup.md`](backup.md).
+**`caddy-data` volume (added 2026-09-01):** Caddy stores ACME certificates under `/data`. Before this volume existed, every `docker compose up -d --force-recreate caddy` (or `down`/`up`) wiped all certs and forced a full re-issuance across every domain. That is what happened when the leftover `8080`/`3001` port publishes were removed — a multi-domain recert storm, including a transient Let's Encrypt staging fallback on `stella-deployment-api.foxcraft.digital` (resolved after clearing one stale `_acme-challenge` TXT record and waiting out normal DNS-01 retries — same Issue 2/3 pattern, no new failure mode). The named volume is declared next to `ollama-models` under the top-level `volumes:` key. **This should prevent the whole-fleet-recert issue from recurring on any future Caddy recreate.** The volume lives outside `/opt/services` as `services_caddy-data`. As of 2026-10-10 restic includes every volume used by a container (except `ollama-models` and dumped DB volumes), so **`caddy-data` is backed up** — a restore should not force a recert storm. See [`backup.md`](backup.md).
 
 **Resolved 2026-08-10:** Ollama's Caddy route now uses `ollama:11434` container-name routing, consistent with `imap-sync:3001` and `deploy-api:8080`. `stella-api` still uses `172.18.0.1:8001` (the `services_default` gateway) since it runs `network_mode: host` and isn't reachable by container name — this one is a structural constraint of that networking mode, not an inconsistency to fix.
 
@@ -412,6 +412,7 @@ networks:
 6. Add a Caddy block with explicit `dir` pin (see Caddyfile template above), **plus a `@blocked remote_ip` deny-list for any client IPs currently active** (see [`client-ip-access.md`](client-ip-access.md)), then `docker compose restart caddy`
 7. Check / clear stale `_acme-challenge` TXT if issuance sticks (Issue 2)
 8. `docker compose build && docker compose up -d` (or `docker-compose.dev.yml` for .NET hot-reload — see [`dotnet-app-deployment.md`](dotnet-app-deployment.md)). For WordPress staging, use `/opt/apps/wordpress/<subdomain>/` and the checklist in [`wordpress-staging.md`](wordpress-staging.md) (Caddy upstream port **80**, not 8080; SSH port + `DOCKER-USER` rules required).
+9. Default: the new containers are discovered by health-api and included in the restic backup. Opt out on the compose service with `health.enable=false` and/or `backup.exclude=true`. Optional: `health.http=<url>` adds an HTTP probe (only works for containers on `edge`); `health.name` sets the display name. See [`health-api.md`](health-api.md) and [`backup.md`](backup.md).
 
 No UFW or `DOCKER-USER` changes needed for Caddy-routed HTTP apps — that's the entire point of routing everything through Caddy on the `edge` network. **Exception:** per-app `-ssh` containers publish a host port (`22XX:22`) and **must** get matching `DOCKER-USER` rules. They must **not** join `edge`. See [`dev-ssh-access.md`](dev-ssh-access.md). Next free SSH port: **2206**. Port **2205** is Atlas dev (`atlas.dev.foxcraft.digital`). Port 2203 is free (`advoapp-redesign-ssh` removed 2026-10-10); nothing of that app remains on Stella.
 
@@ -703,6 +704,25 @@ services:
       - /var/run/docker.sock:/var/run/docker.sock
       - ./health-api/allowed_signers:/opt/services/health-api/allowed_signers:ro
       - /:/hostroot:ro
+      - ./caddy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - ./health-api/state:/state
+      - ./backup:/opt/services/backup:ro
+    networks:
+      - edge
+    restart: unless-stopped
+
+  backup:
+    build: ./backup-container
+    container_name: backup
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - /opt/apps:/opt/apps
+      - /opt/services:/opt/services
+      - /root/.ssh:/root/.ssh:ro
+      - /var/lib/docker/volumes:/var/lib/docker/volumes:ro
+      - /:/hostroot:ro
+    env_file:
+      - ./backup/.env
     networks:
       - edge
     restart: unless-stopped
@@ -736,4 +756,20 @@ The entire `/opt/services` stack (`caddy`, `ollama`, `deploy-api`, `health-api`,
 
 Stack was restarted via `docker compose up -d` from `/opt/services` and came back healthy. Caddy re-acquired all 5 domain certs from existing `caddy-data` storage without re-issuance.
 
-**Unresolved:** nothing is currently monitoring whether this stack is running. `health-api` itself (which would normally catch this class of issue) was one of the containers that was down.
+**Unresolved (updated 2026-10-10):** the "nothing monitors this" gap is partly closed — core containers report `missing` when absent, and discovered ones are remembered in `seen.json` — but the root cause is still unidentified. `health-api` itself being down still blinds the signed path until Atlas's public-probe fallback fires. See [`health-api.md`](health-api.md).
+
+### Named Docker volumes (verified 2026-10-10)
+
+| Volume | Notes |
+|---|---|
+| `advoappfinditoofoxcraftdigital_advoapp-ssh-keys` | advoapp SSH host keys |
+| `atlasdevfoxcraftdigital_db-data` | Atlas dev MySQL (dumped; raw volume excluded from restic) |
+| `atlasdevfoxcraftdigital_ssh-keys` | Atlas dev SSH host keys |
+| `dominiklissfoxcraftdigital_db-data` | WP staging MariaDB (dumped; raw volume excluded from restic) |
+| `dominiklissfoxcraftdigital_ssh-keys` | WP staging SSH host keys |
+| `osgardatahubfoxcraftdigital_osgar-datahub-mssql-data` | MSSQL (predump `.bak`; raw volume excluded) |
+| `osgardatahubfoxcraftdigital_osgar-datahub-ssh-keys` | osgar SSH host keys |
+| `services_caddy-data` | Caddy ACME certs — **backed up** as of 2026-10-10 |
+| `services_ollama-models` | ~172 GB, intentionally excluded, re-pullable |
+
+Three anonymous empty volumes found on 2026-10-10 were removed. Full backup scope: [`backup.md`](backup.md). Restore: [`restore.md`](restore.md).

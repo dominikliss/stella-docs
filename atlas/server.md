@@ -139,7 +139,7 @@ Atlas reuses the same keypair as the old managed-host Atlas (principal `ddashboa
 
 ## Deploy code
 
-Current release: **tag `1.0.1`**.
+Current release: **tag `1.0.2`**.
 
 As user `atlas` in `/var/www/atlas` (`sudo -u atlas …` from root — never as root):
 
@@ -175,7 +175,7 @@ systemctl restart atlas-queue
 ## Verified 2026-10-10 (from this host)
 
 - Login via ddashboard
-- Signed health-api check (status ok, 21 services)
+- Signed health-api check (status ok, 21 services — Atlas host-move check). Later the same day, after health-api became dynamic: 20 containers + 7 certs. See [`../stella-server/health-api.md`](../stella-server/health-api.md).
 - Signed deploy-api calls
 - Several `ssh_rsync` deployments
 - Scheduled health checks via cron

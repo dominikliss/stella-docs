@@ -60,7 +60,7 @@ Browser (IP-allowlisted)
     → Atlas SPA / API
         → ddashboard          identity (login, verify, refresh)
         → Stella deploy-api   signed .NET / Docker deploys
-        → Stella health-api   signed container / TLS / disk snapshot
+        → Stella health-api   signed dynamic container / Caddyfile-cert / disk / backup snapshot
         → Stella imap-sync    mailbox copy (no HTTP auth)
         → GitHub + SSH hosts  ssh_rsync deploys
         → WP sites            HEAD uptime + Atlas Connect login / backup driver

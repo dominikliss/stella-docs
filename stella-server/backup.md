@@ -1,6 +1,6 @@
 # Server Backups — restic → Hetzner Storage Box
 
-**Purpose:** nightly encrypted backup of Stella's infra configs, app data, and databases, with no per-service script changes needed when a new service is added — services opt in via Docker labels.
+**Purpose:** nightly encrypted backup of Stella's infra configs, app trees, Docker volumes, databases, and host config. Scope is automatic — a new service under `/opt/services` or `/opt/apps` is included without labels. Opt out with `backup.exclude=true`. Disaster-recovery runbook: [`restore.md`](restore.md) (also kept on the server at `/opt/services/backup/RESTORE.md`, which is itself backed up).
 
 ---
 
@@ -17,37 +17,61 @@
 
 ## Backup scope
 
-### `/opt/services` — recursive, zero-maintenance
+Automatic and dynamic as of 2026-10-10. Labels are no longer the only way something gets included.
 
-The entire `/opt/services` tree is backed up unconditionally. Every Dockerfile, `main.py`/`health.py`/etc. source file, `.env`, `allowed_signers` (including health-api’s own file at `/opt/services/health-api/allowed_signers`, separate from deploy-api’s), and `docker-compose.yml` under `/opt/services` is covered the moment it exists on disk — no changes to `run.sh` needed when a new service is added here.
+### Included automatically
 
-**Excluded via restic `--exclude`:** `ollama-models` (re-pullable), `*/logs`, `*/node_modules`, `*/__pycache__`, `*/.git`, `*/venv` (Python virtualenvs — fully reproducible via `pip install -r requirements.txt`).
+The whole of `/opt/services` and `/opt/apps` (compose files, Dockerfiles, `.env`, `src/`, `html/`, `authorized_keys`, storage).
 
-**Not in this tree:** Caddy ACME certificates live in the named Docker volume `caddy-data` (mounted at `/data` in the `caddy` container — added 2026-09-01). That volume is outside `/opt/services`, so restic does not currently back it up. Losing the volume still forces a full recert; the volume only survives Caddy *container* recreate. See [`infrastructure.md`](infrastructure.md).
+**Excluded via restic `--exclude`:** `ollama-models`, `*/logs`, `*/node_modules`, `*/__pycache__`, `*/.git`, `*/venv`, `/opt/apps/dotnet/*/src/bin`, `/opt/apps/dotnet/*/src/obj`.
 
-### `/opt/apps` — label-driven, data only
+### Docker volumes
 
-Unlike `/opt/services`, only *data* under `/opt/apps` is backed up — not `src/` (git-clonable) or build artifacts. This is opt-in via `backup.enable=true` + `backup.volumes` labels on the relevant containers, since blanket-including all of `/opt/apps` would pull in every dev container's live source tree.
+Every volume used by a container is discovered via `docker inspect` and included, except `ollama-models` and volumes of DB containers that are dumped instead. This brings in `services_caddy-data` (certs, so no recert storm after a restore) and the SSH host-key volumes. Unused volumes are logged as `[warn] volume … not used by any container`. The three anonymous empty volumes found on 2026-10-10 were removed.
 
-Any container with `backup.enable=true` is picked up automatically:
+### Databases
 
-```yaml
-some-service:
-  labels:
-    - "backup.enable=true"
-    - "backup.volumes=/path/inside/container"       # comma-separated, resolved to host paths via docker inspect
-    - "backup.predump=/path/to/script/inside/container"  # optional, run via docker exec before backup
-```
+Containers whose image matches mariadb/mysql/postgres are dumped each run to `/opt/services/backup/dumps/<container>.sql.gz` (`mariadb-dump` / `mysqldump --all-databases --single-transaction --routines --events --triggers`, root password read from the container's own env; `pg_dumpall` for Postgres). Their raw data volumes are then excluded.
 
-Adding a new service to the backup scope = adding these labels to its compose definition. No script edits required.
+| Dump outcome | Effect |
+|---|---|
+| Dump fails | Raw volume is backed up as a fallback; the run is marked `failed` with `reason: dump_failed` |
+| Dump invalid after restic | Run marked `failed` with `reason: dump_invalid` |
 
-**Currently labeled:**
-- `osgar-datahub-db` — `backup.predump=/usr/local/bin/backup-mssql.sh` (dumps all user DBs via `sqlcmd BACKUP DATABASE ... WITH COMPRESSION`), `backup.volumes=/dumps`
-- `osgar-datahub-dev` — `backup.volumes=/store-server-excel,/store-server-excel-backup,/temp_api` (real data folders; `src/` deliberately excluded — git-clonable)
+After the restic run each dump is validated (non-empty, at least 1 KB, valid gzip, ends with `Dump completed`).
 
-**Not labeled (deliberately):** `advoapp-dev` (`src/` only, git-clonable), `ollama` (models excluded, re-pullable).
+MSSQL (`osgar-datahub-db`) still uses the `backup.predump` label and `backup-mssql.sh`; its raw volume is excluded.
 
-**MSSQL note:** raw volume copy of a live MSSQL data directory is unreliable — the `backup-mssql.sh` predump script runs `sqlcmd` inside the container first to produce a consistent `.bak`, which is what actually gets backed up. The raw `osgar-datahub-mssql-data` volume itself is **not** in the backup scope.
+The `backup.enable`, `backup.volumes` and `backup.predump` labels keep working.
+
+### Opt-out
+
+Label `backup.exclude=true` on a container.
+
+### Host config
+
+All via `/hostroot` unless noted:
+
+| Path | Notes |
+|---|---|
+| `/etc/ufw` | |
+| `/etc/fail2ban` | |
+| `/etc/cron.d` | |
+| `/etc/docker` | |
+| `/etc/ssh` | |
+| `/etc/netplan` | |
+| `/etc/network` | |
+| `/etc/fstab` | |
+| `/etc/hosts` | |
+| `/var/spool/cron` | |
+| `/root/.ssh` | Direct mount, not via `/hostroot` |
+| `docker-user-firewall.service` unit | Plus the script its Exec lines reference |
+
+### Not in any backup — keep off-server
+
+restic password, Storage Box access, Hetzner API token, DNS records. **TODO (Dominik):** store them in the password manager.
+
+**Models are the only intentional exclusion** from the on-server scope (`ollama-models`, ~172 GB, re-pullable).
 
 ---
 
@@ -64,12 +88,16 @@ backup:
     - /opt/apps:/opt/apps
     - /opt/services:/opt/services
     - /root/.ssh:/root/.ssh:ro
+    - /var/lib/docker/volumes:/var/lib/docker/volumes:ro
+    - /:/hostroot:ro
   env_file:
     - ./backup/.env
   networks:
     - edge
   restart: unless-stopped
 ```
+
+**Compose change 2026-10-10:** added mounts `/var/lib/docker/volumes:/var/lib/docker/volumes:ro` and `/:/hostroot:ro`.
 
 **Dockerfile** (`/opt/services/backup-container/Dockerfile`): `debian:bookworm-slim` + `restic`, `docker.io` (CLI, to inspect/exec sibling containers via the mounted socket), **`openssh-client`** (restic's SFTP backend shells out to `ssh` — a slim image doesn't have this by default, hit and fixed during setup), `cron`.
 
@@ -78,29 +106,40 @@ backup:
 **Schedule:** `/etc/cron.d/backup-cron` inside the image — `0 3 * * * /opt/services/backup/run.sh`.
 
 **Script:** `/opt/services/backup/run.sh` (bind-mounted via `/opt/services`, not baked into the image — lets it be edited without a rebuild):
-1. Builds an include list: `/opt/services` (entire tree) + resolved host paths from every `backup.enable=true` container's `backup.volumes` label
-2. Runs each container's `backup.predump` command first (if set) via `docker exec` — aborts the whole run if any predump fails (status written as `predump_failed`, no partial/inconsistent backup taken)
-3. `restic backup --files-from <include-list> --exclude ollama-models --exclude '*/logs' --exclude '*/node_modules' --exclude '*/__pycache__' --exclude '*/.git' --exclude '*/venv'`
-4. `restic forget --keep-daily 7 --keep-weekly 4 --keep-monthly 6 --prune`
-5. Writes `/opt/services/backup/last-run.json` — `{"status": "success"|"failed", "duration_seconds": N, "timestamp": "..."}` — and **appends** the same object as one line to `/opt/services/backup/history.jsonl` (one JSON line per run, unbounded — pruning is health-api's concern)
 
-**No third-party monitoring service** (deliberately — avoided Healthchecks.io per preference). `health-api` reads `last-run.json` directly instead — see below.
+1. Builds an include list: `/opt/services` + `/opt/apps` (entire trees, minus the excludes above) + every volume used by a container (minus `ollama-models` and dumped DB volumes) + host config via `/hostroot`
+2. Dumps MariaDB/MySQL/Postgres containers; runs each `backup.predump` command (if set) via `docker exec` — a failed dump falls back to the raw volume and marks the run `failed` / `dump_failed`
+3. `restic backup` with the exclude list above
+4. Validates each dump (non-empty, ≥ 1 KB, valid gzip, ends with `Dump completed`) — a bad dump marks the run `failed` / `dump_invalid`
+5. `restic forget --keep-daily 7 --keep-weekly 4 --keep-monthly 6 --prune`
+6. Writes `/opt/services/backup/last-run.json` and appends one line to `/opt/services/backup/history.jsonl` (trimmed to the last 90 lines each run)
+7. On Sundays, or when `last-verify.json` is missing, runs `restic check --read-data-subset=10%` and writes `/opt/services/backup/last-verify.json` (`status`, `timestamp`)
+
+**`last-run.json` also contains** `snapshot_count`, `snapshot_bytes`, and a `dumps` array (`name`, `bytes`, `complete`). `history.jsonl` entries carry `snapshot_bytes`.
+
+**Retention unchanged:** 7 daily, 4 weekly, 6 monthly.
+
+**No third-party monitoring service** (deliberately — avoided Healthchecks.io per preference). `health-api` reads `last-run.json` / dump files / `history.jsonl` / `last-verify.json` directly instead — see below.
 
 ---
 
 ## Monitoring — via health-api, not a third party
 
-`health-api` mounts `/opt/services/backup:/opt/services/backup:ro` and exposes two functions in its `/system/health` response:
+`health-api` mounts `/opt/services/backup:/opt/services/backup:ro` and exposes two functions in its `/system/health` response.
 
-**`backup` — current status** (from `last-run.json`):
-- `ok` — last run succeeded, within 26h (nightly + 2h grace)
-- `stale` — last successful run older than 26h (backup job stopped running, even if it hasn't explicitly failed)
-- `failed` — last run's status wasn't `success` (predump or restic failure)
-- `unknown` — no `last-run.json` yet (first run hasn't happened)
+**`backup` — current status:**
 
-**`backup_history` — last 30 runs** (from `history.jsonl`): `get_backup_history()` reads the file, returns the 30 most recent entries in reverse-chronological order. Lets Atlas show a trend/history view rather than just current status. Each entry has the same shape as `last-run.json`: `{"status": "...", "duration_seconds": N, "timestamp": "..."}`.
+| `backup.status` | When |
+|---|---|
+| `ok` | Last run succeeded, within 26h, dumps present/fresh/`complete`, no shrink warning, weekly verify ok |
+| `warning` | Snapshot bytes below 70% of the median of previous successful runs, or weekly verify older than 192h |
+| `failed` | Last run was not success, a dump is missing/tiny/stale/`complete: false`, or weekly `restic check` failed |
+| `stale` | Last successful run older than 26h |
+| `unknown` | No `last-run.json` yet |
 
-Atlas polls both the same way it already polls every other `health-api` field.
+A `problems` list and a `verify` object are included in the response. Atlas displays both (2026-10-10). Atlas treats `warning` / `stale` as degraded and `failed` as down — see [`../atlas/monitoring.md`](../atlas/monitoring.md).
+
+**`backup_history` — last 30 runs** (from `history.jsonl`): `get_backup_history()` reads the file, returns the 30 most recent entries in reverse-chronological order. Atlas dashboard tile "BACKUPS 30/30" counts these 30 entries, not a retention limit.
 
 ---
 
@@ -126,3 +165,30 @@ restic restore latest --target /tmp/restore-test --include /opt/apps/dotnet/osga
 ```bash
 restic ls latest
 ```
+
+Full-server restore: [`restore.md`](restore.md).
+
+---
+
+## Known limits
+
+- The shrink check uses logical snapshot size, so a deliberate large cleanup causes a one-off `warning`.
+- The weekly check reads 10% of data per run.
+- Everything between nightly runs (03:00) is lost on failure.
+
+---
+
+## Verified 2026-10-10
+
+Full run OK (220s first run, 57s next), snapshot size about 3.2 GiB, repo about 818 MiB, `restic check` no errors, both dumps restored into fresh MariaDB 11 and MySQL 8.4 containers and showed the `wp` and `atlas_dev` databases.
+
+Not yet verified: first unattended 03:00 run with the new script, and a full restore onto a fresh server.
+
+---
+
+## Open items
+
+- First unattended 03:00 run with the new script — not yet observed.
+- Full restore onto a fresh server — runbook written, **UNVERIFIED** end-to-end. **TODO (Dominik):** test on a throwaway Hetzner Cloud server. See [`restore.md`](restore.md).
+- Off-server secrets (restic password, Storage Box access, Hetzner API token, DNS records). **TODO (Dominik):** store them in the password manager.
+- Backup alert email — **UNVERIFIED** whether a failed backup sends an email via Brevo. **TODO (Dominik):** check whether the fake-failure test produced an email; if not, decide on an Atlas-side alert. See [`../atlas/monitoring.md`](../atlas/monitoring.md).

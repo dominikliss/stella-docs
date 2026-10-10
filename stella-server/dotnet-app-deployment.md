@@ -270,6 +270,7 @@ Reference run: `osgar.datahub.foxcraft.digital` (Blazor Server, .NET 10). Comple
 6. **`docker compose restart caddy`** from `/opt/services` (not `up -d` alone). Watch issuance logs; if stuck, diagnose/delete stale `_acme-challenge` TXT per infrastructure Issue 2, then restart again
 7. **`docker compose -f docker-compose.dev.yml up -d`** in the app folder
 8. **`curl -sI https://<subdomain>`** — `502` for the first seconds/minutes after start is normal while `dotnet watch` restores/builds
+9. **Health + backup** — new containers are discovered automatically. Opt out with `health.enable=false` / `backup.exclude=true` if needed; optional `health.http=<url>` (edge only). See [`health-api.md`](health-api.md) and [`backup.md`](backup.md).
 
 Do **not** omit `dir` — without it Caddy can fall back to ZeroSSL or Let's Encrypt staging; staging certs are untrusted and leave the domain effectively broken (details in infrastructure Issue 3).
 

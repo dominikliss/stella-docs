@@ -15,9 +15,10 @@ Dedicated AI / services host. No general-purpose UI — **Atlas** and **ddashboa
 | [infrastructure.md](infrastructure.md) | Servers, ports, Docker, Caddy, Ollama, firewall |
 | [stella-api.md](stella-api.md) | FastAPI `/chat/*` (ddashboard) |
 | [deploy-api.md](deploy-api.md) | Signed deploy trigger (Atlas) |
-| [health-api.md](health-api.md) | Signed system-status snapshot (Atlas) |
+| [health-api.md](health-api.md) | Signed system-status snapshot for Atlas — dynamic containers + Caddyfile certs |
 | [imap-sync-service.md](imap-sync-service.md) | Express + `imapsync` mailbox copy (Atlas) |
-| [backup.md](backup.md) | Nightly restic → Storage Box |
+| [backup.md](backup.md) | Nightly restic → Storage Box — automatic scope, DB dumps, weekly verify |
+| [restore.md](restore.md) | Disaster-recovery runbook (restic → fresh server) |
 | [dev-ssh-access.md](dev-ssh-access.md) | Per-app SSH containers (not host users) |
 | [client-ip-access.md](client-ip-access.md) | Per-subdomain client IP grants |
 | [dotnet-app-deployment.md](dotnet-app-deployment.md) | .NET pattern: Stella dev containers → Azure production |

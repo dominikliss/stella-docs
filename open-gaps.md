@@ -69,11 +69,18 @@ Host rebuilt 2026-10-09 onto CX33 (`edison-ip` = `178.105.203.54`). See [`edison
 - [ ] **Hetzner Cloud project name for `foxcraft.digital`** — zone moved; ID still `567656`. **TODO (Dominik):** name of the new project (docs previously said `konsoleH`).
 - [x] **Stella `DOCKER-USER` 443 ACCEPT for Atlas** — `2.31.42.13` added. After any `rm` + nano recreation of `/usr/local/bin/docker-user-firewall.sh` it must be `chmod 755`. Port **2205** added (Dominik’s IP, managed host, Edison). Next free SSH port: **2206**.
 - [ ] **Caddy `propagation_delay` on `dominikliss`** — untested idea after the zone-move ACME delay. Live block does not currently have it (**UNVERIFIED**). Result of `grep -n propagation_delay /opt/services/caddy/Caddyfile` on Stella: **TODO (Dominik)**.
+- [ ] **Stella backup — first unattended 03:00 run** with the 2026-10-10 dynamic script. Manual runs verified. See [`stella-server/backup.md`](stella-server/backup.md).
+- [ ] **Stella full restore test** — runbook at [`stella-server/restore.md`](stella-server/restore.md). **UNVERIFIED** end-to-end. **TODO (Dominik):** test on a throwaway Hetzner Cloud server.
+- [ ] **Off-server backup secrets** — restic password, Storage Box access, Hetzner API token, DNS records. **TODO (Dominik):** store them in the password manager. Do not write values into docs.
+- [ ] **Backup failure email** — **UNVERIFIED** whether a failed Stella backup sends an email via Brevo (docs only describe emails for WP site `down`). **TODO (Dominik):** check whether the fake-failure test produced an email; if not, decide on an Atlas-side alert. See [`atlas/monitoring.md`](atlas/monitoring.md).
 
 ---
 
 ## Closed 2026-10-10
 
+- **Atlas backup `problems` + app-type grouping** — dashboard and `/monitoring/stella` show backup details (status, size, dumps, verify, problems) and group hosted containers as Dotnet / Laravel / WordPress. See [`atlas/monitoring.md`](atlas/monitoring.md).
+- **health-api dynamic containers + certs** — no hardcoded app/cert list. `CORE_CONTAINERS` + `docker ps -a` + `seen.json`; certs parsed from the live Caddyfile. Verified: 20 containers up, 7 certs ok. See [`stella-server/health-api.md`](stella-server/health-api.md).
+- **Backup automatic scope** — whole `/opt/services` + `/opt/apps`, discovered Docker volumes (including `caddy-data`), MariaDB/MySQL dumps, host config, weekly `restic check`. Labels are opt-out / extras, not the only scope. See [`stella-server/backup.md`](stella-server/backup.md).
 - **`advoapp-redesign.finditoo.foxcraft.digital` removed from Stella** — containers `advoapp-redesign-dev` and `advoapp-redesign-ssh` stopped and removed; folder deleted; Caddy block removed; DNS A record `advoapp-redesign.finditoo` deleted in zone 567656; port-2203 `DOCKER-USER` rules removed; Cursor SSH config entry removed on Dominik's machine. Port 2203 is free; port 5082 is free again. Port-443 ACCEPT rules unchanged (port-wide, not tied to this app).
 - **health-api own `allowed_signers`** — no longer reuses deploy-api’s file. Two `ddashboard` lines (`atlas-prod`, `atlas-dev`). See [`stella-server/health-api.md`](stella-server/health-api.md).
 - **Atlas dev instance on Stella** — `https://atlas.dev.foxcraft.digital`, SSH port 2205. See [`atlas/dev-instance.md`](atlas/dev-instance.md).

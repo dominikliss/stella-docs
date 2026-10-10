@@ -2,7 +2,7 @@
 
 Atlas monitors two things on a 5-minute cron loop:
 
-1. **Stella server health** — signed requests to Stella's health-api; full container/TLS/disk/CPU/RAM/Ollama status
+1. **Stella server health** — signed requests to Stella's health-api; dynamic container list, Caddyfile certs, disk/CPU/RAM/Ollama, backup
 2. **WP site uptime** — plain HTTPS HEAD ping to each registered WordPress site
 
 ---
@@ -42,13 +42,41 @@ StellaServiceUptimeLog
 
 ### Service categories (from health-api path)
 
+The Stella health service list is dynamic as of 2026-10-10. health-api no longer ships a hardcoded container or cert list — Atlas renders whatever comes back.
+
 | Category | Services |
 |---|---|
 | `system` | `system:docker_daemon`, `system:ollama_models`, `system:ollama_resources`, `system:cpu_ram`, `system:disk` |
-| `container` | `container:stella-api`, `container:deploy-api`, `container:health-api`, `container:caddy`, `container:imap-sync`, `container:ollama`, `container:backup` |
-| `app` | Any container not in the infra list (e.g. `container:advoapp-dev`, `container:osgar-datahub-dev`) |
-| `http` | `http:stella-api`, `http:ollama` |
-| `cert` | `cert:stella.foxcraft.digital`, `cert:advoapp.finditoo.foxcraft.digital`, etc. |
+| `container` | Core Stella containers from `CORE_CONTAINERS` in `health.py` (`caddy`, `stella-api`, `imap-sync`, `deploy-api`, `ollama`, `backup`) |
+| `app` | Every other discovered container. Atlas then groups them by stack (see below). |
+| `backup` | `system:backup` — current restic status (not a container) |
+| `http` | `http:stella-api`, `http:ollama`, plus any `health.http` probes |
+| `cert` | One row per site block parsed from the live Caddyfile |
+
+**App grouping (Atlas UI, 2026-10-10):** hosted containers stay category `app`. `normalizeServices()` writes `meta.app_type` and `meta.app_project`.
+
+| `app_type` | Name prefixes |
+|---|---|
+| `dotnet` | `advoapp*`, `osgar-datahub*` |
+| `laravel` | `atlas.dev*` |
+| `wordpress` | `*dominikliss*`, `wordpress*` |
+| `other` | anything else (shown only when present) |
+
+**Project / subdomain:** strip a trailing `-dev` / `-db` / `-ssh` / `-queue` / `-scheduler`. So `advoapp-dev` + `advoapp-ssh` are one project (`advoapp`); `osgar-datahub-*` is one; `atlas.dev.foxcraft.digital-*` is one; `dominikliss.foxcraft.digital-*` is one.
+
+Tiles show **project counts**, not containers (Dotnet `2/2`, Laravel `1/1`, WordPress `1/1`). A project is up only if every container in it is ok. The uptime tables group rows by that project name under the stack heading.
+
+A new app under `/opt/apps/{dotnet,laravel,wordpress}/` will land in **Other** until its name prefix is added here (or a future `health.group` label exists).
+
+**Latest verified check (2026-10-10):** 20 containers, 7 certs. See [`../stella-server/health-api.md`](../stella-server/health-api.md).
+
+### Backup status (from health-api)
+
+Possible `backup.status` values: `ok`, `warning`, `failed`, `stale`, `unknown`. Atlas treats `warning` / `stale` as degraded and `failed` as down (per the aggregate rules below; `failed` is in the down set).
+
+The dashboard backup tile matches the other tiles: colour dot + `30/30` (last 30 `history.jsonl` entries). `/monitoring/stella` has the full details: status, duration, snapshot size / count, weekly verify, dumps, `problems`, and a size column on the history table.
+
+**UNVERIFIED:** whether a failed backup sends an email via Brevo. The docs only describe emails for WP site `down` events. **TODO (Dominik):** check whether the fake-failure test produced an email; if not, decide on an Atlas-side alert.
 
 ### Aggregate status thresholds (Atlas side)
 
@@ -173,7 +201,7 @@ Both monitoring features can send email alerts. Configured in **Settings → Ema
 | `brevo_api_key` | Brevo transactional email API key |
 | `brevo_from_email` | Sender email address |
 | `brevo_from_name` | Sender display name (defaults to app name) |
-| `brevo_alert_email` | Recipient for WP site down alerts |
+| `brevo_alert_email` | Recipient for WP site down alerts. **UNVERIFIED:** whether a failed Stella backup also emails this address. **TODO (Dominik):** check the fake-failure test. |
 
 If `brevo_api_key` is not set, alerts are silently skipped — no exception, just a log warning.
 
@@ -183,4 +211,5 @@ If `brevo_api_key` is not set, alerts are silently skipped — no exception, jus
 
 - Atlas Connect login and backups (not part of the uptime loop): [`atlas-connect/`](atlas-connect/)
 - Stella-side health-api: [`../stella-server/health-api.md`](../stella-server/health-api.md)
+- Stella backup + restore: [`../stella-server/backup.md`](../stella-server/backup.md), [`../stella-server/restore.md`](../stella-server/restore.md)
 - System map: [`../integration/system-overview.md`](../integration/system-overview.md)
