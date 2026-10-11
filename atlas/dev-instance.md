@@ -1,6 +1,6 @@
 # Atlas dev instance (`atlas.dev.foxcraft.digital`)
 
-Laravel Atlas running on **Stella**, not on the production CX33. Separate database, separate SSH key, separate `APP_KEY`. It can read health-api; it cannot deploy.
+Laravel Atlas running on **Stella**, not on the production CX33. Separate database, separate SSH key, separate `APP_KEY`. It can read health-api. It cannot call Stella deploy-api. A customer deployment from this instance succeeded on 2026-10-11 (see [Dev SSH key](#dev-ssh-key)).
 
 **Production runbook:** [`server.md`](server.md)  
 **Product / API:** [`README.md`](README.md)
@@ -22,7 +22,7 @@ Laravel Atlas running on **Stella**, not on the production CX33. Separate databa
 
 ## Compose
 
-`docker-compose` next to the source. A shared `x-atlas` anchor defines the common image, `working_dir`, volumes, and network.
+`docker-compose` next to the source. A shared `x-atlas` anchor defines the common image, `working_dir`, volumes, and network. The anchor mounts three files from `./deploy-key/` read-only into `app`, `queue`, and `scheduler`: `id_ed25519`, `id_ed25519.pub`, and `known_hosts` (see [Dev SSH key](#dev-ssh-key)).
 
 | Service | Image / notes | Networks |
 |---------|---------------|----------|
@@ -65,11 +65,32 @@ Do not write secret values here. This instance has its **own** `APP_KEY` (not co
 
 ## Dev SSH key
 
-Generated on Stella in `deploy-key/` next to `docker-compose.yml` (ed25519, comment `atlas-dev`, no passphrase, owner `33:33`, mode `600`). Mounted `:ro` into `app`, `queue`, and `scheduler` at `/var/www/.ssh/id_ed25519`.
+Generated on Stella in `deploy-key/` next to `docker-compose.yml` (ed25519, comment `atlas-dev`, no passphrase, owner `33:33`, mode `600`). The `x-atlas` anchor mounts three files from `./deploy-key/` read-only into `app`, `queue`, and `scheduler`:
 
-It is **not** in any deploy target’s `authorized_keys` and **not** in deploy-api’s `allowed_signers`. It **is** a second `ddashboard` line in health-api’s own `allowed_signers` (comment `atlas-dev`). See [`../stella-server/health-api.md`](../stella-server/health-api.md).
+| Host file | Container path |
+|-----------|----------------|
+| `id_ed25519` | `/var/www/.ssh/id_ed25519` |
+| `id_ed25519.pub` | `/var/www/.ssh/id_ed25519.pub` |
+| `known_hosts` | `/var/www/.ssh/known_hosts` |
 
-**Consequence:** dev can read health-api and cannot call deploy-api. Deployments on this instance are untested by design. **TODO (Dominik):** test against one throwaway target later.
+Reasons for the extra mounts (2026-10-11):
+
+- The Atlas GitHub settings page reported “public key missing” when only the private key was mounted.
+- `known_hosts` was created with `ssh-keyscan -t ed25519 github.com > deploy-key/known_hosts` (owner `33:33`, mode `644`). It is writable for `www-data`.
+- `/var/www/.ssh/` itself is root-owned (Docker created it), so SSH still logs a harmless `hostfile_replace_entries: mkstemp: Permission denied` warning (`UpdateHostKeys`; same class of problem as the Edison note in [`../edison/cursor-agent.md`](../edison/cursor-agent.md)). It does not break clones.
+
+It is documented as **not** in any deploy target’s `authorized_keys` and **not** in deploy-api’s `allowed_signers`. It **is** a second `ddashboard` line in health-api’s own `allowed_signers` (comment `atlas-dev`). See [`../stella-server/health-api.md`](../stella-server/health-api.md).
+
+It is registered as an account-level SSH key on the GitHub account `dominikliss` (GitHub answers `Hi dominikliss!`), which can read the org repo `foxcraftdigital/dominikliss`. **TODO (Dominik):** consider a read-only deploy key instead, since an account key reaches every repo that account can read.
+
+**Consequence:** dev can read health-api. It still cannot call Stella deploy-api (key not in deploy-api’s `allowed_signers`). A customer deployment from this instance **did** succeed on 2026-10-11, so deployments are no longer “untested by design”:
+
+- Target: `liss01@dedi6724.your-server.de`, path `/usr/home/liss01/public_html/dominikliss.com/wp-content/themes/dominikliss`
+- Source: `foxcraftdigital/dominikliss`, branch `main`, commit `4ebbe05`, via rsync
+- Log ended with “Deployment successful”. The rsync printed `cannot delete non-empty directory: node_modules/…` messages (harmless).
+- The target was the **live** site, which Dominik confirmed was intended.
+
+**UNVERIFIED:** why the `atlas-dev` key could reach that host, given this page still records it as in no `authorized_keys`. **TODO (Dominik):** check which `deploy_servers` entry and key were used.
 
 ---
 
@@ -93,11 +114,17 @@ Host atlas.dev.foxcraft.digital
     ForwardAgent yes
 ```
 
-Git/GitHub works through SSH agent forwarding. The container deliberately has **no** GitHub key.
+Git/GitHub in the **`-ssh` container** works through SSH agent forwarding. That container deliberately has **no** GitHub key. The Atlas `app` / `queue` / `scheduler` containers use the `atlas-dev` key for GitHub (see [Dev SSH key](#dev-ssh-key)).
 
 If the Cursor terminal has no `SSH_AUTH_SOCK`, run **Remote-SSH: Kill VS Code Server on Host** and reconnect.
 
 Stella `DOCKER-USER` ACCEPTs port **2205** from Dominik’s IP, the managed host, and Edison. Next free SSH container port: **2206**. See [`../stella-server/infrastructure.md`](../stella-server/infrastructure.md).
+
+### GitHub clone gotchas (2026-10-11)
+
+- `SshDeployService::cloneLocally` builds `git@github.com:{repo}.git`. The repo field in the deploy form must be `owner/name` **without** `.git`. With `.git` the URL becomes `….git.git` and GitHub answers “Repository not found”, which looks like a key problem but is not.
+- The settings field “GitHub Username” is not used in the clone URL. It can stay empty.
+- The settings page shows “CONNECTED” after “Test Connection”.
 
 ---
 

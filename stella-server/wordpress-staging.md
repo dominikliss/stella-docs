@@ -1,6 +1,6 @@
 # WordPress Staging Pattern
 
-Established 2026-10-03 with `dominikliss.foxcraft.digital` as the first implementation. This is the host-wide template for WordPress staging on Stella — same role as [`dotnet-app-deployment.md`](dotnet-app-deployment.md) for .NET apps.
+Established 2026-10-03 with `dominikliss.foxcraft.digital` as the first implementation. This is the host-wide template for WordPress staging on Stella — same role as [`dotnet-app-deployment.md`](dotnet-app-deployment.md) for .NET apps. The live site was imported into this staging on 2026-10-11 (see [Migrating an existing live site into staging](#migrating-an-existing-live-site-into-staging)).
 
 **Related:** [`infrastructure.md`](infrastructure.md) (Caddy, DNS, `DOCKER-USER`), [`dev-ssh-access.md`](dev-ssh-access.md) (SSH variant notes).
 
@@ -225,3 +225,108 @@ Host dominikliss.foxcraft.digital
 ```
 
 Verified working end to end (login, PHP 8.4.26 CLI, write test in `~/app`).
+
+---
+
+## Migrating an existing live site into staging
+
+First used for `dominikliss.foxcraft.digital` on 2026-10-11. Assumes the empty staging stack from this doc is already up.
+
+### Source
+
+Hetzner managed webhosting `dedi6724.your-server.de`. SSH is on port **222** and IP-protected. Stella could **not** connect to it.
+
+### Files
+
+Zip created on the managed host, **7.7 GB** (9.4 GB unpacked, 76,729 files). Top-level folder inside the zip is `dominikliss.com/`.
+
+Because SSH was blocked, the zip was put into the source’s `public_html` and Stella fetched it with `wget -c` over HTTPS. The file is publicly reachable while it sits there — delete it right after the download. **UNVERIFIED** that this was done.
+
+Unpacked to `import/extract/` (outside `html/`). `html/` was emptied (`find html -mindepth 1 -delete`) and the content moved in with `dotglob`.
+
+Then re-applied the permission fix from this doc:
+
+```bash
+chown -R www-data:www-data html
+chmod -R g+rwX html
+find html -type d -exec chmod g+s {} +
+setfacl -R -m g:33:rwX html
+setfacl -R -d -m g:33:rwX html
+```
+
+Verified `getfacl html | grep -E 'flags|mask'` shows `flags: -s-` and `mask::rwx`.
+
+### wp-config
+
+The live `wp-config.php` was **not** used (it points at `localhost` and the old DB). The empty install’s config was restored. It reads `WORDPRESS_*` env vars via `getenv_docker`. Only the table prefix default was changed to `txcar_`. `WP_CACHE` is not set.
+
+### Database
+
+The dump was only **110 MB** (the 8 GB was the files zip). Uploaded locally via `scp` into the `-ssh` container, `docker cp` to the host, then imported into the existing `wp` DB:
+
+```bash
+docker exec -i dominikliss.foxcraft.digital-db sh -c 'mariadb -uroot -p"$MARIADB_ROOT_PASSWORD" wp' < dump.sql
+```
+
+Exit 0. 111 tables with prefix `txcar_`.
+
+Check **before** import on MariaDB 11:
+
+- `grep -c utf8mb4_0900 dump.sql` must be `0` (MySQL 8 collations).
+- The dump must contain no `CREATE DATABASE` / `USE`.
+
+The `wp_*` tables of the empty install stay in the DB (harmless, not dropped).
+
+### WP-CLI
+
+Not installed in any container. Used the phar from the official image:
+
+```bash
+docker run --rm --entrypoint cat wordpress:cli /usr/local/bin/wp > /tmp/wp-cli.phar
+```
+
+Then `docker cp` into the `wp` container and run as `www-data`.
+
+The `-ssh` container cannot reach the DB (no network), so WP-CLI must run in the `wp` container.
+
+Required flags: `php -d memory_limit=512M … --skip-plugins --skip-themes`. Without them the `mainwp-child` plugin hits the 128 MB limit and WP-CLI dies.
+
+### URL replacement
+
+Always `--dry-run` first. Always `--all-tables-with-prefix --skip-columns=guid`.
+
+1. `https://dominikliss.com` → `https://dominikliss.foxcraft.digital` (45,712 replacements)
+2. `/dominikliss.com` → `/dominikliss.foxcraft.digital` (11,742 replacements). This catches escaped (`https:\/\/`), `http`, and protocol-relative URLs but not email addresses (the leading slash excludes `@…`).
+
+Do **not** replace the bare domain: it would rewrite email addresses (`hallo@`, `projekte@`, SMTP senders).
+
+Leftovers intentionally kept: email addresses. The `dirsize_cache` transient (old managed-host paths) was deleted.
+
+`siteurl` and `home` verified as the staging URL.
+
+### GOTCHA — `.htaccess` HTTPS loop behind Caddy
+
+The live `.htaccess` forces HTTPS with `RewriteCond %{HTTPS} !=on`. Behind Caddy, Apache only sees HTTP, which caused an endless 302 loop to itself (`curl -sIL` showed the same `Location` repeatedly).
+
+Fix: added `RewriteCond %{HTTP:X-Forwarded-Proto} !https` directly above that line (the conditions are ANDed). After that the site returns 200. The rest of the `.htaccess` is unchanged.
+
+### Decisions on this site
+
+Exact copy. All plugins left active, including `mailpoet`, `wp-mail-smtp`, `mainwp-child`, `wp-rocket`, `all-in-one-wp-security-and-firewall`.
+
+Risks: real emails can leave staging (live SMTP / MailPoet config), and `mainwp-child` carries the live site’s identity. **TODO (Dominik):** decide whether to neutralise them.
+
+`blog_public` was set to `0`, which differs from live.
+
+### Cleanup
+
+Done on Stella: `import/`, the three `.bak` files, `/tmp/wp-cli.phar`.
+
+Still open:
+
+- the `wordpress:cli` image on the host
+- the `/tmp/wp-cli.phar` inside the `wp` container (removal **not confirmed**)
+- the `~/relaunch_dominikliss_com.sql` leftover in the `-ssh` container (110 MB)
+- any leftover zip / dump on the managed host (**UNVERIFIED**)
+
+**TODO (Dominik):** clean these leftovers.
