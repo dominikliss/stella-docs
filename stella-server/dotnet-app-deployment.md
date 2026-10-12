@@ -111,7 +111,7 @@ password=<see .env or ask Dominik>
 supervisor.rpcinterface_factory = supervisor.rpcinterface:make_main_rpcinterface
 
 [program:app]
-command=dotnet watch run --urls http://+:8080 --non-interactive
+command=/bin/bash -c "(pkill -f [f]inditoo.advoapp || true) && sleep 1 && exec dotnet watch run --urls http://+:8080 --non-interactive"
 directory=/src
 autostart=true
 autorestart=true
@@ -128,19 +128,55 @@ username=agent
 password=<same as above>
 ```
 
-> **Migrated to supervisord 2026-09-07** — `advoapp-dev` now matches `osgar-datahub-dev`'s pattern exactly (minus the SCSS watcher). Reason: close the gap tracked in [`apps/osgar-datahub/setup.md`](apps/osgar-datahub/setup.md)'s "Open follow-ups" — orphaned `dotnet watch` process chains without `stopasgroup`/`killasgroup`, and no restart trigger from the `-ssh` container without Docker socket access. Verified 2026-09-07 via `docker exec advoapp-dev ps aux` showing exactly one `supervisord` → `dotnet watch` → `dotnet-watch.dll` → `dotnet run` → `finditoo.advoapp` chain. **`stopasgroup`/`killasgroup` did not fully prevent orphans** — leftover `dotnet run` → `finditoo.advoapp` children reparented to PID 1 recurred **2026-10-09** and **2026-10-12** (same incident twice); see Troubleshooting below.
+> **Migrated to supervisord 2026-09-07** — `advoapp-dev` now matches `osgar-datahub-dev`'s pattern exactly (minus the SCSS watcher). Reason: close the gap tracked in [`apps/osgar-datahub/setup.md`](apps/osgar-datahub/setup.md)'s "Open follow-ups" — orphaned `dotnet watch` process chains without `stopasgroup`/`killasgroup`, and no restart trigger from the `-ssh` container without Docker socket access. Verified 2026-09-07 via `docker exec advoapp-dev ps aux` showing exactly one `supervisord` → `dotnet watch` → `dotnet-watch.dll` → `dotnet run` → `finditoo.advoapp` chain. **`stopasgroup`/`killasgroup` did not fully prevent orphans** — leftover `dotnet run` → `finditoo.advoapp` children reparented to PID 1 recurred **2026-10-09** and **2026-10-12**. On 2026-10-12 that orphan was a **side effect** of a crash after a `-ssh` container build baked the wrong paths into `bin/`/`obj/` (see Troubleshooting below), not a supervisor-group-kill failure on its own.
+
+**`[program:app]` command wrapper added 2026-10-12** — leftover app processes are killed on every (re)start of `app`. Gotchas (all hit while writing the line):
+- supervisord treats ` ;` as the start of an inline comment. Use `&&` / `||`, never `;`.
+- Nested single quotes inside the double-quoted `bash -c` string break parsing. The `[f]inditoo` bracket pattern avoids quoting `finditoo.advoapp` and also avoids `pkill` matching its own command line.
+- `|| true` is required — `pkill` exits 1 when nothing matches, and without it the `&&` chain never reaches `dotnet watch`.
+- This only helps when `dotnet watch` **exits** (supervisord then restarts `app`, which runs `pkill` first). It does **not** clean up while `dotnet watch` sits at `Waiting for a file to change before restarting ...`.
 
 Run manually (start it, view logs): `docker compose -f docker-compose.dev.yml up`
 
+### Troubleshooting: app crashes at startup after a build from the -ssh container
+
+Confirmed **2026-10-12** (same day as the orphan loop below — this is the root cause; the port bind failure is the leftover).
+
+**Symptom:** the app is stale or returns `502`. `supervisorctl status` shows `app RUNNING`. `docker logs advoapp-dev` ends with `Unhandled exception. System.IO.DirectoryNotFoundException: /home/pawel/app/wwwroot/` (user can also be `dominik`), then `dotnet watch ❌ Exited with error code 134` and `Waiting for a file to change before restarting ...`.
+
+**Secondary symptom:** `address already in use` on 8080 loops in the log because an orphaned `dotnet run` → `finditoo.advoapp` chain (PPID 1) still holds the port. This is a **side effect**, not the root cause.
+
+**Root cause:** `src/` is bind-mounted into both containers at different paths (`/src` in `advoapp-dev`, `/home/<user>/app` in `advoapp-ssh`). A build run from the `-ssh` container (Cursor C# extension, build-on-open, manual `dotnet build` / `dotnet run`) bakes the `-ssh` paths into `bin/` and `obj/` (static web assets manifests, `FileListAbsolute.txt`). `advoapp-dev` then crashes at startup because it can't find that path.
+
+**Diagnosis** — run on the Stella host:
+```bash
+docker logs --tail 40 advoapp-dev
+docker exec advoapp-dev ps -eo pid,ppid,etime,args --forest
+cd /opt/apps/dotnet/advoapp.finditoo.foxcraft.digital/src && grep -rl "/home/" bin obj 2>/dev/null | head
+```
+
+Files under `bin/`/`obj/` containing a `/home/<user>/app` path confirm this cause.
+
+**Fix:**
+```bash
+cd /opt/apps/dotnet/advoapp.finditoo.foxcraft.digital/src
+rm -rf bin obj
+docker restart advoapp-dev
+```
+
+Wait ~75s. Expect one chain `supervisord` → `dotnet watch` → `dotnet-watch.dll` → `dotnet run` → `finditoo.advoapp` and HTTP `302` on `https://advoapp.finditoo.foxcraft.digital/`.
+
+**Prevention:** never build or run from the `-ssh` container — only `advoapp-dev` builds. Check the C# extension settings in Cursor Remote-SSH sessions. Add to `.cursor/rules/dev-environment.mdc` if not already there.
+
 ### Troubleshooting: stuck dev container (orphaned dotnet chain)
 
-Same incident twice: **2026-10-09** and **2026-10-12**.
+Same incident twice: **2026-10-09** and **2026-10-12**. On 2026-10-12 the orphan was the leftover after the `-ssh` path crash above.
 
 **Symptom:** the app serves a stale build or doesn't pick up changes. Supervisor shows `app RUNNING`, and `curl` on `https://advoapp.finditoo.foxcraft.digital/` can still return `302` (served by the stale orphan, so this is **not** a health signal).
 
 **Cause:** a previous `dotnet watch` died and left its `dotnet run` → `finditoo.advoapp` children behind, reparented to PID 1. They keep holding port 8080. The current `dotnet watch` then fails with `System.IO.IOException: Failed to bind to address http://[::]:8080: address already in use` (exit code 134) and sits at `Waiting for a file to change before restarting ...`.
 
-**⚠️ Root cause of the original `dotnet watch` death is still unknown.** `stopasgroup`/`killasgroup` (added 2026-09-07) did not prevent the leftover children.
+**⚠️ On 2026-10-12 the original `dotnet watch` death was the `DirectoryNotFoundException` from a `-ssh` build (see above).** The 2026-10-09 first death is still unexplained. The 2026-10-12 `pkill` wrapper only runs when `app` (re)starts — it does not help while `dotnet watch` is sitting in the wait loop. `stopasgroup`/`killasgroup` (added 2026-09-07) did not prevent the leftover children.
 
 **Diagnosis** — run on the Stella host, not in `advoapp-ssh`:
 ```bash
@@ -314,4 +350,4 @@ Every service in every `docker-compose*.yml` on this server should have `restart
 
 ## Open follow-ups
 
-- [ ] **What kills the original `dotnet watch`?** The 2026-10-09 / 2026-10-12 stuck-container incidents left orphan `dotnet run` → `finditoo.advoapp` children on PID 1, but the first `dotnet watch` death itself is still unexplained. Consider a watchdog or health check for duplicate `dotnet` chains — a container-level check cannot see this state (see [`health-api.md`](health-api.md)).
+- [ ] **2026-10-09 `dotnet watch` death still unexplained.** 2026-10-12 was a `-ssh` path bake (`DirectoryNotFoundException`); the leftover orphan is a side effect. The `pkill` wrapper only runs when `app` (re)starts, not while `dotnet watch` sits in the wait loop. Consider a watchdog or health check for duplicate `dotnet` chains — a container-level check cannot see this state (see [`health-api.md`](health-api.md)).
