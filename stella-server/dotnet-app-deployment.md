@@ -128,9 +128,41 @@ username=agent
 password=<same as above>
 ```
 
-> **Migrated to supervisord 2026-09-07** — `advoapp-dev` now matches `osgar-datahub-dev`'s pattern exactly (minus the SCSS watcher). Reason: close the gap tracked in [`apps/osgar-datahub/setup.md`](apps/osgar-datahub/setup.md)'s "Open follow-ups" — orphaned `dotnet watch` process chains without `stopasgroup`/`killasgroup`, and no restart trigger from the `-ssh` container without Docker socket access. Verified 2026-09-07 via `docker exec advoapp-dev ps aux` showing exactly one `supervisord` → `dotnet watch` → `dotnet-watch.dll` → `dotnet run` → `finditoo.advoapp` chain.
+> **Migrated to supervisord 2026-09-07** — `advoapp-dev` now matches `osgar-datahub-dev`'s pattern exactly (minus the SCSS watcher). Reason: close the gap tracked in [`apps/osgar-datahub/setup.md`](apps/osgar-datahub/setup.md)'s "Open follow-ups" — orphaned `dotnet watch` process chains without `stopasgroup`/`killasgroup`, and no restart trigger from the `-ssh` container without Docker socket access. Verified 2026-09-07 via `docker exec advoapp-dev ps aux` showing exactly one `supervisord` → `dotnet watch` → `dotnet-watch.dll` → `dotnet run` → `finditoo.advoapp` chain. **`stopasgroup`/`killasgroup` did not fully prevent orphans** — leftover `dotnet run` → `finditoo.advoapp` children reparented to PID 1 recurred **2026-10-09** and **2026-10-12** (same incident twice); see Troubleshooting below.
 
 Run manually (start it, view logs): `docker compose -f docker-compose.dev.yml up`
+
+### Troubleshooting: stuck dev container (orphaned dotnet chain)
+
+Same incident twice: **2026-10-09** and **2026-10-12**.
+
+**Symptom:** the app serves a stale build or doesn't pick up changes. Supervisor shows `app RUNNING`, and `curl` on `https://advoapp.finditoo.foxcraft.digital/` can still return `302` (served by the stale orphan, so this is **not** a health signal).
+
+**Cause:** a previous `dotnet watch` died and left its `dotnet run` → `finditoo.advoapp` children behind, reparented to PID 1. They keep holding port 8080. The current `dotnet watch` then fails with `System.IO.IOException: Failed to bind to address http://[::]:8080: address already in use` (exit code 134) and sits at `Waiting for a file to change before restarting ...`.
+
+**⚠️ Root cause of the original `dotnet watch` death is still unknown.** `stopasgroup`/`killasgroup` (added 2026-09-07) did not prevent the leftover children.
+
+**Diagnosis** — run on the Stella host, not in `advoapp-ssh`:
+```bash
+docker exec advoapp-dev supervisorctl -c /etc/supervisor/conf.d/app.conf status
+docker logs --tail 80 advoapp-dev
+docker exec advoapp-dev ps -eo pid,ppid,etime,args --forest
+docker logs --since 6h advoapp-dev | grep -iE "exited|error code|FATAL|Failed to bind"
+```
+
+- `supervisorctl` is not installed on the host, so it has to go through `docker exec`.
+- advoapp logs go to stdout (no `app-logs/` mount like osgar-datahub), so use `docker logs`, not the `-ssh` container.
+- **Healthy:** exactly one chain `supervisord` → `dotnet watch` → `dotnet-watch.dll` → `dotnet run` → `finditoo.advoapp`.
+- **Unhealthy:** a second `dotnet run` / `finditoo.advoapp` chain with PPID 1 and a much older `etime`.
+
+**Fix:**
+```bash
+docker restart advoapp-dev
+```
+
+Wait ~60s, re-run the `ps` command, and confirm a single fresh chain plus normal request logs.
+
+Lighter alternative: `docker exec advoapp-dev kill <orphan dotnet run PID> <orphan finditoo.advoapp PID>`, then touch a source file. A full restart is cleaner.
 
 ---
 
@@ -277,3 +309,9 @@ Do **not** omit `dir` — without it Caddy can fall back to ZeroSSL or Let's Enc
 ### Checklist addition — restart policy is not optional
 
 Every service in every `docker-compose*.yml` on this server should have `restart: unless-stopped` unless there's a specific reason not to (e.g. a genuinely one-shot job). This was missed on both `advoapp-dev` and `osgar-datahub-dev` when they were first created — both used the same template, both had the same gap, and the first one went unnoticed for 3 days. Check for this explicitly in step-by-step reviews of any new `.dev.yml`.
+
+---
+
+## Open follow-ups
+
+- [ ] **What kills the original `dotnet watch`?** The 2026-10-09 / 2026-10-12 stuck-container incidents left orphan `dotnet run` → `finditoo.advoapp` children on PID 1, but the first `dotnet watch` death itself is still unexplained. Consider a watchdog or health check for duplicate `dotnet` chains — a container-level check cannot see this state (see [`health-api.md`](health-api.md)).

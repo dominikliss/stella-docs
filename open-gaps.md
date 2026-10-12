@@ -1,6 +1,6 @@
 # Open Gaps & Next Steps
 
-Last updated: 2026-10-11
+Last updated: 2026-10-12
 
 **Cross-system overview:** [integration/system-overview.md](integration/system-overview.md) (Atlas + ddashboard + Stella + Edison). AI-chat path only: [integration/ddashboard-and-stella-server.md](integration/ddashboard-and-stella-server.md).
 
@@ -61,6 +61,7 @@ Host rebuilt 2026-10-09 onto CX33 (`edison-ip` = `178.105.203.54`). See [`edison
 - [ ] **Remove now-unneeded UFW rules for port 11434** — Ollama no longer needs direct host-level access now that it's fully behind `edge`/Caddy. Rules for the two static-IP whitelist entries can be deleted once the retired systemd `ollama.service` is confirmed not coming back.
 - [ ] **Old host-side Ollama model files** — can be deleted once `docker exec ollama ollama list` confirms all 13 models are present in the new container volume. Not yet verified as of 2026-08-10 (pull was still in progress — 10/13 confirmed present at last check).
 - [ ] **Remove dead `DOCKER-USER` rules for ports 3001 and 8080** — those publishes were deleted 2026-09-01 (`imap-sync` via Caddy only; Caddy `:8080` already unused). Rules kept as harmless leftovers. See [`stella-server/infrastructure.md`](stella-server/infrastructure.md).
+- [ ] **`advoapp-dev` stuck container / orphaned `dotnet` chain** — same incident twice (2026-10-09, 2026-10-12). A dead `dotnet watch` left `dotnet run` → `finditoo.advoapp` children on PID 1 holding port 8080; `stopasgroup`/`killasgroup` did not prevent it. **TODO:** find what kills the original `dotnet watch`; consider a watchdog or health check for duplicate `dotnet` chains (container-level health-api cannot see this). Runbook: [`stella-server/dotnet-app-deployment.md`](stella-server/dotnet-app-deployment.md).
 - [ ] **`advoapp-ssh` — Node.js and supervisord not yet evaluated** — host-key volume fix already applied; Node and the supervisord restart-control pattern (implemented for osgar-datahub only) have not been evaluated for `advoapp-ssh`. Apply from [`stella-server/apps/osgar-datahub/setup.md`](stella-server/apps/osgar-datahub/setup.md) if SCSS builds or SSH-triggered restarts are needed there.
 - [ ] **osgar-datahub `supervisorctl` credentials** — plaintext password baked into both Dockerfiles' build args, including `Dockerfile.ssh`. **TODO (Dominik):** move to an env/secret and rotate. Do not write the value into docs. Acceptable for the current dummy-dev-DB environment, not suitable for any app with production data in `src/`.
 - [ ] **osgar-datahub `DataProtection` key-ring warning** — `No XML encryptor configured` on every fresh run; cosmetic for dev, worth fixing before reusing this pattern for anything closer to production.

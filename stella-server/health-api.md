@@ -210,6 +210,8 @@ Every other container is discovered via `docker ps -a`. Opt out with the label `
 
 **Verified 2026-10-10:** 20 containers all `up` — 6 core + 14 discovered (`advoapp-dev`, `advoapp-ssh`, the 5 `atlas.dev` containers, the 3 `dominikliss` containers, `health-api`, `osgar-datahub-db` / `-dev` / `-ssh`). HTTP checks for `stella-api` and `ollama` up.
 
+**⚠️ `advoapp-dev` stuck-orphan state (2026-10-09, 2026-10-12) is invisible here.** Container status and supervisor both look fine (`up` / `app RUNNING`) while a leftover `dotnet` chain holds port 8080 and serves a stale build. A public `curl` can still return `302`, so that is not a health signal either. Only a check that distinguishes the process tree, or a build/version endpoint, would catch it. See [`dotnet-app-deployment.md`](dotnet-app-deployment.md).
+
 ### Certs — parsed from the live Caddyfile (2026-10-10)
 
 Domains are parsed from the Caddyfile mounted read-only at `/etc/caddy/Caddyfile` (from `/opt/services/caddy/Caddyfile`). Any new site block gets a cert check automatically. There is no hardcoded domain list in `health.py`.
@@ -301,3 +303,4 @@ All five items below shipped. See [`../atlas/monitoring.md`](../atlas/monitoring
 - **No UFW status check.** Reading `ufw status` requires host network-namespace access a properly-isolated container doesn't have without `--privileged` or `--pid=host` — deliberately not granted, to keep this service's privilege minimal. If UFW status is ever wanted here, the clean approach is a small host-level cron job that writes `ufw status` output to a file, which this container then reads — not a live syscall from inside the container.
 - **`EXPECTED_OLLAMA_MODELS = 13` is hardcoded.** Update this constant in `health.py` if the intended model list changes, or the check will falsely flag `incomplete` after a deliberate model removal.
 - **`ollama_resource_usage` is specific to the `ollama` container only.** If CPU/memory checks are ever wanted for other containers, `check_ollama_resource_usage()` would need generalizing into a parameterized version (`check_container_resource_usage(name)`), same pattern as `check_container`.
+- **Container-level checks cannot detect a stuck `advoapp-dev` orphan chain (2026-10-09, 2026-10-12).** The container stays `up` and supervisor reports `app RUNNING` while leftover `dotnet run` / `finditoo.advoapp` processes (PPID 1) hold port 8080 and serve a stale build. Only a process-tree check or a build/version endpoint would catch it. See [`dotnet-app-deployment.md`](dotnet-app-deployment.md).
