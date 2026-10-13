@@ -39,7 +39,7 @@ The SPA stores both tokens (`resources/js/lib/token-store.ts`) and sends `Author
 
 | Atlas | ddashboard | Notes |
 |-------|------------|-------|
-| `POST /api/auth/refresh` `{ refresh_token }` | `POST /dls/v1/auth/refresh` | New access token cached. Cache value may be `null` (no user id) — next API call then hits `/verify`. |
+| `POST /api/auth/refresh` `{ refresh_token }` | `POST /dls/v1/auth/refresh` then `GET /dls/v1/auth/verify` | New access token cached as `{ user_id, roles }` with `expires_in`. Verify is best-effort — refresh still succeeds if verify fails. |
 | `POST /api/auth/logout` `{ refresh_token }` | `POST /dls/v1/auth/logout` | Also `Cache::forget` the current bearer. Always 204. |
 
 ---
@@ -50,9 +50,11 @@ The SPA stores both tokens (`resources/js/lib/token-store.ts`) and sends `Author
 
 1. **Tests:** if `auth()->check()` (Pest `actingAs`), skip remote verify.
 2. **Cache hit:** `token:{sha256(bearer)}` with `user_id` → load `User`, touch `last_seen_at`, bind team.
-3. **Cache miss:** `DdashboardTokenDriver::verify()` → `GET {ATLAS_DDASHBOARD_URL}/dls/v1/auth/verify` with the same bearer. Expect `{ id, email, name, roles[] }`. Then `firstOrCreate` + role sync.
+3. **Cache miss:** `DdashboardTokenDriver::verify()` → `GET {ATLAS_DDASHBOARD_URL}/dls/v1/auth/verify` with the same bearer. Expect `{ id, email, name, roles[] }`. Then `firstOrCreate` + role sync, and write `{ user_id, roles }` into cache for `ATLAS_TOKEN_CACHE_TTL` (default 3600s). A verify timeout or connection error returns **401**, not 500.
 
 No bearer → 401 `Unauthenticated.`
+
+The SPA (`resources/js/lib/api-client.ts`) only toasts when the JSON body has a `message`. Canceled requests, dropped connections, and gateway **502/504** stay silent so background dashboard polls do not show “An unexpected error occurred.”
 
 `GET /api/auth/me` returns the local user + Spatie role names (used to bootstrap the SPA).
 
@@ -98,6 +100,7 @@ Production values: `194.126.177.181`, `23.88.90.12` (managed host), `95.217.144.
 ATLAS_DDASHBOARD_URL=https://data3.dominikliss.com/wp-json   # no trailing slash; Atlas appends /dls/v1/auth/*
 ATLAS_ALLOWED_IPS=1.2.3.4,5.6.7.8
 ATLAS_HTTP_TIMEOUT=30
+ATLAS_TOKEN_CACHE_TTL=3600   # used after /verify when expires_in is unknown; login/refresh prefer expires_in
 ATLAS_DEMO_MODE=false
 ```
 

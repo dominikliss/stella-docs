@@ -60,7 +60,9 @@ No `secret_key` on the row → Atlas **422** (do not call the site).
 | 404 | 404 | Plugin route missing, or WP user does not exist |
 | other non-2xx | 502 | Pass through plugin `error` / `message` |
 | 2xx without `url` | 502 | Plugin did not return a login URL |
-| transport error | 502 | Site unreachable |
+| transport error | 502 | Site unreachable. Message includes the transport detail, e.g. `Could not reach the site (cURL error 7: …). Is it online?` |
+
+If Docker DNS maps the site hostname to a private container IP (no TLS on :443), Atlas pins `CURLOPT_RESOLVE` to the public A record from Cloudflare DNS before POSTing.
 
 The old `dl-connect/v1` path is gone. Call **`atlas-connect/v1`**. Sites that already ran `dl-connect` are migrated; the REST namespace is not.
 
