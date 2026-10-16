@@ -1,6 +1,6 @@
 # Open Gaps & Next Steps
 
-Last updated: 2026-10-12
+Last updated: 2026-10-16
 
 **Cross-system overview:** [integration/system-overview.md](integration/system-overview.md) (Atlas + ddashboard + Stella + Edison). AI-chat path only: [integration/ddashboard-and-stella-server.md](integration/ddashboard-and-stella-server.md).
 
@@ -17,8 +17,9 @@ Last updated: 2026-10-12
   - **TODO (Dominik):** rotate the reused `atlas-prod` SSH key (managed host still holds a copy). Deferred.
   - **TODO (Dominik):** test deployments from `atlas.dev` against one throwaway target (untested by design today).
   - **TODO (Dominik):** Atlas dev GitHub key is an account-level SSH key on `dominikliss` (reaches every repo that account can read). Consider a read-only deploy key. A customer deploy from `atlas.dev` succeeded on 2026-10-11 to the live `dominikliss.com` theme path; **UNVERIFIED** why `atlas-dev` could reach that host (docs still say it is in no `authorized_keys`). Check which `deploy_servers` entry and key were used. See [`atlas/dev-instance.md`](atlas/dev-instance.md).
-  - **TODO (Dominik):** Atlas (`2.31.42.13`) gets 401 from ddashboard; Stella (`95.217.144.93`) gets 403 from the managed host’s Apache. Find the IP allowlist (probably `.htaccess` under `public_html`) and add Stella if Stella should call ddashboard.
+  - **TODO (Dominik):** Atlas (`2.31.42.13`) gets 401 from ddashboard; Stella (`95.217.144.93`) gets 403 from the managed host’s Apache. Find the IP allowlist (probably `.htaccess` under `public_html`) and add Stella if Stella should call ddashboard. Required before Atlas can call the planned `/dls/v1/atlas/*` lookup routes.
   - Backups: `wp-sites:drive-backups` is scheduled every minute; backup driver not finished.
+- [ ] **Atlas TrackingTime import (PM in Atlas)** — planned 2026-10-16. One-way import of TT projects (lists, tasks, subtasks, attachments, time entries) into Atlas MySQL. ddashboard keeps CRM. **ddashboard first:** implement [`stella-dashboard/atlas-client-lookup.md`](stella-dashboard/atlas-client-lookup.md) (`GET /dls/v1/atlas/clients`, `/clients/{id}`, `/users`; Bearer + IP allowlist `2.31.42.13` and `95.217.144.93` only). Then Atlas Tools wizard. Do not use `POST /dls/v1/pm/import-tracking-time-projects`.
 - [x] **Optional: deploy trigger via API on the atlas host.** Live 2026-10-10 on the host API (`POST /system/deploy`, `atlas-dev` key only). See [`atlas/host-api.md`](atlas/host-api.md). Remaining work under Infrastructure.
 - [x] **Planned: health-api for the atlas host.** Live 2026-10-10 as the Atlas host API (`https://api.atlas.foxcraft.digital`). See [`atlas/host-api.md`](atlas/host-api.md). Atlas-side client live (Infrastructure).
 

@@ -1,4 +1,6 @@
-# Atlas tools — IMAP migration
+# Atlas tools
+
+## IMAP migration
 
 Atlas **Tools → IMAP Migration** is the operator UI for Stella’s `imap-sync` service (Express + `imapsync`). It copies one mailbox onto another. It is **not** ddashboard’s IMAP import into MySQL.
 
@@ -77,3 +79,18 @@ List endpoint returns the latest 100 rows.
 ## Connection test
 
 `POST /api/tools/imap-migration/test-connection` uses `ImapConnectionTestService` from the Atlas host (PHP IMAP), so the operator can verify credentials **before** Stella starts a long copy. This does not create a Stella job.
+
+---
+
+## TrackingTime Import (planned — not implemented)
+
+One-way pull of TrackingTime Pro projects into Atlas MySQL (task lists, tasks, subtasks, attachments, time entries). Atlas talks to TrackingTime itself. ddashboard only supplies the client stub.
+
+**Blocked on** ddashboard [`../stella-dashboard/atlas-client-lookup.md`](../stella-dashboard/atlas-client-lookup.md):
+
+1. Operator opens Tools → TrackingTime Import.
+2. Atlas `GET /dls/v1/atlas/clients?has_tracking_time_pro_id=1` (Bearer + Atlas/Stella IP).
+3. Operator picks a customer; Atlas upserts `{ ddashboard_id, tracking_time_pro_id, name }`.
+4. Atlas lists TrackingTime projects for that customer id and imports the selected ones.
+
+Do not call `POST /dls/v1/pm/import-tracking-time-projects`.

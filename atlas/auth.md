@@ -58,6 +58,8 @@ The SPA (`resources/js/lib/api-client.ts`) only toasts when the JSON body has a 
 
 `GET /api/auth/me` returns the local user + Spatie role names (used to bootstrap the SPA).
 
+**Planned:** the same Bearer will call `GET /dls/v1/atlas/clients` (and related) from the Atlas host only. Contract: [`../stella-dashboard/atlas-client-lookup.md`](../stella-dashboard/atlas-client-lookup.md).
+
 ---
 
 ## Role mapping

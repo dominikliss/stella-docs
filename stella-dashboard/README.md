@@ -12,6 +12,7 @@ WordPress **ddashboard** theme: product overview, deep dives, and **mirrors of C
 | [mail-cron-hosting.md](mail-cron-hosting.md) | Cron / hosting notes for mail |
 | [ai-chat.md](ai-chat.md) | AI chat notes |
 | [marketing-youtube-plan.md](marketing-youtube-plan.md) | Marketing / YouTube |
+| [atlas-client-lookup.md](atlas-client-lookup.md) | **Planned** Atlas-only client/user lookup (`/dls/v1/atlas/*`) |
 | [PM_TRACKINGTIME_FIELD_MAP.md](PM_TRACKINGTIME_FIELD_MAP.md) | PM ↔ TrackingTime fields |
 | [TRACKINGTIME_API_REFERENCE.md](TRACKINGTIME_API_REFERENCE.md) | TrackingTime API v4 (short) |
 | [TRACKINGTIME_API_VERBATIM_EXPORT.md](TRACKINGTIME_API_VERBATIM_EXPORT.md) | TrackingTime API (verbatim) |

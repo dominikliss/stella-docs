@@ -14,7 +14,7 @@ Servers use One Piece Vegapunk-satellite names. Firewalls, IPs, and networks use
 |------|------|
 | **ddashboard** | WordPress business app (CRM, accounting, mail, PM, AI chat) |
 | **Stella** | AI / services host (dedicated) |
-| **Atlas** | Operations platform (deploys, health, WP sites, IMAP copy) |
+| **Atlas** | Operations platform (deploys, health, WP sites, IMAP copy; planned TrackingTime import) |
 | **Edison** | Coding-agent host (Hetzner Cloud) — “Invention” |
 
 ---

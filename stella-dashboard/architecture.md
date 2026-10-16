@@ -83,6 +83,8 @@ Three PSR-4 namespaces under `inc/` carry the long-term application core; they a
 
 New browser-facing endpoints MUST use `dls/v1` namespace. The `api/v1` namespace is blocked for all IPs except `194.126.177.181` and `23.88.90.12`.
 
+**Planned — Atlas client lookup** (`GET /dls/v1/atlas/clients`, `/atlas/clients/{id}`, `/atlas/users`): Bearer auth (same token as `/dls/v1/auth/verify`), IP-locked to Atlas `2.31.42.13` and Stella `95.217.144.93` only. Slim payload: client id, name, `tracking_time_pro_id`. **Not implemented.** Spec: [`atlas-client-lookup.md`](atlas-client-lookup.md).
+
 **OpenAPI (path catalogue):** [`reference/dls-v1.openapi.json`](reference/dls-v1.openapi.json) and [`reference/api-v1.openapi.json`](reference/api-v1.openapi.json) — hand-maintained summaries; update when adding routes. Index: [`reference/README.md`](reference/README.md).
 
 **Custom MySQL tables (overview):** [`reference/database-overview.md`](reference/database-overview.md).
@@ -120,6 +122,7 @@ inc/
     mail-classification.php  # Classification rules CRUD + reorder; POST /mail/messages/{id}/classify
     pm-projects.php          # /dls/v1/pm/* — projects, task lists, tasks, assignees, comments, time entries
     tracking-time.php        # TrackingTime Pro import (time entries, tasks, projects)
+    atlas-clients.php        # PLANNED: GET /dls/v1/atlas/clients, /clients/{id}, /users — Atlas Bearer + IP allowlist; see atlas-client-lookup.md
     bank-accounts.php        # GET /dls/v1/bank-accounts, POST, PUT /{id}, DELETE /{id}
     ksef-import.php          # POST /dls/v1/ksef-import
     ksef-test-connection.php # POST /dls/v1/ksef-test-connection
@@ -329,6 +332,7 @@ Globaler Schalter für Live-Demos und YouTube-Aufnahmen. Solange aktiv, ersetzt 
   - `GET  /dls/v1/presentation-mode` → `{ active: bool }` (eingeloggt)
   - `POST /dls/v1/presentation-mode` Body `{ active: bool }` → admin only (`manage_options`)
 - **Schreibsperre:** Filter `rest_pre_dispatch` in `inc/routes/presentation-mode.php` weist alle nicht-`GET/HEAD/OPTIONS`-Anfragen unter `/dls/v1/*` und `/wp/v2/*` mit **`HTTP 423 Locked`** und Code `presentation_mode_active` ab. Allowlist: `dls/v1/presentation-mode`, `dls/v1/session/login`, `dls/v1/session/logout` — damit Admin den Modus wieder verlassen / sich abmelden kann.
+- **Atlas lookup routes (planned):** `GET /dls/v1/atlas/*` must **not** run `obfuscate_client_envelope` (or any other Präsentationsmodus rewrite). Spec: [`atlas-client-lookup.md`](atlas-client-lookup.md).
 - **Daten-Maskierung (READ):**
   - `GET /dls/v1/emails`, `GET /dls/v1/emails/{id}` — `from_name`, `from_email`, `to_addresses`, `subject`, `body_text`/`body_html` werden deterministisch pro Message-ID mit Fake-Personen, Demo-Betreffen und Lorem-Ipsum-Body ersetzt (`obfuscate_email_row`). Zusätzlich werden `has_attachment` und `attachments` auf 0 / leer gesetzt, damit das Büroklammer-Icon und alle Anhang-Bubbles in der UI verschwinden.
   - `GET /dls/v1/emails/{id}/attachments` antwortet mit `{ attachments: [] }`; der Download-Endpoint `/emails/{id}/attachments/{att_id}/download` antwortet mit **`HTTP 423`** und Code `presentation_mode_active`.

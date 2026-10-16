@@ -109,6 +109,9 @@ Full CRM for managing clients, contacts, documents, and portal access.
 - Multiple invoice email addresses (repeater)
 - Logo (media library)
 - Social links (repeater)
+- `tracking_time_pro_id` — TrackingTime Pro customer id (used by Atlas import)
+
+**Planned — Atlas lookup.** Atlas will read a slim client stub (`id`, `name`, `tracking_time_pro_id`) via `GET /dls/v1/atlas/clients`. CRM does not move. Spec: [`atlas-client-lookup.md`](atlas-client-lookup.md).
 
 **Contact persons (Personen)**
 - Each client can have multiple linked persons (separate CPT)
@@ -154,9 +157,10 @@ A built-in PM board, optionally synced with TrackingTime Pro.
 - Tasks have title, status, due date, sort order, and assignees (multiple WP users)
 
 **TrackingTime Pro integration**
-- Import projects, tasks, task lists, and time entries from TrackingTime Pro API v4
+- Import projects, tasks, task lists, and time entries from TrackingTime Pro API v4 into `dls_pm_*`
 - Idempotent import via `tt_project_id` / `tt_task_id` stored on each record
 - Configurable via Verwaltung → Projekte (API key in WP options)
+- **Planned:** Atlas Tools will import TrackingTime projects into **Atlas** MySQL (one-way). ddashboard keeps CRM + `tracking_time_pro_id`. Atlas will not call `POST /dls/v1/pm/import-tracking-time-projects`. See [`atlas-client-lookup.md`](atlas-client-lookup.md).
 
 **Custom MySQL tables** (option `dls_pm_db_version`):
 `dls_pm_project`, `dls_pm_task_list`, `dls_pm_task`, `dls_pm_task_assignee`, `dls_pm_comment`, `dls_pm_time_entry`
@@ -309,6 +313,7 @@ The `api/v1` namespace is IP-restricted to two addresses (`194.126.177.181`, `23
 | `/dls/v1/emails` | Email list, fetch, update, attachment download |
 | `/dls/v1/emails/clear-client-links` | Bulk-remove client_id from emails |
 | `/dls/v1/pm/*` | Project management CRUD |
+| `/dls/v1/atlas/*` | **Planned** — Atlas client/user lookup (IP-locked). [`atlas-client-lookup.md`](atlas-client-lookup.md) |
 | `/dls/v1/ai/chat/message` | AI chat message |
 | `/dls/v1/ai/chat/sessions` | Chat session list |
 | `/dls/v1/ai/config` | Claude API key + model |

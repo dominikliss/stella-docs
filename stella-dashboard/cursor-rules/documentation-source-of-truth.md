@@ -33,7 +33,7 @@ When your change affects **how the system works** (not purely internal refactors
 
 | If you change… | Update in submodule (at minimum) |
 |----------------|----------------------------------|
-| REST routes, `dls/v1` / `api/v1` contracts, auth | `stella-dashboard/architecture.md`, `CAPABILITIES.md` if user-visible; **`stella-dashboard/reference/dls-v1.openapi.json`** and/or **`api-v1.openapi.json`** |
+| REST routes, `dls/v1` / `api/v1` contracts, auth | `stella-dashboard/architecture.md`, `CAPABILITIES.md` if user-visible; **`stella-dashboard/reference/dls-v1.openapi.json`** and/or **`api-v1.openapi.json`**. Atlas-only client lookup: **`stella-dashboard/atlas-client-lookup.md`** |
 | Custom table DDL / new `install-*-tables.php` | `stella-dashboard/reference/database-overview.md` |
 | WP options, cron hooks, install/migrations | `architecture.md`, `CAPABILITIES.md`; integration doc if Stella-related |
 | Mail/IMAP/spam/client linking | `stella-dashboard/mail-nachrichten.md`, `mail-cron-hosting.md` |
