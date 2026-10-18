@@ -19,7 +19,7 @@ Last updated: 2026-10-18
   - **TODO (Dominik):** Atlas dev GitHub key is an account-level SSH key on `dominikliss` (reaches every repo that account can read). Consider a read-only deploy key. A customer deploy from `atlas.dev` succeeded on 2026-10-11 to the live `dominikliss.com` theme path; **UNVERIFIED** why `atlas-dev` could reach that host (docs still say it is in no `authorized_keys`). Check which `deploy_servers` entry and key were used. See [`atlas/dev-instance.md`](atlas/dev-instance.md).
   - **TODO (Dominik):** Atlas (`2.31.42.13`) gets 401 from ddashboard; Stella (`95.217.144.93`) gets 403 from the managed host’s Apache. Find the IP allowlist (probably `.htaccess` under `public_html`) and add Stella if Stella should call ddashboard. Required before Atlas can call the planned `/dls/v1/atlas/*` lookup routes.
   - Backups: `wp-sites:drive-backups` is scheduled every minute; backup driver not finished.
-- [x] **Atlas TrackingTime import (PM in Atlas)** — Atlas Tools import + hourly open-task sync + Projects UI (optional Trello push) are in the Atlas tree. ddashboard still must serve [`stella-dashboard/atlas-client-lookup.md`](stella-dashboard/atlas-client-lookup.md) (`GET /dls/v1/atlas/clients`, `/clients/{id}`, `/users`; Bearer + IP allowlist). Atlas (`2.31.42.13`) currently gets 401 from ddashboard — see production-host TODO above. Do not use `POST /dls/v1/pm/import-tracking-time-projects`.
+- [x] **Atlas TrackingTime import (PM in Atlas)** — Atlas Tools import + hourly open-task sync + Projects UI + one-way Trello push are in the Atlas tree. Trello: [`atlas/projects.md`](atlas/projects.md). ddashboard still must serve [`stella-dashboard/atlas-client-lookup.md`](stella-dashboard/atlas-client-lookup.md) (`GET /dls/v1/atlas/clients`, `/clients/{id}`, `/users`; Bearer + IP allowlist). Atlas (`2.31.42.13`) currently gets 401 from ddashboard — see production-host TODO above. Do not use `POST /dls/v1/pm/import-tracking-time-projects`.
 - [x] **Optional: deploy trigger via API on the atlas host.** Live 2026-10-10 on the host API (`POST /system/deploy`, `atlas-dev` key only). See [`atlas/host-api.md`](atlas/host-api.md). Remaining work under Infrastructure.
 - [x] **Planned: health-api for the atlas host.** Live 2026-10-10 as the Atlas host API (`https://api.atlas.foxcraft.digital`). See [`atlas/host-api.md`](atlas/host-api.md). Atlas-side client live (Infrastructure).
 
@@ -54,14 +54,23 @@ Host rebuilt 2026-10-09 onto CX33 (`edison-ip` = `178.105.203.54`). See [`edison
 
 Service live at `https://stella-media-api.foxcraft.digital`. Contract: [`stella-server/media-api.md`](stella-server/media-api.md).
 
+**Verified 2026-10-18:**
+- [x] **Image build** — RawTherapee, exiftool, openssh-client included.
+- [x] **`GET /health`** — `status` `ok`; tools include `rawtherapee-cli`, `exiftool`, `scp`, `sftp`; `remote.enabled` = true.
+- [x] **ZV-E10 ARW through `POST /convert?op=master`** — `X-Render: rawtherapee`, `X-Profile: Sony ZV-E10 Camera Standard.dcp`, 6016×4016, about 10 s.
+- [x] **`sftp` from inside the container** to the Storage Box (key, pinned `known_hosts`, port 23). Account home is `/home` (paths like `/home/travel/...`; `/travel/...` does not exist).
+
+**Open / UNVERIFIED:**
 - [ ] **Foxx Cloud PHP client** — MediaRaster using `/convert-remote` with `dest`; fallback to local convert; base URL and `MEDIA_HMAC_SECRET` in the nest’s `.env`. In progress.
-- [ ] **`POST /convert-remote` end to end** — **UNVERIFIED:** fetch and write-back; compare the master with the Mac export. Being tested through the Foxx Cloud app.
-- [ ] **Dedicated SSH key and Storage Box sub-accounts** — see Security in [`stella-server/media-api.md`](stella-server/media-api.md). **UNVERIFIED:** which other Storage Boxes the copied host key unlocks.
+- [ ] **`POST /convert-remote` end to end** — **UNVERIFIED:** fetch, render, write-back with `dest`. Being tested through the Foxx Cloud app. Do not mark verified until a successful test is confirmed.
+- [ ] **Colour/detail vs RawTherapee 5.13 Mac export** — **UNVERIFIED.** Stella JPEG 6.8 MB vs Mac 5.2 MB; Debian’s RawTherapee is older.
+- [ ] **Styles other than `standard`; camera bodies other than ZV-E10** — **UNVERIFIED.**
+- [ ] **Real HEIC / DNG / CR3; `poster` / `preview` / `tile` with real files through the API** — **UNVERIFIED.**
+- [ ] **Dedicated SSH key and Storage Box sub-accounts** — see Security in [`stella-server/media-api.md`](stella-server/media-api.md). **UNVERIFIED:** which other Storage Boxes (e.g. the restic backup box) the copied host key unlocks.
 - [ ] **`bake` op** — apply look edits once MediaLookBaker’s input format is known. Not built.
-- [ ] **Real DNG / CR3 / HEIC and other styles** through the API — **UNVERIFIED.** ZV-E10 ARW `master` via `/convert` is verified (2026-10-18).
 - [ ] **Atlas dashboard** — **UNVERIFIED** whether Atlas shows media-api (container, http, cert) after its next poll.
 - [ ] **2026-10-19 03:00 backup** — **UNVERIFIED.** Check `/opt/services/backup/last-run.json` for `status` success.
-- [ ] **Bulk load** — watch `load_1m` vs Atlas thresholds during bulk RAW runs (Ollama cpuset `0-5`, media-api `6-11`, 2 workers).
+- [ ] **Bulk load** — **UNVERIFIED.** Watch `load_1m` vs Atlas thresholds during bulk RAW runs (Ollama cpuset `0-5`, media-api `6-11`, 2 workers).
 
 ---
 

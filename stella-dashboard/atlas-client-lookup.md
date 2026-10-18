@@ -8,7 +8,7 @@ Atlas will **not** call `POST /dls/v1/pm/import-tracking-time-projects` or `/dls
 
 When implementing in the theme: add `inc/routes/atlas-clients.php`, register it with the other `dls/v1` routes, then add the three paths to [`reference/dls-v1.openapi.json`](reference/dls-v1.openapi.json).
 
-Related: [`CAPABILITIES.md`](CAPABILITIES.md) (clients + PM), [`architecture.md`](architecture.md), [`../atlas/tools.md`](../atlas/tools.md), [`../integration/system-overview.md`](../integration/system-overview.md).
+Related: [`CAPABILITIES.md`](CAPABILITIES.md) (clients + PM), [`architecture.md`](architecture.md), [`../atlas/tools.md`](../atlas/tools.md), [`../atlas/projects.md`](../atlas/projects.md), [`../integration/system-overview.md`](../integration/system-overview.md).
 
 ---
 

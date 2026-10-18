@@ -25,7 +25,7 @@ Servers use One Piece Vegapunk-satellite names. Firewalls, IPs, and networks use
 | Name | What it is | Host | Owns |
 |------|------------|------|------|
 | **ddashboard** | Internal business app (CRM, accounting, mail, PM, AI chat) | Hetzner managed WordPress (`foxcrr`) | Relational business data, WP sessions, `dls/v1` auth tokens |
-| **Atlas** | Internal ops platform (deploys, Stella health, WP uptime, IMAP migration) | Hetzner Cloud CX33 `atlas` (`2.31.42.13`) — `https://atlas.foxcraft.digital` | Deploy history, health history, WP-site registry, IMAP job history |
+| **Atlas** | Internal ops platform (deploys, Stella health, WP uptime, IMAP migration, TrackingTime import, Trello push) | Hetzner Cloud CX33 `atlas` (`2.31.42.13`) — `https://atlas.foxcraft.digital` | Deploy history, health history, WP-site registry, IMAP job history, imported PM, Trello card ids |
 | **Stella** | Dedicated AI / services machine | Hetzner dedicated | Ollama, stella-api, deploy-api, health-api, media-api, imap-sync, Caddy, .NET dev apps |
 | **Edison** | Coding-agent sandbox | Hetzner Cloud (same project as Atlas) | Cursor CLI container, sshfs mounts. **Must not** run on Stella. Atlas reads Cloud API status/backups; no agent control. |
 
@@ -57,12 +57,14 @@ Stella is a **service host**. It does not have a general-purpose UI. Atlas and d
         │                                           Stella
         │                                      deploy-api  /  health-api
         │
-        │                                                 │ 3. plain HTTPS (trusted network)
+        │                                                 │ 3. plain HTTPS (trusted network / API keys)
         │                                                 ▼
         │                                           Stella imap-sync
         │                                           WP sites (HEAD + Atlas Connect)
         │                                           GitHub (SSH clone)
         │                                           destination SSH servers (rsync)
+        │                                           TrackingTime Pro
+        │                                           Trello REST v1 (key + token)
         │
         └── browser never talks to Stella or to client WP sites directly
             (except opening an Atlas Connect one-time login URL).
@@ -164,6 +166,15 @@ Details: [`../atlas/atlas-connect/`](../atlas/atlas-connect/).
 
 Details: [`../atlas/deploy-pipeline.md`](../atlas/deploy-pipeline.md).
 
+### Atlas → TrackingTime / Trello
+
+| Feature | Target | Auth | Contract |
+|---------|--------|------|----------|
+| Tools → TrackingTime Import / hourly open-task sync | TrackingTime Pro API v4 | App password in Settings | [`../atlas/tools.md`](../atlas/tools.md) |
+| Projects → Trello push | Trello REST v1 | API key + token in Settings | [`../atlas/projects.md`](../atlas/projects.md) |
+
+One-way only. Trello never writes back. Hourly Trello is a side effect of the TrackingTime open-task sync, not its own cron.
+
 ---
 
 ## 4. Shared SSH key (the one secret that spans three jobs)
@@ -186,7 +197,7 @@ The private key never crosses the network. Only a short-lived signed payload (`a
 |------|-----------------|-------------------|
 | Users, roles, passwords | **ddashboard** (WordPress) | Atlas `users` + Spatie roles (synced on login / verify) |
 | Clients, invoices, mail | **ddashboard** MySQL | Atlas stores a client stub (`ddashboard_id`, `tracking_time_pro_id`, `name`) after import — [`../stella-dashboard/atlas-client-lookup.md`](../stella-dashboard/atlas-client-lookup.md) |
-| PM board (`dls_pm_*`) | **ddashboard** MySQL | Existing in-theme board. New TrackingTime imports go to Atlas MySQL (tasks, lists, attachments, time entries) |
+| PM board (`dls_pm_*`) | **ddashboard** MySQL | Existing in-theme board. New TrackingTime imports go to Atlas MySQL (tasks, lists, attachments, time entries). Optional one-way Trello push from Atlas: [`../atlas/projects.md`](../atlas/projects.md) |
 | Deploy configs, runs, logs | **Atlas** MySQL | Stella deploy-api keeps its own in-memory/job logs during a run |
 | Stella health snapshots | **Atlas** (`stella_health_checks`, `stella_service_uptime_logs`) | health-api is live-only except last-seen container names in `seen.json`; Atlas stores the snapshots |
 | WP site registry + uptime | **Atlas** (`wp_sites`, `wp_site_uptime_logs`) | Site itself does not push status (Atlas pulls) |
@@ -222,7 +233,7 @@ Hetzner Cloud  (same project as Edison)
     │     api.atlas.foxcraft.digital → atlas-api (127.0.0.1:8090), allowlist 2.31.42.13 + 95.217.144.93
     │     Laravel 12.61, PHP 8.5.4-FPM, MySQL `atlas_prod`, Redis (cache)
     │     systemd atlas-queue.service  →  queue:work database --queue=deployments
-    │     /etc/cron.d/atlas → schedule:run (health + WP uptime + drive-backups)
+    │     /etc/cron.d/atlas → schedule:run (health + WP uptime + drive-backups + hourly TT open sync)
     │
     ├── HTTPS ──► Stella (Hetzner dedicated, 95.217.144.93)
     │               Caddy :443  (DOCKER-USER ACCEPTs 2.31.42.13)

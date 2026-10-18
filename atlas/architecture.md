@@ -33,7 +33,7 @@ Business code lives under `app/Domain/{Name}/` (controllers, models, jobs, servi
 | `Monitoring` | Stella health-api + public-probe fallback; Atlas host-api health + optional self-deploy; Hetzner Cloud (atlas + edison backups); history + prune |
 | `WpSites` | Site registry, uptime job, Atlas Connect login, down-alert mail, backup driver + explorer — see [`atlas-connect/backups.md`](atlas-connect/backups.md) |
 | `Tools` | IMAP migration proxy to Stella `imap-sync`; TrackingTime import / open-task sync (ddashboard [`../stella-dashboard/atlas-client-lookup.md`](../stella-dashboard/atlas-client-lookup.md) for client stubs) |
-| `Projects` | Imported customers/projects/tasks; attachment download; Trello push |
+| `Projects` | Imported customers/projects/tasks; attachment download; one-way Trello push ([`projects.md`](projects.md)) |
 | `Settings` | `app_settings` key/value (SSH path, Brevo, Hetzner Cloud token, backup S3 + X25519 vault, TrackingTime, Trello) |
 
 `App\Providers\AtlasServiceProvider` binds `TokenAuthDriver`. With `ATLAS_DEMO_MODE=true` it binds `FakeTokenAuthDriver` instead so the UI can be exercised without ddashboard.
@@ -57,7 +57,7 @@ Entry: `resources/views/app.blade.php` → Vite → `resources/js/routes/index.t
 | `/tools/imap-migration` | `domains/tools/imap-migration/ImapMigrationPage` |
 | `/tools/tracking-time-import` | `domains/tools/tracking-time-import/TrackingTimeImportPage` |
 | `/tools/tracking-time-sync` | `domains/tools/tracking-time-sync/TrackingTimeSyncPage` |
-| `/projects` | `domains/projects/ProjectsPage` |
+| `/projects` | `domains/projects/ProjectsPage` (+ `TrelloProjectSettings` on the detail view) |
 | `/settings` | `domains/settings/SettingsPage` |
 
 API calls go through `resources/js/lib/api-client.ts` with the bearer token from `lib/token-store.ts` (access + refresh). The browser never calls Stella, GitHub, or the Atlas Connect plugin directly.
@@ -90,14 +90,16 @@ Login / refresh / logout skip token middleware (still IP-filtered) and proxy to 
 |---------------|---------|
 | `users`, `teams`, Spatie permission tables | Local user projection of ddashboard identity |
 | `personal_access_tokens` | Sanctum leftover — **not** the live Atlas API auth path |
-| `app_settings` | SSH key path/passphrase, Brevo keys, Hetzner Cloud token (encrypted), alert recipient |
+| `app_settings` | SSH key path/passphrase, Brevo keys, Hetzner Cloud token, TrackingTime, Trello key/token (encrypted), alert recipient |
 | `deploy_configs`, `deploy_destinations`, `deploy_servers` | What/where to deploy |
 | `deploy_runs`, `deploy_run_destinations` | Run history + per-target logs / `stella_job_id` |
 | `stella_health_checks`, `stella_service_uptime_logs` | 5-min Stella snapshots (30-day retention) |
 | `wp_sites`, `wp_site_uptime_logs` | Site registry + 7-day uptime |
 | `imap_migration_jobs` | Atlas-side IMAP history (hosts/users only — **no passwords**) |
+| `customers`, `projects`, `task_lists`, `tasks`, `task_checklist_items`, `task_comments`, `time_entries`, `attachments` | TrackingTime import (one-way). Trello ids live on projects/tasks/check items/attachments |
+| `tracking_time_import_jobs` | Import / open-task sync history |
 | Redis | Cache, including hashed access tokens after login |
-| Database queue `jobs` / `deployments` | `DeployRunJob` |
+| Database queue `jobs` / `deployments` | `DeployRunJob`, `ImportTrackingTimeJob`, `PushProjectToTrelloJob` |
 
 ---
 
@@ -105,8 +107,9 @@ Login / refresh / logout skip token middleware (still IP-filtered) and proxy to 
 
 | Mechanism | Transport | Used for |
 |-----------|-----------|----------|
-| systemd `atlas-queue.service` | `queue:work database --queue=deployments --sleep=3 --timeout=7200 --max-time=3500` | `DeployRunJob` only |
+| systemd `atlas-queue.service` | `queue:work database --queue=deployments --sleep=3 --timeout=7200 --max-time=3500` | `DeployRunJob`, `ImportTrackingTimeJob`, `PushProjectToTrelloJob` |
 | Laravel scheduler (`dispatchSync`) | In-process during `schedule:run` | `CheckStellaHealth`, `CheckAtlasHealth`, `CheckWpSiteUptime`, `wp-sites:drive-backups` (backups still in development) |
+| Laravel scheduler (command) | Hourly `projects:sync-tracking-time-open` | Open-task TrackingTime sync; queues Trello push when the project is mapped |
 
 Do not assume Horizon / Redis queues are driving deploys. Production **hard-codes** `database` and the `deployments` queue. `scripts/queue-deployments.sh` no longer applies on `atlas`.
 
@@ -142,7 +145,7 @@ deploy-api and health-api each have their **own** `allowed_signers` file. health
 
 ## Tests
 
-Pest feature tests under `tests/Feature/{Auth,Deploy}/` and unit tests under `tests/Unit/Deploy/`. Auth tests point `atlas.ddashboard_url` at a fake host and mock HTTP.
+Pest feature tests under `tests/Feature/{Auth,Deploy,Projects,Settings}/` and unit tests under `tests/Unit/`. Auth tests point `atlas.ddashboard_url` at a fake host and mock HTTP. Trello tests fake `api.trello.com`.
 
 ---
 

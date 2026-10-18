@@ -14,7 +14,7 @@ Servers use One Piece Vegapunk-satellite names. Firewalls, IPs, and networks use
 |------|------|
 | **ddashboard** | WordPress business app (CRM, accounting, mail, PM, AI chat) |
 | **Stella** | AI / services host (dedicated) |
-| **Atlas** | Operations platform (deploys, health, WP sites, IMAP copy, TrackingTime import) |
+| **Atlas** | Operations platform (deploys, health, WP sites, IMAP copy, TrackingTime import, Trello push) |
 | **Edison** | Coding-agent host (Hetzner Cloud) — “Invention” |
 
 ---
@@ -39,7 +39,7 @@ Topic pages live in each system README. Shared contracts stay as two files (Atla
 | Folder | Contents |
 |--------|----------|
 | [**integration/**](integration/) | System map, ddashboard ↔ Stella AI |
-| [**atlas/**](atlas/) | Atlas: architecture, production host runbook, host API, `atlas.dev` instance, auth, Atlas Connect, deploys, monitoring, tools |
+| [**atlas/**](atlas/) | Atlas: architecture, production host runbook, host API, `atlas.dev` instance, auth, Atlas Connect, deploys, monitoring, tools, projects / Trello |
 | [**stella-server/**](stella-server/) | Stella host: infra, APIs, per-app SSH; app runbooks under [`apps/`](stella-server/apps/) |
 | [**stella-dashboard/**](stella-dashboard/) | ddashboard product docs, OpenAPI, Cursor rule exports |
 | [**edison/**](edison/) | Edison host, `edison-net`, Cursor CLI / sshfs |

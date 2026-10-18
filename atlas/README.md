@@ -37,7 +37,7 @@ It is **not** the business dashboard. Clients, invoices, and mail live in **ddas
 | **Tools → IMAP Migration** | `/tools/imap-migration` | Trigger / poll `imapsync` jobs on Stella |
 | **Tools → TrackingTime Import** | `/tools/tracking-time-import` | Full one-way import of selected TrackingTime projects into Atlas MySQL |
 | **Tools → TrackingTime Sync** | `/tools/tracking-time-sync` | Hourly or manual open-task sync; job log |
-| **Projects** | `/projects` | Imported projects, tasks, attachments; optional Trello board push |
+| **Projects** | `/projects` | Imported projects, tasks, attachments; one-way Trello push ([`projects.md`](projects.md)) |
 | **Settings** | `/settings` | SSH/GitHub key path, Brevo, Hetzner Cloud token, backup S3 + X25519 vault, TrackingTime, Trello |
 
 ## Documents in this folder
@@ -53,6 +53,7 @@ It is **not** the business dashboard. Clients, invoices, and mail live in **ddas
 | [deploy-pipeline.md](deploy-pipeline.md) | ssh_rsync and stella_deploy_api |
 | [monitoring.md](monitoring.md) | Stella health + WP uptime |
 | [tools.md](tools.md) | IMAP copy via Stella; TrackingTime import and open-task sync |
+| [projects.md](projects.md) | Projects UI; one-way Trello push (mapping, hours field, reset ids) |
 | [dotnet-azure.md](dotnet-azure.md) | .NET / Azure via `stella_deploy_api` |
 
 ---
@@ -68,6 +69,8 @@ Browser (IP-allowlisted)
         → Stella imap-sync    mailbox copy (no HTTP auth)
         → GitHub + SSH hosts  ssh_rsync deploys
         → WP sites            HEAD uptime + Atlas Connect login / backup driver
+        → TrackingTime Pro    import + hourly open-task sync
+        → Trello REST v1      one-way card push (key + token)
 ```
 
 Atlas **does not** call Stella `/chat/*`. That is ddashboard’s AI path.
@@ -135,6 +138,7 @@ Both health loops run via `php artisan schedule:run` (cron every minute). They u
 | every 5 min | `CheckStellaHealth` | Signed health-api request; store `StellaHealthCheck` + per-service `StellaServiceUptimeLog`. Public-endpoint probes if health-api is down. Prune older than 30 days. |
 | every 5 min | `CheckAtlasHealth` | Signed host-api request; store `AtlasHealthCheck` + per-service `AtlasServiceUptimeLog`. Prune older than 30 days. |
 | every 5 min | `CheckWpSiteUptime` (once per site) | `HEAD https://{domain}`; `up` / `degraded` (>1 s) / `down`. Brevo email on first `down` transition. Prune logs older than 7 days. |
+| hourly | `projects:sync-tracking-time-open` | Open-task TrackingTime sync; if the project is Trello-mapped, queues a Trello push |
 | every minute | `wp-sites:drive-backups` | Backups feature still in development; backup driver not finished |
 
 ---
@@ -258,6 +262,27 @@ The **public** key must be in:
 | `GET` | `/api/tools/imap-migration/jobs/{id}/log` | Fetch job log from Stella |
 | `DELETE` | `/api/tools/imap-migration/jobs/{id}` | Cancel a running job |
 
+### Projects / Trello
+
+| Method | Path | Purpose |
+|--------|------|---------|
+| `GET` | `/api/customers` | Imported customer stubs |
+| `GET` | `/api/projects` | List imported projects |
+| `GET` | `/api/projects/{id}` | Project detail + `trello` state |
+| `GET` | `/api/projects/{id}/trello` | Mapping + push progress |
+| `PATCH` | `/api/projects/{id}/trello` | Save Trello mapping |
+| `POST` | `/api/projects/{id}/trello/push` | Queue a one-way Trello push |
+| `POST` | `/api/projects/{id}/trello/reset` | Clear stored Trello ids for this project |
+| `GET` | `/api/attachments/{id}/download` | Download an imported attachment |
+| `GET` | `/api/trello/boards` | List open Trello boards |
+| `GET` | `/api/trello/boards/{boardId}/lists` | List open columns |
+| `GET` | `/api/trello/boards/{boardId}/custom-fields` | Number/text custom fields |
+| `GET` | `/api/settings/trello` | Trello credential status (never the key/token) |
+| `PATCH` | `/api/settings/trello` | Save Trello API key + token |
+| `POST` | `/api/settings/trello/test` | Test Trello credentials |
+
+See [`projects.md`](projects.md).
+
 ### Settings
 
 | Method | Path | Purpose |
@@ -274,6 +299,9 @@ The **public** key must be in:
 | `GET` | `/api/settings/hetzner` | Show Hetzner Cloud token status (never the token) |
 | `PATCH` | `/api/settings/hetzner` | Save the read-only Cloud token (encrypted) |
 | `POST` | `/api/settings/hetzner/test` | List servers in the project |
+| `GET` | `/api/settings/tracking-time` | TrackingTime credential status |
+| `PATCH` | `/api/settings/tracking-time` | Save TrackingTime credentials |
+| `POST` | `/api/settings/tracking-time/test` | Test TrackingTime credentials |
 
 ---
 
@@ -302,6 +330,9 @@ STELLA_OSGAR_URL=https://osgar.datahub.foxcraft.digital
 
 BACKUP_S3_ACCESS_KEY=
 BACKUP_S3_SECRET_KEY=
+
+TRELLO_API_KEY=
+TRELLO_TOKEN=
 ```
 
 ---
@@ -316,6 +347,7 @@ BACKUP_S3_SECRET_KEY=
 - [`atlas-connect/`](atlas-connect/) — WP plugin: login + backups (Atlas driver + Settings vault + WP Sites UI)
 - [`deploy-pipeline.md`](deploy-pipeline.md) — ssh_rsync and stella_deploy_api
 - [`monitoring.md`](monitoring.md) — Stella health, Atlas host health, WP uptime
-- [`tools.md`](tools.md) — IMAP migration via Stella
+- [`tools.md`](tools.md) — IMAP migration via Stella; TrackingTime import/sync
+- [`projects.md`](projects.md) — Projects UI and one-way Trello push
 - [`dotnet-azure.md`](dotnet-azure.md) — .NET / Azure via `stella_deploy_api`
 - [`../integration/system-overview.md`](../integration/system-overview.md) — full company map

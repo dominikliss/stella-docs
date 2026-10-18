@@ -1,0 +1,113 @@
+# Atlas projects and Trello push
+
+Imported TrackingTime work is shown at **`/projects`**. Each project can optionally push **one way** to a Trello board. Trello never writes back into Atlas.
+
+TrackingTime import / hourly open-task sync: [`tools.md`](tools.md#trackingtime-import-and-sync).  
+Client stubs: [`../stella-dashboard/atlas-client-lookup.md`](../stella-dashboard/atlas-client-lookup.md).
+
+---
+
+## What is published
+
+Atlas talks to Trello REST v1 with a **key + token** (Settings → Trello). Not OAuth 2.0. Credentials are encrypted in `app_settings` (`trello_api_key`, `trello_token`); env fallbacks `TRELLO_API_KEY` / `TRELLO_TOKEN`.
+
+Per project, the operator maps:
+
+| Atlas | Trello |
+|-------|--------|
+| Board | One board |
+| Active task list | In progress column + Done column |
+| Backlog task list | Backlog column |
+| Hours worked field (optional) | Number or text custom field (e.g. **Zeit gearbeitet**) |
+
+A mapping is ready when at least one of the two list pairs is complete (active + both columns, or backlog + backlog column).
+
+---
+
+## Push rules
+
+Identity is **`tasks.trello_card_id` only**. Comments are never pushed.
+
+| Atlas task | Trello |
+|------------|--------|
+| Open, in the mapped active list, no card yet | Create a card in **In progress** |
+| Later archived (`is_archived`) and already has a card | Move that card to **Done** (list move only — not `dueComplete`, not forced to the top) |
+| Open, in the mapped backlog list, no card yet | Create a card in **Backlog** |
+| Archived, never had a card | Skip — old done work is not published |
+
+Card name: `!` / `!!` / `!!!` from `tasks.priority` (1–3), then the task name.
+
+Sort inside a column: priority high first, then tasks with a due date (earliest first), then undated. Position is `(index + 1) * 65536` (lower `pos` = top).
+
+Description: HTML → Trello markdown, plus estimated hours when set, plus a Subtasks checklist-style block. Checklists and attachments (≤ 10 MB) are created once and updated by stored Trello ids.
+
+Updates send **`idBoard` + `idList`** so a remapped board can move existing cards. If the stored card is gone (GET 404), Atlas clears the ids and treats the task as unpublished.
+
+---
+
+## Hours worked
+
+Hours = sum of `time_entries.duration_seconds` on the task **and its subtasks**, ÷ 3600.
+
+| Hours field mapping | Where hours go |
+|---------------------|----------------|
+| Empty | Card description: `Hours worked: 1.00h` |
+| Number or text custom field | That field only (not also in the description) |
+
+Number values are a decimal (`1.5`) or a whole number (`2`, not `2.00`). If Trello rejects a float, Atlas retries the rounded integer.
+
+The field must exist **on the mapped board**. `GET /boards/{id}/customFields` only returns number/text fields. A field on another board will not appear in the dropdown.
+
+---
+
+## When a push runs
+
+`PushProjectToTrelloJob` on the `deployments` queue (`TrelloPushStarter`).
+
+| Trigger | Behaviour |
+|---------|-----------|
+| Project UI **Push to Trello** | `POST /api/projects/{id}/trello/push` — 409 if already pending/running, 422 if unmapped or Trello is not configured |
+| After a TrackingTime import/sync of that project | `TrelloPushStarter::startIfMapped` — no-op if unmapped, unconfigured, or already running |
+
+There is **no** dedicated Trello cron. Hourly Trello is a side effect of `projects:sync-tracking-time-open` (Laravel scheduler, every hour).
+
+Progress (`trello_push_status` / `done` / `total` / `log`) is stored on the project and polled by the project page.
+
+---
+
+## Reset Trello IDs
+
+Project Trello panel → **Reset Trello IDs**. Clears this project’s `trello_card_id`, `trello_checklist_id`, check-item ids, and attachment ids. Other projects are left alone. Mapping is kept. Blocked with **409** while a push is pending/running.
+
+Use this after changing to a different board so the next push creates new cards instead of updating cards that still live on the old board.
+
+---
+
+## API
+
+| Method | Path | Purpose |
+|--------|------|---------|
+| `GET` | `/api/projects` | List imported projects |
+| `GET` | `/api/projects/{id}` | Project detail (lists, tasks, `trello` state) |
+| `GET` | `/api/projects/{id}/trello` | Mapping + push progress |
+| `PATCH` | `/api/projects/{id}/trello` | Save board / columns / task lists / hours field |
+| `POST` | `/api/projects/{id}/trello/push` | Queue a push |
+| `POST` | `/api/projects/{id}/trello/reset` | Clear stored Trello ids for this project |
+| `GET` | `/api/trello/boards` | Open boards for the saved token |
+| `GET` | `/api/trello/boards/{boardId}/lists` | Open lists |
+| `GET` | `/api/trello/boards/{boardId}/custom-fields` | Number/text custom fields |
+| `GET` | `/api/settings/trello` | Configured? (never returns the key/token) |
+| `PATCH` | `/api/settings/trello` | Save key/token (`••••••••` = keep current) |
+| `POST` | `/api/settings/trello/test` | `GET /members/me` |
+
+---
+
+## Code
+
+| Piece | Role |
+|-------|------|
+| `TrelloClient` | REST v1 (`key` + `token` query params) |
+| `TrelloPusher` | Create/update/move cards, hours, checklists, attachments |
+| `TrelloPushStarter` | Queue guard + hourly hook |
+| `PushProjectToTrelloJob` | `deployments` queue, 30 min timeout, 1 try |
+| `TrelloSettings` | Encrypted credentials |
