@@ -58,7 +58,7 @@ If unsure whether docs need a touch: **prefer updating** — operators and futur
 
 ## Git workflow (submodule + theme)
 
-1. **`cd docs/stella-docs`** — edit, **`git add`**, **`git commit`**, **`git push`** (when remote exists).
+1. **`cd docs/stella-docs`** — on **`main` only** (never a feature branch). Edit, **`git add`**, **`git commit`**, **`git push origin main`**.
 2. **Theme root** — **`git add docs/stella-docs`**, commit **submodule pointer** with your theme changes (or immediately after).
 
 Cloners need: **`git clone --recurse-submodules`** or **`git submodule update --init --recursive`**.
@@ -75,6 +75,7 @@ Cloners need: **`git clone --recurse-submodules`** or **`git submodule update --
 
 ## Do not
 
+- Create feature branches in `stella-docs`. Docs work is **`main` only**.
 - Reintroduce long-form **`docs/*.md`** in the theme without first merging into `stella-docs`.
 - Put **secrets** in `.gitmodules`, markdown, or examples (PATs, raw API keys).
 - Declare a feature “done” when behaviour changed but **no** doc path above was reviewed for updates.

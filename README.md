@@ -46,8 +46,14 @@ Topic pages live in each system README. Shared contracts stay as two files (Atla
 
 ---
 
+## Branch
+
+**Work on `main` only.** Do not create feature branches, topic branches, or PR branches in this repo. Commit and push straight to `origin/main`.
+
+Hit 2026-10-18: a docs commit was pushed to `docs/dynamic-health-backup-2026-10-10` because that was the local checkout. That branch is gone; `main` is the only branch. Keep it that way.
+
 ## Done means
 
-1. Edit the matching folder in this repo.
-2. Commit and push `dominikliss/stella-docs`.
+1. Edit the matching folder in this repo. Checkout is `main`, in sync with `origin/main`.
+2. Commit and push **`main`** on `dominikliss/stella-docs`. Never `checkout -b` / never push a second branch.
 3. Bump the submodule pointer in the parent (theme and/or Atlas).
