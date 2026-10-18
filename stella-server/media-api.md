@@ -19,7 +19,7 @@
 - Image builds (RawTherapee, exiftool, openssh-client included).
 - `GET /health` returns `status` `ok`; tools `convert`, `identify`, `ffmpeg`, `ffprobe`, `dcraw`, `dcraw_emu`, `rawtherapee-cli`, `exiftool`, `scp`, `sftp` all present; HEIC, DNG, CR2, CR3, NEF, ARW, RAF readable by ImageMagick; `profiles.cameras` = `Sony ZV-E10`, `profiles.template` = true; `remote.enabled` = true.
 - One real Sony ZV-E10 ARW through `POST /convert?op=master`: `X-Render: rawtherapee`, `X-Profile: Sony ZV-E10 Camera Standard.dcp`, 6016x4016, embedded profile `RTv4_sRGB`, about 10 s round trip.
-- From inside the container: `sftp` to the Storage Box works (key, pinned `known_hosts`, port 23); directory listing returned.
+- From inside the container: `sftp` to the Storage Box works (key, pinned `known_hosts`, port 23); directory listing returned. The account's home is `/home`, so originals are addressed as `/home/travel/...` (a path like `/travel/...` does not exist and makes `/convert-remote` fail with 502 `fetch_failed`).
 
 **UNVERIFIED:**
 - `POST /convert-remote` end to end (fetch, render, write-back with `dest`) — being tested through the Foxx Cloud app.
@@ -96,7 +96,7 @@ No auth. Returns `status` (`ok` / `degraded` when a tool is missing), `workers`,
 | `op` | yes | as above |
 | `host` | yes | Storage Box host, e.g. `u691793.your-storagebox.de` (lowercased) |
 | `user` | yes | Storage Box user (lowercased) |
-| `path` | yes | Absolute path of the original on the box. Must start with `/`, no `..` segment, no control characters, max 1000 chars. The extension decides the decode path. |
+| `path` | yes | Absolute path of the original on the box. Must start with `/`, no `..` segment, no control characters, max 1000 chars. The extension decides the decode path. On the production box the home is `/home`, e.g. `/home/travel/peru-2026/x.arw`. |
 | `style` | no | as above |
 | `dest` | no | Absolute path for the result JPEG on the box. Must end in `.jpg` or `.jpeg`, characters `A-Z a-z 0-9 space _ . , ( ) @ + = / -`, no `..`, max 900 chars. If set, the JPEG is stored there instead of being returned. |
 | `dest_user` | no | User that writes `dest`. Defaults to `user`. Same `host`. |
@@ -106,7 +106,7 @@ No auth. Returns `status` (`ok` / `degraded` when a tool is missing), `workers`,
 - With `dest`: response 200 `application/json`, no image:
 
 ```json
-{"stored": true, "dest": "/derivatives/2026/x.jpg", "bytes": 6815570, "width": 6016, "height": 4016, "render": "rawtherapee", "profile": "Sony ZV-E10 Camera Standard.dcp"}
+{"stored": true, "dest": "/home/derivatives/2026/x.jpg", "bytes": 6815570, "width": 6016, "height": 4016, "render": "rawtherapee", "profile": "Sony ZV-E10 Camera Standard.dcp"}
 ```
 
 - `render` / `profile` are `null` for ops other than `master`; `profile` is `null` when `render` is `default`.
@@ -402,7 +402,7 @@ echo "ls" | docker exec -i media-api sftp -q -P 23 -i /app/ssh/id_ed25519 -o Bat
 `/convert-remote` with write-back:
 
 ```bash
-docker exec -e RAW_PATH='/path/to/file.arw' -e DEST_PATH='/derivatives-test/file.jpg' media-api python -c '
+docker exec -e RAW_PATH='/home/travel/<folder>/file.arw' -e DEST_PATH='/home/derivatives-test/file.jpg' media-api python -c '
 import os,sys,time,hmac,hashlib,urllib.request,urllib.parse
 q=urllib.parse.urlencode({"op":"master","host":"<host>","user":"<user>","path":os.environ["RAW_PATH"],"dest":os.environ["DEST_PATH"]},quote_via=urllib.parse.quote)
 ts=str(int(time.time()))

@@ -174,13 +174,13 @@ Full-server restore: [`restore.md`](restore.md).
 
 No extra backup config. The whole `/opt/services` tree is in the nightly restic run, including:
 
-- `media-api/profiles/` — Adobe Camera Matching DCPs (licence-restricted: keep out of git) plus `template.pp3`
+- `media-api/profiles/` — Adobe Camera Matching DCPs (licence-restricted: never commit them to git) plus `template.pp3`
 - `media-api/ssh/` — private key used by `/convert-remote` (copy of Stella’s default key; no contents or fingerprints here)
 - `media-api/.env` — `MEDIA_HMAC_SECRET` (value not recorded here)
 
 `/scratch` is a tmpfs and is not persisted. See [`media-api.md`](media-api.md).
 
-**UNVERIFIED:** first run that includes media-api is the 03:00 run on 2026-10-19 — check `/opt/services/backup/last-run.json` for `status` success.
+**UNVERIFIED:** first restic run that includes `media-api/profiles/` and `media-api/ssh/` is 2026-10-19 03:00 — check `/opt/services/backup/last-run.json` for `status` success.
 
 ## Known limits
 

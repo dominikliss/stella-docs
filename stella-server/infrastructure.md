@@ -38,7 +38,7 @@ Core Docker-managed services live at `/opt/services/docker-compose.yml`. Dev/sta
 | `deploy-api` | Docker (`edge` network, no host port) | — | SSH-signature-authenticated deploy trigger — [`deploy-api.md`](deploy-api.md) |
 | `ollama` | Docker (`edge` network) | 11434 (published to `127.0.0.1` only) | LLM inference — containerized 2026-08-10, see below |
 | `health-api` | Docker (`edge` network) | 443 via Caddy (`stella-health-api.foxcraft.digital`) | System status endpoint for Atlas — [`health-api.md`](health-api.md) |
-| `media-api` | Docker (`edge` network) | 443 via Caddy (`stella-media-api.foxcraft.digital`) | RAW/HEIC/JPEG/video-poster decode for Foxx Cloud (HMAC); `/convert-remote` pulls from / writes to Storage Box — [`media-api.md`](media-api.md). No published ports. cpuset `6-11` |
+| `media-api` | Docker (`edge` network) | 443 via Caddy (`stella-media-api.foxcraft.digital`) | RAW/HEIC/JPEG/video-poster decode for Foxx Cloud (HMAC; RawTherapee + Adobe DCPs for `master` on RAW). `/convert-remote` pulls from / writes to Storage Box (ro mounts `profiles/`, `ssh/`; outbound port 23 verified). [`media-api.md`](media-api.md). No published ports. cpuset `6-11` |
 | `backup` | Docker (`edge` network, no host port) | — | Nightly restic backup to Hetzner Storage Box — see [`backup.md`](backup.md) |
 | `osgar-datahub-dev` | Docker (.NET dev, hot-reload) | 5081→8080 (localhost) | `.NET` app, same pattern as `advoapp-dev` — `Dockerfile.dev` + bind-mounted `src`; compose file at `/opt/apps/dotnet/osgar.datahub.foxcraft.digital/docker-compose.dev.yml` |
 | `osgar-datahub-db` | Docker (MSSQL 2022) | — (internal only) | `mcr.microsoft.com/mssql/server:2022-latest`, data volume `osgar-datahub-mssql-data`; same compose file as `osgar-datahub-dev` |
@@ -783,6 +783,14 @@ services:
       - MEDIA_WORKERS=2
       - MAGICK_THREAD_LIMIT=2
       - OMP_NUM_THREADS=2
+      - MEDIA_PROFILES=/app/profiles
+      - MEDIA_DEFAULT_STYLE=standard
+      - MEDIA_STORAGE_ALLOWED=*@*.your-storagebox.de
+      - MEDIA_STORAGE_PORT=23
+      - MEDIA_SSH_KEY=/app/ssh/id_ed25519
+      - MEDIA_SSH_KNOWN_HOSTS=/app/ssh/known_hosts
+      - MEDIA_FETCH_TIMEOUT=200
+      - MEDIA_DEST_PREFIXES=
     tmpfs:
       - /scratch:size=4g,uid=10001,gid=10001
     volumes:
