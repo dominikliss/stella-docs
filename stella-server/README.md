@@ -1,6 +1,6 @@
 # Stella
 
-Dedicated AI / services host. No general-purpose UI — **Atlas** and **ddashboard** are the HTTP clients.
+Dedicated AI / services host. No general-purpose UI — **Atlas**, **ddashboard**, and **Foxx Cloud** (nest, `dedi6724`) are the HTTP clients.
 
 **Atlas** is a separate Hetzner Cloud host (`atlas`, `2.31.42.13`, `https://atlas.foxcraft.digital`) — not this machine, not the managed `foxcrr` host. Same Cloud project as Edison. Runbook: [`../atlas/server.md`](../atlas/server.md). Stella `DOCKER-USER` ACCEPTs `2.31.42.13` on 443 so Atlas can reach deploy-api and health-api.
 
@@ -16,6 +16,7 @@ Dedicated AI / services host. No general-purpose UI — **Atlas** and **ddashboa
 | [stella-api.md](stella-api.md) | FastAPI `/chat/*` (ddashboard) |
 | [deploy-api.md](deploy-api.md) | Signed deploy trigger (Atlas) |
 | [health-api.md](health-api.md) | Signed system-status snapshot for Atlas — dynamic containers + Caddyfile certs |
+| [media-api.md](media-api.md) | Stateless RAW/HEIC/JPEG/video-poster decode for Foxx Cloud (HMAC) — `stella-media-api.foxcraft.digital` |
 | [imap-sync-service.md](imap-sync-service.md) | Express + `imapsync` mailbox copy (Atlas) |
 | [backup.md](backup.md) | Nightly restic → Storage Box — automatic scope, DB dumps, weekly verify |
 | [restore.md](restore.md) | Disaster-recovery runbook (restic → fresh server) |

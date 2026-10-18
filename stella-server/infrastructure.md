@@ -7,7 +7,7 @@
 - **CPU:** Intel i7-8700
 - **RAM:** 124 GB
 - **WAN interface:** `eno1` — this matters for firewall rules, see Security section
-- **Role:** AI inference, API services, IMAP sync, reverse-proxied dev/staging apps
+- **Role:** AI inference, API services, media decode, IMAP sync, reverse-proxied dev/staging apps
 
 ### ddashboard (Hetzner Managed)
 - **Role:** WordPress — ddashboard theme, Stella **chat** client, REST `dls/v1` (including auth tokens consumed by Atlas)
@@ -38,6 +38,7 @@ Core Docker-managed services live at `/opt/services/docker-compose.yml`. Dev/sta
 | `deploy-api` | Docker (`edge` network, no host port) | — | SSH-signature-authenticated deploy trigger — [`deploy-api.md`](deploy-api.md) |
 | `ollama` | Docker (`edge` network) | 11434 (published to `127.0.0.1` only) | LLM inference — containerized 2026-08-10, see below |
 | `health-api` | Docker (`edge` network) | 443 via Caddy (`stella-health-api.foxcraft.digital`) | System status endpoint for Atlas — [`health-api.md`](health-api.md) |
+| `media-api` | Docker (`edge` network) | 443 via Caddy (`stella-media-api.foxcraft.digital`) | Stateless RAW/HEIC/JPEG/video-poster decode for Foxx Cloud (HMAC) — [`media-api.md`](media-api.md). No published ports. cpuset `6-11` |
 | `backup` | Docker (`edge` network, no host port) | — | Nightly restic backup to Hetzner Storage Box — see [`backup.md`](backup.md) |
 | `osgar-datahub-dev` | Docker (.NET dev, hot-reload) | 5081→8080 (localhost) | `.NET` app, same pattern as `advoapp-dev` — `Dockerfile.dev` + bind-mounted `src`; compose file at `/opt/apps/dotnet/osgar.datahub.foxcraft.digital/docker-compose.dev.yml` |
 | `osgar-datahub-db` | Docker (MSSQL 2022) | — (internal only) | `mcr.microsoft.com/mssql/server:2022-latest`, data volume `osgar-datahub-mssql-data`; same compose file as `osgar-datahub-dev` |
@@ -63,7 +64,7 @@ Core Docker-managed services live at `/opt/services/docker-compose.yml`. Dev/sta
 Standard Caddy can't issue certs without exposing port 80 to the whole internet (HTTP-01 challenge). Since all dev/staging subdomains are IP-restricted, Caddy is built with the **`caddy-dns/hetzner/v2`** plugin instead, which proves domain ownership via a DNS TXT record (DNS-01) — no inbound port ever needs to be open to Let's Encrypt/ZeroSSL.
 
 **⚠️ Hetzner DNS API migration (2026-08-06):** Hetzner shut down the old `dns.hetzner.com` DNS Console/API in May 2026 and merged DNS management into the unified Hetzner Cloud API (`api.hetzner.cloud`). Tokens created in the old DNS Console **do not work** with the new API. If you ever see a `301` redirect to `console.hetzner.com` from a `dns.hetzner.com` API call, this is why. Use:
-- **`caddy-dns/hetzner/v2`** (not v1) — v1 targets the dead API
+- **`caddy-dns/hetzner/v2`** (not v1) — v1 targets the dead API. Plugin live as of 2026-10-18: `dns.providers.hetzner` v2.0.1
 - API tokens from **console.hetzner.com** → the project that **owns the `foxcraft.digital` zone** → Security → API tokens — not the old DNS Console. Docs previously said `konsoleH`; the zone has been moved. **TODO (Dominik): name of the new project.**
 - Endpoint: `https://api.hetzner.cloud/v1/zones/{zone_id}/rrsets` (not the old `/api/v1/records` structure)
 
@@ -179,6 +180,19 @@ stella-health-api.foxcraft.digital {
     reverse_proxy health-api:8080
 }
 
+stella-media-api.foxcraft.digital {
+    tls {
+        issuer acme {
+            email projects@foxcraft.digital
+            dir https://acme-v02.api.letsencrypt.org/directory
+            dns hetzner {env.HETZNER_API_TOKEN}
+            propagation_delay 45s
+            propagation_timeout 3m
+        }
+    }
+    reverse_proxy media-api:8080
+}
+
 osgar.datahub.foxcraft.digital {
     tls {
         issuer acme {
@@ -242,13 +256,22 @@ atlas.dev.foxcraft.digital {
 }
 ```
 
+For a **stubborn new subdomain** whose first DNS-01 attempt hits NXDOMAIN (Hetzner TXT publishing delay — Issue 2, 2026-10-18), add these two lines inside `issuer acme { ... }` and **keep them** (renewals need them too):
+
+```
+            propagation_delay 45s
+            propagation_timeout 3m
+```
+
+`stella-media-api.foxcraft.digital` uses this (no `@blocked` — HMAC is the app-layer check; port 443 is already team-IP filtered). Do not copy those two lines onto existing sites unless that site is actually failing issuance/renewal.
+
 The `dir` line is decisive — without it, Caddy can still fall back internally to `acme-staging-v02.api.letsencrypt.org` even with `issuer acme` set. A global `acme_dns hetzner {env.HETZNER_API_TOKEN}` alone also does **not** lock the issuer.
 
-**Already pinned with `dir`:** `stella.foxcraft.digital`, `advoapp.finditoo.foxcraft.digital`, `stella-deployment-api.foxcraft.digital`, `stella-health-api.foxcraft.digital`, `osgar.datahub.foxcraft.digital`, `dominikliss.foxcraft.digital`, `atlas.dev.foxcraft.digital`.
+**Already pinned with `dir`:** `stella.foxcraft.digital`, `advoapp.finditoo.foxcraft.digital`, `stella-deployment-api.foxcraft.digital`, `stella-health-api.foxcraft.digital`, `stella-media-api.foxcraft.digital`, `osgar.datahub.foxcraft.digital`, `dominikliss.foxcraft.digital`, `atlas.dev.foxcraft.digital`. `stella-media-api` also has `propagation_delay 45s` + `propagation_timeout 3m`.
 
 Each new subdomain gets its own block at the bottom, reverse-proxying to a container name on the `edge` network — Caddy handles TLS automatically via DNS-01, no manual cert management needed.
 
-**After any Caddyfile edit:** `docker compose restart caddy` is required (not `up -d` alone — Compose does not recreate/reload on bind-mounted file content changes). Restart mid-retry is fine; Caddy simply restarts the attempt for the affected domain.
+**After any Caddyfile edit:** `docker compose restart caddy` is required (not `up -d` alone — Compose does not recreate/reload on bind-mounted file content changes). Restart mid-retry is fine; Caddy simply restarts the attempt for the affected domain. **Also** `docker compose up -d --force-recreate health-api` — health-api bind-mounts the Caddyfile as a **single file**; `sed -i` (new inode) leaves the container on the old file, so cert discovery for the new domain stays stale until force-recreate (Issue 4, 2026-10-18). `docker compose restart caddy` was enough for Caddy itself.
 
 **`caddy-data` volume (added 2026-09-01):** Caddy stores ACME certificates under `/data`. Before this volume existed, every `docker compose up -d --force-recreate caddy` (or `down`/`up`) wiped all certs and forced a full re-issuance across every domain. That is what happened when the leftover `8080`/`3001` port publishes were removed — a multi-domain recert storm, including a transient Let's Encrypt staging fallback on `stella-deployment-api.foxcraft.digital` (resolved after clearing one stale `_acme-challenge` TXT record and waiting out normal DNS-01 retries — same Issue 2/3 pattern, no new failure mode). The named volume is declared next to `ollama-models` under the top-level `volumes:` key. **This should prevent the whole-fleet-recert issue from recurring on any future Caddy recreate.** The volume lives outside `/opt/services` as `services_caddy-data`. As of 2026-10-10 restic includes every volume used by a container (except `ollama-models` and dumped DB volumes), so **`caddy-data` is backed up** — a restore should not force a recert storm. See [`backup.md`](backup.md).
 
@@ -319,6 +342,12 @@ A clean first attempt typically resolves in 15–30 s once DNS has propagated; f
 
 **What was ruled out:** concurrent issuance across multiple domains (tested `stella.foxcraft.digital` in isolation — same NXDOMAIN pattern, so it's not a cross-domain race); UFW / IP whitelist (DNS-01 validation is purely outbound from Caddy to Hetzner's API, no inbound traffic involved).
 
+**Follow-up (2026-10-18, `stella-media-api.foxcraft.digital`) — Hetzner Cloud DNS publishing delay.** A TXT record created through the API (`create_rrset` action starts as `"running"`) took ~10 s before `ns1.your-server.de` served it (created 10:25:57, first answer 10:26:07). Without a wait, Caddy's attempt took ~15–20 s, Let's Encrypt's secondary validation hit NXDOMAIN, and the challenge TXT was deleted again within seconds — so it is never visible in the Hetzner panel (also normal for all other subdomains outside of issuance/renewal). Plugin: `caddy-dns/hetzner` v2 (`dns.providers.hetzner` v2.0.1).
+
+**Fix for a stubborn new subdomain:** per-site `propagation_delay 45s` + `propagation_timeout 3m` in the issuer block; the successful attempt then took ~60 s. Caddy **does** create the TXT (confirmed by polling `GET /v1/zones/567656/rrsets?name=_acme-challenge.<sub>` — TXT appeared ~3 s after the restart and stayed ~45 s+). The `authorization finalized … valid` line without a preceding `trying to solve challenge` means Let's Encrypt reused an earlier valid authorization; it does **not** prove a TXT was written.
+
+A first A record named `media-api` was created and deleted again; no certificate was ever issued for it. The live name is `stella-media-api`.
+
 #### Issue 3 — ZeroSSL / Let's Encrypt staging fallback (must pin `dir`)
 
 **Problem:** A Caddyfile block without an explicit `tls { issuer acme { ... dir ... } }` pin can, after failed attempts, automatically fall back to ZeroSSL or Let's Encrypt **staging**. Staging certificates are not browser-trusted and never become valid — the domain block stays effectively broken, without that being obvious on a first glance at the logs.
@@ -339,11 +368,24 @@ Observed history:
 
 Hetzner rrset creation is asynchronous (the POST returns an action with status `running`). A manual test TXT (`_acme-test.<sub>`) was visible on both `ns1.your-server.de` and `1.1.1.1` after waiting 200 s. Exact time to visibility was not measured.
 
-Untested idea: `propagation_delay 2m` inside `issuer acme { ... }` for a block on a freshly moved or created zone. The live `dominikliss` block does **not** currently have it (**UNVERIFIED**, **TODO (Dominik):** `grep -n propagation_delay /opt/services/caddy/Caddyfile`).
+Untested idea (2026-10-03): `propagation_delay 2m` inside `issuer acme { ... }` for a block on a freshly moved or created zone. The live `dominikliss` block still does **not** have it (**UNVERIFIED**, **TODO (Dominik):** `grep -n propagation_delay /opt/services/caddy/Caddyfile`). Verified values on `stella-media-api` (2026-10-18) are `propagation_delay 45s` + `propagation_timeout 3m` — not `2m`, and not applied to `dominikliss`. See Issue 2 follow-up above.
 
 **Follow-up (2026-10-10, `atlas.foxcraft.digital` on the Atlas host, not Stella):** staging-CA fallback happened again on first issuance despite the `dir` pin. A full Caddy restart after DNS was live fixed it (same pattern as `stella-health-api`). Also: a leftover A record may already point elsewhere (`atlas.foxcraft.digital` initially pointed at `23.88.90.12`). DNS-01 does not care, but traffic would go to the wrong server. Runbook: [`../atlas/server.md`](../atlas/server.md).
 
 Rule of thumb unchanged: confirm DNS is live with `dig` before restarting Caddy; if staging shows up, delete stale `_acme-challenge` TXT, then full Caddy restart (`docker compose restart caddy` on Stella; `systemctl restart caddy` on atlas).
+
+**Follow-up (2026-10-18, `stella-media-api.foxcraft.digital`) — staging retry is a dry run, not the served cert.** After a failed production attempt Caddy retries once against `acme-staging` as a dry run **even with the `dir` pin present**. That staging attempt never produces the served certificate; the production certificate is obtained once validation passes. A `test_ca` pin to production was suggested but **not** applied or tested — **UNVERIFIED** idea, not the fix. Keep the `dir` pin; add `propagation_delay` / `propagation_timeout` when the failure mode is NXDOMAIN on a brand-new subdomain (Issue 2).
+
+#### Issue 4 — Single-file bind mounts go stale after `sed -i` (new inode)
+
+`health-api` mounts `./caddy/Caddyfile:/etc/caddy/Caddyfile:ro`. After `sed -i` (which writes a new inode), the container kept the old Caddyfile and reported no cert for `stella-media-api.foxcraft.digital` until `docker compose up -d --force-recreate health-api`. Same applies to any container mounting the Caddyfile as a single file. `docker compose restart caddy` was enough for Caddy itself here.
+
+This is the same inode class of bug as “never `rm` + recreate a bind-mounted file” already noted in [`health-api.md`](health-api.md) (`allowed_signers`).
+
+#### Build / BusyBox gotchas (2026-10-18)
+
+- Debian bookworm package names: `libraw23` does not exist (omit it; `libraw-bin` pulls the library). `libheif-plugin-libde265` is replaced by `libde265-0`. Hit while building media-api — [`media-api.md`](media-api.md).
+- Caddy’s image is BusyBox: `ls --time-style` is unsupported; use `ls -l --full-time`.
 
 ---
 
@@ -409,10 +451,11 @@ networks:
 3. Write a `Dockerfile` appropriate to the stack (see `finditoo-advoapp` for a .NET example)
 4. Write `docker-compose.yml` per the template above — **no `ports:` block**
 5. Create the DNS A record via Hetzner Cloud API (see below)
-6. Add a Caddy block with explicit `dir` pin (see Caddyfile template above), **plus a `@blocked remote_ip` deny-list for any client IPs currently active** (see [`client-ip-access.md`](client-ip-access.md)), then `docker compose restart caddy`
-7. Check / clear stale `_acme-challenge` TXT if issuance sticks (Issue 2)
-8. `docker compose build && docker compose up -d` (or `docker-compose.dev.yml` for .NET hot-reload — see [`dotnet-app-deployment.md`](dotnet-app-deployment.md)). For WordPress staging, use `/opt/apps/wordpress/<subdomain>/` and the checklist in [`wordpress-staging.md`](wordpress-staging.md) (Caddy upstream port **80**, not 8080; SSH port + `DOCKER-USER` rules required).
-9. Default: the new containers are discovered by health-api and included in the restic backup. Opt out on the compose service with `health.enable=false` and/or `backup.exclude=true`. Optional: `health.http=<url>` adds an HTTP probe (only works for containers on `edge`); `health.name` sets the display name. See [`health-api.md`](health-api.md) and [`backup.md`](backup.md).
+6. Add a Caddy block with explicit `dir` pin (see Caddyfile template above), **plus a `@blocked remote_ip` deny-list for any client IPs currently active** (see [`client-ip-access.md`](client-ip-access.md)). For a stubborn new subdomain, add `propagation_delay 45s` + `propagation_timeout 3m` (Issue 2, 2026-10-18) and keep those lines for renewals. Then `docker compose restart caddy`.
+7. Check / clear stale `_acme-challenge` TXT if issuance sticks (Issue 2). Poll `GET /v1/zones/567656/rrsets?name=_acme-challenge.<sub>` — Caddy does write the TXT (~3 s after restart). Do not treat `authorization finalized … valid` without `trying to solve challenge` as proof a TXT was written (authorization reuse).
+8. `docker compose up -d --force-recreate health-api` after the Caddyfile edit (Issue 4 — single-file bind mount / new inode). Then confirm the new cert appears in health-api.
+9. `docker compose build && docker compose up -d` (or `docker-compose.dev.yml` for .NET hot-reload — see [`dotnet-app-deployment.md`](dotnet-app-deployment.md)). For WordPress staging, use `/opt/apps/wordpress/<subdomain>/` and the checklist in [`wordpress-staging.md`](wordpress-staging.md) (Caddy upstream port **80**, not 8080; SSH port + `DOCKER-USER` rules required).
+10. Default: the new containers are discovered by health-api and included in the restic backup. Opt out on the compose service with `health.enable=false` and/or `backup.exclude=true`. Optional: `health.http=<url>` adds an HTTP probe (only works for containers on `edge`); `health.name` sets the display name. See [`health-api.md`](health-api.md) and [`backup.md`](backup.md).
 
 No UFW or `DOCKER-USER` changes needed for Caddy-routed HTTP apps — that's the entire point of routing everything through Caddy on the `edge` network. **Exception:** per-app `-ssh` containers publish a host port (`22XX:22`) and **must** get matching `DOCKER-USER` rules. They must **not** join `edge`. See [`dev-ssh-access.md`](dev-ssh-access.md). Next free SSH port: **2206**. Port **2205** is Atlas dev (`atlas.dev.foxcraft.digital`). Port 2203 is free (`advoapp-redesign-ssh` removed 2026-10-10); nothing of that app remains on Stella.
 
@@ -464,6 +507,8 @@ curl -s -X POST "https://api.hetzner.cloud/v1/zones/567656/rrsets" \
   }'
 ```
 
+Worked example 2026-10-18: rrset name `stella-media-api`, TTL 300, value `95.217.144.93`. A first record `media-api` was created and deleted again (no cert was ever issued for it). Naming follows `stella-health-api` / `stella-deployment-api`.
+
 **Known non-issue:** ProtonVPN's own DNS resolver (observed at `10.2.0.1`) is slow/unreliable picking up brand-new records, even though public resolvers (Google `8.8.8.8`, Cloudflare `1.1.1.1`) reflect them within seconds. This is not a security or server-side issue — just expect it every time a new subdomain is added, and don't waste time debugging the server over it. Workarounds: query a public resolver directly (`dig @8.8.8.8 ...`) to confirm the record is live, or use `curl --resolve <domain>:443:95.217.144.93 ...` to bypass DNS entirely for testing.
 
 ### Worked example: `advoapp.finditoo.foxcraft.digital`
@@ -497,7 +542,7 @@ ollama:
   restart: unless-stopped
 ```
 
-**Resource limits:** capped at half the machine — `cpus: "6"` (Docker's `cpus` is in units of full cores, not threads; the i7-8700 has 6 cores / 12 threads, confirmed via `nproc`) and `cpuset: "0-5"` pins to the first 6 threads specifically. Both were previously intended at the systemd level but never actually enforced — this is the first time a real limit has existed.
+**Resource limits:** capped at half the machine — `cpus: "6"` (Docker's `cpus` is in units of full cores, not threads; the i7-8700 has 6 cores / 12 threads, confirmed via `nproc`) and `cpuset: "0-5"` pins to the first 6 threads specifically. Both were previously intended at the systemd level but never actually enforced — this is the first time a real limit has existed. **2026-10-18:** media-api is pinned to the other half (`cpuset: "6-11"`, `cpus: "4"`, 2 workers) so bulk decode jobs do not share cores with Ollama. See [`media-api.md`](media-api.md).
 
 **`OLLAMA_KEEP_ALIVE=30m`** — a loaded model stays resident for 30 minutes after its last use, then unloads automatically. Deliberately *not* set to `-1` (unload-never) despite that being tried first: an always-resident 42GB+ model regardless of actual use was judged not worth permanently holding that much RAM hostage, especially now that Ollama shares the box with everything else under a hard 6-core CPU cap (see below) rather than running unconstrained as it did before containerization.
 
@@ -603,6 +648,8 @@ iptables -A DOCKER-USER -i $WAN_IF -p tcp --dport 8081 -j DROP
 `2.31.42.13` on 443 is **atlas** (Hetzner Cloud CX33). Atlas calls `stella-deployment-api` and `stella-health-api` over 443. After recreating `/usr/local/bin/docker-user-firewall.sh` (`rm` + nano) it must be `chmod 755`, otherwise the script and the boot service fail with Permission denied.
 
 Port 3001 / 8080 rules above are leftovers from retired publishes (`imap-sync` and Caddy `:8080`, removed 2026-09-01). Harmless; delete in a future cleanup. **Do not** delete 443 or any `22XX` rule that still has a live `-ssh` container.
+
+**media-api (2026-10-18):** no firewall change. The nest (`dedi6724`, outgoing IP `23.88.90.12`) is already one of the two static team IPs ACCEPTed on port 443 (the other is `194.126.177.181`). Tested from `foxxqn@dedi6724`: HTTPS to `stella-media-api.foxcraft.digital` works. Port 443 filtering is port-wide, so no per-site `remote_ip` block was added; HMAC is the second protection layer. See [`media-api.md`](media-api.md).
 
 - Applied by: `docker-user-firewall.service` (systemd oneshot, `After=docker.service`, `WantedBy=multi-user.target`, enabled — survives reboot)
 - **Verified working 2026-08-06** in both directions:
@@ -723,6 +770,29 @@ services:
       - /:/hostroot:ro
     env_file:
       - ./backup/.env
+    networks:
+      - edge
+    restart: unless-stopped
+
+  media-api:
+    build: ./media-api
+    container_name: media-api
+    env_file:
+      - ./media-api/.env
+    environment:
+      - MEDIA_WORKERS=2
+      - MAGICK_THREAD_LIMIT=2
+      - OMP_NUM_THREADS=2
+    tmpfs:
+      - /scratch:size=4g,uid=10001,gid=10001
+    deploy:
+      resources:
+        limits:
+          cpus: "4"
+          memory: 8g
+    cpuset: "6-11"
+    labels:
+      - health.http=http://media-api:8080/health
     networks:
       - edge
     restart: unless-stopped

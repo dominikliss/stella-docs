@@ -81,7 +81,7 @@ health-api verifies with a **hardcoded** principal `ddashboard` and namespace `d
 
 deploy-api’s `allowed_signers` is unchanged and does **not** contain the dev key, so `atlas.dev` can read health-api and cannot call deploy-api. See [`dev-instance.md`](../atlas/dev-instance.md).
 
-**Editing a single-file bind mount:** append or edit in place. Never `rm` + recreate — the container keeps the old inode. After changes: `docker compose up -d health-api` in `/opt/services`.
+**Editing a single-file bind mount:** append or edit in place. Never `rm` + recreate — the container keeps the old inode. **`sed -i` also creates a new inode** (hit 2026-10-18 on the Caddyfile mount): health-api kept the old file and reported no cert for `stella-media-api.foxcraft.digital` until `docker compose up -d --force-recreate health-api`. Same for any container that bind-mounts a single file. After Caddyfile or `allowed_signers` edits: `docker compose up -d --force-recreate health-api` in `/opt/services`. `docker compose restart caddy` is enough for Caddy itself. See [`infrastructure.md`](infrastructure.md) Issue 4.
 
 **Dockerfile requires `docker-ce-cli` specifically, not `docker.io`.** The `docker.io` apt package only ships `dockerd` and support binaries — not the `docker` CLI client. Install via Docker's official apt repo the same way `deploy-api` does:
 
@@ -210,15 +210,17 @@ Every other container is discovered via `docker ps -a`. Opt out with the label `
 
 **Verified 2026-10-10:** 20 containers all `up` — 6 core + 14 discovered (`advoapp-dev`, `advoapp-ssh`, the 5 `atlas.dev` containers, the 3 `dominikliss` containers, `health-api`, `osgar-datahub-db` / `-dev` / `-ssh`). HTTP checks for `stella-api` and `ollama` up.
 
+**Verified 2026-10-18** by calling the check functions inside the container (not a full signed Atlas round-trip): `media-api` container `up` (`restart_count` 0); `http_checks` `{"status": "up", "code": 200}` via the compose label `health.http=http://media-api:8080/health`; cert `stella-media-api.foxcraft.digital` `days_left` 89 `status` `ok` (after force-recreating health-api — Issue 4). **UNVERIFIED:** how Atlas displays the new entries (check the Atlas dashboard after its next poll).
+
 **⚠️ `advoapp-dev` stuck-orphan state (2026-10-09, 2026-10-12) is invisible here.** Container status and supervisor both look fine (`up` / `app RUNNING`) while a leftover `dotnet` chain holds port 8080 and serves a stale build. A public `curl` can still return `302`, so that is not a health signal either. Only a check that distinguishes the process tree, or a build/version endpoint, would catch it. See [`dotnet-app-deployment.md`](dotnet-app-deployment.md).
 
 ### Certs — parsed from the live Caddyfile (2026-10-10)
 
 Domains are parsed from the Caddyfile mounted read-only at `/etc/caddy/Caddyfile` (from `/opt/services/caddy/Caddyfile`). Any new site block gets a cert check automatically. There is no hardcoded domain list in `health.py`.
 
-Currently 7 domains: `stella`, `advoapp.finditoo`, `stella-deployment-api`, `osgar.datahub`, `stella-health-api`, `dominikliss`, `atlas.dev` (all `.foxcraft.digital`). If the Caddyfile is unreadable or has no site blocks, `certs.caddyfile` reports `error`.
+Currently 8 domains: `stella`, `advoapp.finditoo`, `stella-deployment-api`, `osgar.datahub`, `stella-health-api`, `stella-media-api`, `dominikliss`, `atlas.dev` (all `.foxcraft.digital`). Cert domains are read from the Caddyfile (`CADDYFILE_PATH`); a new site block does **not** need a `health.py` change. If the Caddyfile is unreadable or has no site blocks, `certs.caddyfile` reports `error`.
 
-**Verified 2026-10-10:** 7 certs ok.
+**Verified 2026-10-10:** 7 certs ok. **Verified 2026-10-18:** `stella-media-api.foxcraft.digital` ok (`days_left` 89) after force-recreate of health-api.
 
 ### Backup check — dump files, shrink, weekly verify (2026-10-10)
 
@@ -285,6 +287,15 @@ Possible `backup.status` values: `ok`, `warning`, `failed`, `stale` (last succes
 `status` fields are one of `up`/`down`/`degraded`/`missing`/`error`/`ok`/`warning`/`incomplete` depending on the check — Atlas's rendering layer should treat anything other than `up`/`ok` as needing attention.
 
 ---
+
+## Adding a new service (2026-10-18)
+
+media-api is the worked example. No `health.py` change was needed.
+
+1. Put the container on `edge`. `discover_all()` uses `docker ps -a`. The required-core list is still `CORE_CONTAINERS`: `caddy`, `stella-api`, `imap-sync`, `deploy-api`, `ollama`, `backup`. Do **not** add a typical new app/service to that core list.
+2. Optional HTTP probe: compose label `health.http=http://<container>:<port>/health`. **Only works for containers on `edge`.** media-api uses `health.http=http://media-api:8080/health`.
+3. Public cert: add a Caddy site block. Cert domains are parsed from the live Caddyfile (`CADDYFILE_PATH`).
+4. After editing the Caddyfile (including `sed -i`), `docker compose up -d --force-recreate health-api` so it remounts the new inode. Confirm the new container / http check / cert inside the container before waiting for Atlas.
 
 ## Atlas-side (implemented)
 

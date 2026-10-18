@@ -1,6 +1,6 @@
 # Open Gaps & Next Steps
 
-Last updated: 2026-10-16
+Last updated: 2026-10-18
 
 **Cross-system overview:** [integration/system-overview.md](integration/system-overview.md) (Atlas + ddashboard + Stella + Edison). AI-chat path only: [integration/ddashboard-and-stella-server.md](integration/ddashboard-and-stella-server.md).
 
@@ -50,6 +50,19 @@ Host rebuilt 2026-10-09 onto CX33 (`edison-ip` = `178.105.203.54`). See [`edison
 
 ---
 
+## media-api (Foxx Cloud) — 2026-10-18
+
+Service live at `https://stella-media-api.foxcraft.digital`. Contract: [`stella-server/media-api.md`](stella-server/media-api.md).
+
+- [ ] **Foxx Cloud PHP client** — signed `POST /convert` (ops `preview` / `tile` / `master` / `poster`), fallback to local convert, base URL + `MEDIA_HMAC_SECRET` in the nest’s `.env`. In MediaRaster. Not built.
+- [ ] **`bake` op** — apply look edits once MediaLookBaker’s input format is known. Not built.
+- [ ] **Real RAW (DNG/CR3) and HEIC through the API** — **UNVERIFIED**. Image builds and signed `preview` from inside the container were verified 2026-10-18; real camera files were not.
+- [ ] **Atlas dashboard** — **UNVERIFIED** whether Atlas shows media-api (container, http, cert) after its next poll. health-api itself reported container up, http 200, cert ok (`days_left` 89) when the check functions were called inside the container.
+- [ ] **2026-10-19 03:00 backup** — first restic run that includes `media-api/`. Check `/opt/services/backup/last-run.json` for `status` success.
+- [ ] **Bulk load** — watch `load_1m` vs Atlas thresholds during bulk RAW runs (Ollama cpuset `0-5`, media-api `6-11`, 2 workers).
+
+---
+
 ## Infrastructure
 
 - [ ] **GitHub migration** — move all repos from Bitbucket to GitHub
@@ -75,8 +88,8 @@ Host rebuilt 2026-10-09 onto CX33 (`edison-ip` = `178.105.203.54`). See [`edison
 - [ ] **WP staging: leftovers after the 2026-10-11 live import** — `wordpress:cli` image on the Stella host; `/tmp/wp-cli.phar` inside the `wp` container (removal not confirmed); `~/relaunch_dominikliss_com.sql` in the `-ssh` container (110 MB); leftover zip/dump on the managed host (**UNVERIFIED**). **TODO (Dominik).** See [`stella-server/wordpress-staging.md`](stella-server/wordpress-staging.md).
 - [ ] **Hetzner Cloud project name for `foxcraft.digital`** — zone moved; ID still `567656`. **TODO (Dominik):** name of the new project (docs previously said `konsoleH`).
 - [x] **Stella `DOCKER-USER` 443 ACCEPT for Atlas** — `2.31.42.13` added. After any `rm` + nano recreation of `/usr/local/bin/docker-user-firewall.sh` it must be `chmod 755`. Port **2205** added (Dominik’s IP, managed host, Edison). Next free SSH port: **2206**.
-- [ ] **Caddy `propagation_delay` on `dominikliss`** — untested idea after the zone-move ACME delay. Live block does not currently have it (**UNVERIFIED**). Result of `grep -n propagation_delay /opt/services/caddy/Caddyfile` on Stella: **TODO (Dominik)**.
-- [ ] **Stella backup — first unattended 03:00 run** with the 2026-10-10 dynamic script. Manual runs verified. See [`stella-server/backup.md`](stella-server/backup.md).
+- [ ] **Caddy `propagation_delay` on `dominikliss`** — untested idea after the zone-move ACME delay. Live `dominikliss` block does not currently have it (**UNVERIFIED**). **TODO (Dominik):** `grep -n propagation_delay /opt/services/caddy/Caddyfile`. `stella-media-api` **does** have `propagation_delay 45s` + `propagation_timeout 3m` (verified 2026-10-18). See [`stella-server/infrastructure.md`](stella-server/infrastructure.md) Issue 2.
+- [ ] **Stella backup — first unattended 03:00 run** with the 2026-10-10 dynamic script. Manual runs verified. See [`stella-server/backup.md`](stella-server/backup.md). Also **UNVERIFIED:** 2026-10-19 03:00 (first run that includes `media-api/`).
 - [ ] **Stella full restore test** — runbook at [`stella-server/restore.md`](stella-server/restore.md). **UNVERIFIED** end-to-end. **TODO (Dominik):** test on a throwaway Hetzner Cloud server.
 - [ ] **Off-server backup secrets** — restic password, Storage Box access, Hetzner API token, DNS records. **TODO (Dominik):** store them in the password manager. Do not write values into docs.
 - [ ] **Backup failure email** — **UNVERIFIED** whether a failed Stella backup sends an email via Brevo (docs only describe emails for WP site `down`). **TODO (Dominik):** check whether the fake-failure test produced an email; if not, decide on an Atlas-side alert. See [`atlas/monitoring.md`](atlas/monitoring.md).

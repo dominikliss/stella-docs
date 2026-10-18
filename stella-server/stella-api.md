@@ -6,7 +6,7 @@ FastAPI application running on Stella server.
 - **Runtime:** Docker container (`network_mode: host`)
 - **Port:** 8001 (direct) / accessible via Caddy at `https://stella.foxcraft.digital/stella`
 - **Process:** `uvicorn app.main:app`
-- **Scope as of 2026-08-06: chat-only.** The `/emails/*` routes and ChromaDB integration were removed — see below.
+- **Scope as of 2026-08-06: chat-only.** The `/emails/*` routes and ChromaDB integration were removed — see below. Media decode for Foxx Cloud is a **separate** service (`media-api`), not a stella-api route — [`media-api.md`](media-api.md).
 
 **Sibling service (same host, different app):** IMAP mailbox migration via **`imapsync`** + Express, reached at `https://stella.foxcraft.digital/imap-sync` — [`imap-sync-service.md`](imap-sync-service.md). The WordPress proxy was removed 2026-09-02; **Atlas Tools → IMAP Migration** is the UI ([`../atlas/tools.md`](../atlas/tools.md)). Direct host port 3001 was removed 2026-09-01.
 

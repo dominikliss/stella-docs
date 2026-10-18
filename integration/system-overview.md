@@ -13,6 +13,7 @@ This is the **cross-system map** for foxcraft.digital: who owns what, which host
 - Atlas ↔ WordPress sites: [`../atlas/atlas-connect/`](../atlas/atlas-connect/)
 - ddashboard ↔ Stella (AI chat only): [`ddashboard-and-stella-server.md`](ddashboard-and-stella-server.md)
 - Stella host: [`../stella-server/README.md`](../stella-server/README.md)
+- Stella media-api: [`../stella-server/media-api.md`](../stella-server/media-api.md)
 - Edison (coding-agent host): [`../edison/README.md`](../edison/README.md)
 
 ---
@@ -25,7 +26,7 @@ Servers use One Piece Vegapunk-satellite names. Firewalls, IPs, and networks use
 |------|------------|------|------|
 | **ddashboard** | Internal business app (CRM, accounting, mail, PM, AI chat) | Hetzner managed WordPress (`foxcrr`) | Relational business data, WP sessions, `dls/v1` auth tokens |
 | **Atlas** | Internal ops platform (deploys, Stella health, WP uptime, IMAP migration) | Hetzner Cloud CX33 `atlas` (`2.31.42.13`) — `https://atlas.foxcraft.digital` | Deploy history, health history, WP-site registry, IMAP job history |
-| **Stella** | Dedicated AI / services machine | Hetzner dedicated | Ollama, stella-api, deploy-api, health-api, imap-sync, Caddy, .NET dev apps |
+| **Stella** | Dedicated AI / services machine | Hetzner dedicated | Ollama, stella-api, deploy-api, health-api, media-api, imap-sync, Caddy, .NET dev apps |
 | **Edison** | Coding-agent sandbox | Hetzner Cloud (same project as Atlas) | Cursor CLI container, sshfs mounts. **Must not** run on Stella. Atlas reads Cloud API status/backups; no agent control. |
 
 Neither Atlas nor ddashboard replaces the other:
@@ -33,7 +34,7 @@ Neither Atlas nor ddashboard replaces the other:
 - **ddashboard** is the product the business runs on (clients, invoices, mail, projects).
 - **Atlas** is the ops console that used to live as **Werkzeuge** inside ddashboard (deploy, WP sites, mailbox copy). Those screens were removed from the theme on 2026-09-02.
 
-Stella is a **service host**. It does not have a general-purpose UI. Atlas and ddashboard are the two HTTP clients that matter.
+Stella is a **service host**. It does not have a general-purpose UI. Atlas and ddashboard are the two HTTP clients that matter for ops and chat. **Foxx Cloud** (Laravel on the nest, host `dedi6724`) calls **media-api** for image/video decode.
 
 ---
 
@@ -83,12 +84,13 @@ Stella is a **service host**. It does not have a general-purpose UI. Atlas and d
 
 **Hard rules**
 
-1. The **browser never calls Stella**. Atlas and ddashboard proxy every Stella call server-side.
+1. The **browser never calls Stella**. Atlas, ddashboard, and Foxx Cloud proxy every Stella call server-side.
 2. Atlas **does not** issue its own login passwords. Identity lives in ddashboard (`/dls/v1/auth/*`).
 3. Stella **deploy-api** and **health-api** do not use bearer tokens. They verify an OpenSSH signature from Atlas’s SSH private key, principal `ddashboard` (same keypair as the old managed-host Atlas; the managed host still holds a copy).
-4. Stella **stella-api** (`/chat/*`) and **imap-sync** have no HTTP auth — ingress is restricted at the network / Caddy layer.
-5. Atlas itself is IP-allowlisted (`ATLAS_ALLOWED_IPS` = `194.126.177.181`, `23.88.90.12` managed host, `95.217.144.93` Stella) except `GET /api/health`. **TODO (Dominik):** remove `23.88.90.12` unless something on the managed host really calls Atlas; reason for each entry unverified.
-6. Stella `DOCKER-USER` ACCEPTs Atlas (`2.31.42.13`) on 443 so signed deploy-api / health-api calls can reach Caddy. Atlas inbound Hetzner firewall allows 22/80/443/ICMP from `194.126.177.181` only.
+4. Stella **media-api** uses HMAC-SHA256 (`MEDIA_HMAC_SECRET`), not SSH signatures — shared hosting on the nest often lacks `ssh-keygen -Y`. See [`../stella-server/media-api.md`](../stella-server/media-api.md).
+5. Stella **stella-api** (`/chat/*`) and **imap-sync** have no HTTP auth — ingress is restricted at the network / Caddy layer.
+6. Atlas itself is IP-allowlisted (`ATLAS_ALLOWED_IPS` = `194.126.177.181`, `23.88.90.12` managed host, `95.217.144.93` Stella) except `GET /api/health`. **TODO (Dominik):** remove `23.88.90.12` unless something on the managed host really calls Atlas; reason for each entry unverified.
+7. Stella `DOCKER-USER` ACCEPTs Atlas (`2.31.42.13`) on 443 so signed deploy-api / health-api calls can reach Caddy. The nest (`23.88.90.12`) is already ACCEPTed on 443 (team IP) and is the media-api caller. Atlas inbound Hetzner firewall allows 22/80/443/ICMP from `194.126.177.181` only.
 
 ---
 
@@ -133,6 +135,14 @@ Laravel `CheckAtlasHealth` stores `atlas_health_checks` / `atlas_service_uptime_
 | Other agents / mail analyses | Ollama (or Anthropic / OpenAI) | Network restriction / provider key |
 
 Details: [`ddashboard-and-stella-server.md`](ddashboard-and-stella-server.md).
+
+### Foxx Cloud (nest) → Stella (media)
+
+| Feature | Stella service | Auth | Contract |
+|---------|----------------|------|----------|
+| Decode original → JPEG (`preview` / `tile` / `master` / `poster`) | **media-api** `https://stella-media-api.foxcraft.digital` | HMAC-SHA256 (`X-Timestamp` + `X-Signature`) | [`../stella-server/media-api.md`](../stella-server/media-api.md) |
+
+PHP client in MediaRaster is **not built**. `bake` is **not built**. Real RAW/HEIC through the API is **UNVERIFIED** (2026-10-18).
 
 ### Atlas → WordPress sites (client / own sites)
 
@@ -202,8 +212,9 @@ ddashboard **kept** its own IMAP **import** into MySQL (`dls_mail_*`). That is n
 ## 7. Hosting sketch
 
 ```
-Hetzner managed (foxcrr)
-└── ddashboard          WordPress theme + dls/v1
+Hetzner managed (foxcrr / nest)
+├── ddashboard          WordPress theme + dls/v1
+└── Foxx Cloud          Laravel on dedi6724 — calls Stella media-api
 
 Hetzner Cloud  (same project as Edison)
 └── atlas  CX33  2.31.42.13
@@ -220,6 +231,7 @@ Hetzner Cloud  (same project as Edison)
     │               ├── stella.foxcraft.digital/ollama      → ollama
     │               ├── stella-deployment-api.foxcraft.digital → deploy-api (Atlas prod)
     │               ├── stella-health-api.foxcraft.digital     → health-api (Atlas prod + atlas.dev)
+    │               ├── stella-media-api.foxcraft.digital      → media-api (Foxx Cloud / nest)
     │               └── atlas.dev.foxcraft.digital             → Atlas Laravel dev (port 2205 SSH)
     │
     ├── SSH ──► GitHub, rsync destinations (28 deploy_servers)
@@ -242,6 +254,8 @@ Hetzner Cloud  (same project)
 | **stella-api** | FastAPI app — `/chat/*` only |
 | **deploy-api** | FastAPI app — signed deploy trigger + status |
 | **health-api** | FastAPI app — signed system-status snapshot |
+| **media-api** | FastAPI app — stateless RAW/HEIC/JPEG/video-poster decode for Foxx Cloud (HMAC). `https://stella-media-api.foxcraft.digital` |
+| **Foxx Cloud** | Laravel app on the nest (`dedi6724`). Calls media-api. Not one of the four named Vegapunk systems. |
 | **atlas-api / Atlas host API** | FastAPI on the Atlas host (`https://api.atlas.foxcraft.digital` → `127.0.0.1:8090`). Signed `system-health` snapshot of the Atlas box. See [`../atlas/host-api.md`](../atlas/host-api.md) |
 | **imap-sync** | Express + `imapsync` mailbox copy |
 | **Edison** | Separate coding-agent host |

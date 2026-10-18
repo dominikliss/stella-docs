@@ -170,11 +170,18 @@ Full-server restore: [`restore.md`](restore.md).
 
 ---
 
+## media-api (2026-10-18)
+
+No extra backup config. The whole `/opt/services` tree (including `media-api/` and its `.env`) is covered by the nightly restic run. media-api holds no data; `/scratch` is a tmpfs. See [`media-api.md`](media-api.md).
+
+**UNVERIFIED:** first run that includes media-api is the 03:00 run on 2026-10-19 — check `/opt/services/backup/last-run.json` for `status` success.
+
 ## Known limits
 
 - The shrink check uses logical snapshot size, so a deliberate large cleanup causes a one-off `warning`.
 - The weekly check reads 10% of data per run.
 - Everything between nightly runs (03:00) is lost on failure.
+- Caddy certificates in the `caddy-data` volume are not backed up with the `/opt/services` tree. This includes the `stella-media-api` cert (issued 2026-10-18). Restated 2026-10-18. (The 2026-10-10 notes still say docker-inspect discovery includes `services_caddy-data` — whether a live snapshot actually contains those certs is **UNVERIFIED**.)
 
 ---
 
@@ -189,6 +196,8 @@ Not yet verified: first unattended 03:00 run with the new script, and a full res
 ## Open items
 
 - First unattended 03:00 run with the new script — not yet observed.
+- **UNVERIFIED:** 2026-10-19 03:00 run (first that includes `media-api/`) — check `/opt/services/backup/last-run.json` for `status` success.
+- Caddy certificates in the `caddy-data` volume (including `stella-media-api`) — restated 2026-10-18 as not backed up with `/opt/services`.
 - Full restore onto a fresh server — runbook written, **UNVERIFIED** end-to-end. **TODO (Dominik):** test on a throwaway Hetzner Cloud server. See [`restore.md`](restore.md).
-- Off-server secrets (restic password, Storage Box access, Hetzner API token, DNS records). **TODO (Dominik):** store them in the password manager.
+- Off-server secrets (restic password, Storage Box access, Hetzner API token, DNS records). **TODO (Dominik):** store them in the password manager. `MEDIA_HMAC_SECRET` belongs here too (also in Foxx Cloud’s `.env`). Do not write values into docs.
 - Backup alert email — **UNVERIFIED** whether a failed backup sends an email via Brevo. **TODO (Dominik):** check whether the fake-failure test produced an email; if not, decide on an Atlas-side alert. See [`../atlas/monitoring.md`](../atlas/monitoring.md).
