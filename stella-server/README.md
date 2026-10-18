@@ -16,7 +16,7 @@ Dedicated AI / services host. No general-purpose UI — **Atlas**, **ddashboard*
 | [stella-api.md](stella-api.md) | FastAPI `/chat/*` (ddashboard) |
 | [deploy-api.md](deploy-api.md) | Signed deploy trigger (Atlas) |
 | [health-api.md](health-api.md) | Signed system-status snapshot for Atlas — dynamic containers + Caddyfile certs |
-| [media-api.md](media-api.md) | Stateless RAW/HEIC/JPEG/video-poster decode for Foxx Cloud (HMAC) — `stella-media-api.foxcraft.digital` |
+| [media-api.md](media-api.md) | RAW/HEIC/JPEG/video-poster decode for Foxx Cloud (HMAC; `/convert` and `/convert-remote`) — `stella-media-api.foxcraft.digital` |
 | [imap-sync-service.md](imap-sync-service.md) | Express + `imapsync` mailbox copy (Atlas) |
 | [backup.md](backup.md) | Nightly restic → Storage Box — automatic scope, DB dumps, weekly verify |
 | [restore.md](restore.md) | Disaster-recovery runbook (restic → fresh server) |

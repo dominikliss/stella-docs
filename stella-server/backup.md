@@ -172,7 +172,7 @@ Full-server restore: [`restore.md`](restore.md).
 
 ## media-api (2026-10-18)
 
-No extra backup config. The whole `/opt/services` tree (including `media-api/` and its `.env`) is covered by the nightly restic run. media-api holds no data; `/scratch` is a tmpfs. See [`media-api.md`](media-api.md).
+No extra backup config. The whole `/opt/services` tree (including `media-api/`, `profiles/` Adobe DCPs, `ssh/`, and `.env`) is covered by the nightly restic run. `/scratch` is a tmpfs and is not persisted. See [`media-api.md`](media-api.md).
 
 **UNVERIFIED:** first run that includes media-api is the 03:00 run on 2026-10-19 — check `/opt/services/backup/last-run.json` for `status` success.
 

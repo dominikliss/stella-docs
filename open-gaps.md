@@ -54,11 +54,17 @@ Host rebuilt 2026-10-09 onto CX33 (`edison-ip` = `178.105.203.54`). See [`edison
 
 Service live at `https://stella-media-api.foxcraft.digital`. Contract: [`stella-server/media-api.md`](stella-server/media-api.md).
 
-- [ ] **Foxx Cloud PHP client** — signed `POST /convert` (ops `preview` / `tile` / `master` / `poster`), fallback to local convert, base URL + `MEDIA_HMAC_SECRET` in the nest’s `.env`. In MediaRaster. Not built.
+- [ ] **Foxx Cloud PHP client** — MediaRaster using `/convert-remote` with `dest`; fallback to local convert; base URL and `MEDIA_HMAC_SECRET` in the nest’s `.env`. In progress.
+- [ ] **`POST /convert-remote` end to end** — **UNVERIFIED:** fetch, render, write-back with `dest`; compare the master with the Mac export. Being tested through the Foxx Cloud app. `sftp` listing from inside the container (key, pinned `known_hosts`, port 23) is verified. Outbound port 23 from the container works (verified).
+- [ ] **Dedicated SSH key and Storage Box sub-accounts** — live container uses a copy of Stella’s default `~/.ssh/id_ed25519`. **UNVERIFIED:** which other Storage Boxes (e.g. the restic backup box) that key also unlocks. Safer: dedicated key only on the media box; read-only `user` for originals, read-write `dest_user` for derivatives. See Security in [`stella-server/media-api.md`](stella-server/media-api.md).
 - [ ] **`bake` op** — apply look edits once MediaLookBaker’s input format is known. Not built.
-- [ ] **Real RAW (DNG/CR3) and HEIC through the API** — **UNVERIFIED**. Image builds and signed `preview` from inside the container were verified 2026-10-18; real camera files were not.
+- [x] **ZV-E10 ARW through `master`** — closed 2026-10-18. One real Sony ZV-E10 ARW via `POST /convert?op=master`: `X-Render: rawtherapee`, `X-Profile: Sony ZV-E10 Camera Standard.dcp`, 6016×4016, RTv4_sRGB, ~10 s. See [`stella-server/media-api.md`](stella-server/media-api.md).
+- [ ] **Colour / detail vs RawTherapee 5.13 Mac export** — **UNVERIFIED**. Stella JPEG 6.8 MB vs Mac 5.2 MB; bookworm RT is older than 5.13.
+- [ ] **Other `style` values** (`vivid`, `portrait`, `landscape`, `monochrome`) — **UNVERIFIED.**
+- [ ] **Other camera bodies** — **UNVERIFIED.** Cameras without a `profiles/` folder fall back to `dcraw_emu` + ImageMagick.
+- [ ] **Real DNG / CR3 / HEIC** and `poster` / `preview` / `tile` with real files through the API — **UNVERIFIED.** ARW `master` via `/convert` is verified.
 - [ ] **Atlas dashboard** — **UNVERIFIED** whether Atlas shows media-api (container, http, cert) after its next poll. health-api itself reported container up, http 200, cert ok (`days_left` 89) when the check functions were called inside the container.
-- [ ] **2026-10-19 03:00 backup** — first restic run that includes `media-api/`. Check `/opt/services/backup/last-run.json` for `status` success.
+- [ ] **2026-10-19 03:00 backup** — first restic run that includes `media-api/` (including `profiles/` Adobe DCPs and `ssh/`). Check `/opt/services/backup/last-run.json` for `status` success.
 - [ ] **Bulk load** — watch `load_1m` vs Atlas thresholds during bulk RAW runs (Ollama cpuset `0-5`, media-api `6-11`, 2 workers).
 
 ---

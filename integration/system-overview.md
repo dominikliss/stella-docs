@@ -142,7 +142,7 @@ Details: [`ddashboard-and-stella-server.md`](ddashboard-and-stella-server.md).
 |---------|----------------|------|----------|
 | Decode original → JPEG (`preview` / `tile` / `master` / `poster`) | **media-api** `https://stella-media-api.foxcraft.digital` | HMAC-SHA256 (`X-Timestamp` + `X-Signature`) | [`../stella-server/media-api.md`](../stella-server/media-api.md) |
 
-PHP client in MediaRaster is **not built**. `bake` is **not built**. Real RAW/HEIC through the API is **UNVERIFIED** (2026-10-18).
+PHP client in MediaRaster: in progress (prefer `/convert-remote` with `dest` when the original is on the Storage Box). `bake` is **not built**. One ZV-E10 ARW `master` via `/convert` is verified; `/convert-remote` end to end is **UNVERIFIED** (2026-10-18).
 
 ### Atlas → WordPress sites (client / own sites)
 
@@ -254,7 +254,7 @@ Hetzner Cloud  (same project)
 | **stella-api** | FastAPI app — `/chat/*` only |
 | **deploy-api** | FastAPI app — signed deploy trigger + status |
 | **health-api** | FastAPI app — signed system-status snapshot |
-| **media-api** | FastAPI app — stateless RAW/HEIC/JPEG/video-poster decode for Foxx Cloud (HMAC). `https://stella-media-api.foxcraft.digital` |
+| **media-api** | FastAPI app — RAW/HEIC/JPEG/video-poster decode for Foxx Cloud (HMAC; `/convert` body or `/convert-remote` Storage Box). `https://stella-media-api.foxcraft.digital` |
 | **Foxx Cloud** | Laravel app on the nest (`dedi6724`). Calls media-api. Not one of the four named Vegapunk systems. |
 | **atlas-api / Atlas host API** | FastAPI on the Atlas host (`https://api.atlas.foxcraft.digital` → `127.0.0.1:8090`). Signed `system-health` snapshot of the Atlas box. See [`../atlas/host-api.md`](../atlas/host-api.md) |
 | **imap-sync** | Express + `imapsync` mailbox copy |

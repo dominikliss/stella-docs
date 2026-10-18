@@ -38,7 +38,7 @@ Core Docker-managed services live at `/opt/services/docker-compose.yml`. Dev/sta
 | `deploy-api` | Docker (`edge` network, no host port) | — | SSH-signature-authenticated deploy trigger — [`deploy-api.md`](deploy-api.md) |
 | `ollama` | Docker (`edge` network) | 11434 (published to `127.0.0.1` only) | LLM inference — containerized 2026-08-10, see below |
 | `health-api` | Docker (`edge` network) | 443 via Caddy (`stella-health-api.foxcraft.digital`) | System status endpoint for Atlas — [`health-api.md`](health-api.md) |
-| `media-api` | Docker (`edge` network) | 443 via Caddy (`stella-media-api.foxcraft.digital`) | Stateless RAW/HEIC/JPEG/video-poster decode for Foxx Cloud (HMAC) — [`media-api.md`](media-api.md). No published ports. cpuset `6-11` |
+| `media-api` | Docker (`edge` network) | 443 via Caddy (`stella-media-api.foxcraft.digital`) | RAW/HEIC/JPEG/video-poster decode for Foxx Cloud (HMAC); `/convert-remote` pulls from / writes to Storage Box — [`media-api.md`](media-api.md). No published ports. cpuset `6-11` |
 | `backup` | Docker (`edge` network, no host port) | — | Nightly restic backup to Hetzner Storage Box — see [`backup.md`](backup.md) |
 | `osgar-datahub-dev` | Docker (.NET dev, hot-reload) | 5081→8080 (localhost) | `.NET` app, same pattern as `advoapp-dev` — `Dockerfile.dev` + bind-mounted `src`; compose file at `/opt/apps/dotnet/osgar.datahub.foxcraft.digital/docker-compose.dev.yml` |
 | `osgar-datahub-db` | Docker (MSSQL 2022) | — (internal only) | `mcr.microsoft.com/mssql/server:2022-latest`, data volume `osgar-datahub-mssql-data`; same compose file as `osgar-datahub-dev` |
@@ -649,7 +649,7 @@ iptables -A DOCKER-USER -i $WAN_IF -p tcp --dport 8081 -j DROP
 
 Port 3001 / 8080 rules above are leftovers from retired publishes (`imap-sync` and Caddy `:8080`, removed 2026-09-01). Harmless; delete in a future cleanup. **Do not** delete 443 or any `22XX` rule that still has a live `-ssh` container.
 
-**media-api (2026-10-18):** no firewall change. The nest (`dedi6724`, outgoing IP `23.88.90.12`) is already one of the two static team IPs ACCEPTed on port 443 (the other is `194.126.177.181`). Tested from `foxxqn@dedi6724`: HTTPS to `stella-media-api.foxcraft.digital` works. Port 443 filtering is port-wide, so no per-site `remote_ip` block was added; HMAC is the second protection layer. See [`media-api.md`](media-api.md).
+**media-api (2026-10-18):** no inbound firewall change. The nest (`dedi6724`, outgoing IP `23.88.90.12`) is already one of the two static team IPs ACCEPTed on port 443 (the other is `194.126.177.181`). Tested from `foxxqn@dedi6724`: HTTPS to `stella-media-api.foxcraft.digital` works. Port 443 filtering is port-wide, so no per-site `remote_ip` block was added; HMAC is the second protection layer. **Outbound port 23** from the container to the Storage Box works (verified: `sftp` listing with the mounted key and pinned `known_hosts`). See [`media-api.md`](media-api.md).
 
 - Applied by: `docker-user-firewall.service` (systemd oneshot, `After=docker.service`, `WantedBy=multi-user.target`, enabled — survives reboot)
 - **Verified working 2026-08-06** in both directions:
@@ -785,6 +785,9 @@ services:
       - OMP_NUM_THREADS=2
     tmpfs:
       - /scratch:size=4g,uid=10001,gid=10001
+    volumes:
+      - ./media-api/profiles:/app/profiles:ro
+      - ./media-api/ssh:/app/ssh:ro
     deploy:
       resources:
         limits:
