@@ -82,15 +82,19 @@ List endpoint returns the latest 100 rows.
 
 ---
 
-## TrackingTime Import (planned — not implemented)
+## TrackingTime Import and Sync
 
-One-way pull of TrackingTime Pro projects into Atlas MySQL (task lists, tasks, subtasks, attachments, time entries). Atlas talks to TrackingTime itself. ddashboard only supplies the client stub.
+One-way pull of TrackingTime Pro projects into Atlas MySQL (task lists, tasks, subtasks, attachments, time entries). Atlas talks to TrackingTime itself. ddashboard only supplies the client stub via [`../stella-dashboard/atlas-client-lookup.md`](../stella-dashboard/atlas-client-lookup.md). Credentials: Settings → TrackingTime (encrypted `app_settings`; env fallbacks in `.env.example`).
 
-**Blocked on** ddashboard [`../stella-dashboard/atlas-client-lookup.md`](../stella-dashboard/atlas-client-lookup.md):
+**Import** (`/tools/tracking-time-import`):
 
 1. Operator opens Tools → TrackingTime Import.
-2. Atlas `GET /dls/v1/atlas/clients?has_tracking_time_pro_id=1` (Bearer + Atlas/Stella IP).
-3. Operator picks a customer; Atlas upserts `{ ddashboard_id, tracking_time_pro_id, name }`.
-4. Atlas lists TrackingTime projects for that customer id and imports the selected ones.
+2. Atlas `GET /dls/v1/atlas/clients?has_tracking_time_pro_id=1` (Bearer).
+3. Operator picks a customer; Atlas upserts `{ ddashboard_id, tracking_time_pro_id, name }` and lists TT projects.
+4. `POST /api/tools/tracking-time-import/start` queues `ImportTrackingTimeJob` on the `deployments` queue (`mode=full`).
+
+**Open-task sync** (`/tools/tracking-time-sync`): `POST /api/tools/tracking-time-import/sync-open` (manual) or hourly `projects:sync-tracking-time-open`. Job history is the same table as import.
+
+Imported work is shown at `/projects`. Optional Trello push is per project (`POST /api/projects/{id}/trello/push`). Settings → Trello.
 
 Do not call `POST /dls/v1/pm/import-tracking-time-projects`.

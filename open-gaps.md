@@ -19,7 +19,7 @@ Last updated: 2026-10-18
   - **TODO (Dominik):** Atlas dev GitHub key is an account-level SSH key on `dominikliss` (reaches every repo that account can read). Consider a read-only deploy key. A customer deploy from `atlas.dev` succeeded on 2026-10-11 to the live `dominikliss.com` theme path; **UNVERIFIED** why `atlas-dev` could reach that host (docs still say it is in no `authorized_keys`). Check which `deploy_servers` entry and key were used. See [`atlas/dev-instance.md`](atlas/dev-instance.md).
   - **TODO (Dominik):** Atlas (`2.31.42.13`) gets 401 from ddashboard; Stella (`95.217.144.93`) gets 403 from the managed host’s Apache. Find the IP allowlist (probably `.htaccess` under `public_html`) and add Stella if Stella should call ddashboard. Required before Atlas can call the planned `/dls/v1/atlas/*` lookup routes.
   - Backups: `wp-sites:drive-backups` is scheduled every minute; backup driver not finished.
-- [ ] **Atlas TrackingTime import (PM in Atlas)** — planned 2026-10-16. One-way import of TT projects (lists, tasks, subtasks, attachments, time entries) into Atlas MySQL. ddashboard keeps CRM. **ddashboard first:** implement [`stella-dashboard/atlas-client-lookup.md`](stella-dashboard/atlas-client-lookup.md) (`GET /dls/v1/atlas/clients`, `/clients/{id}`, `/users`; Bearer + IP allowlist `2.31.42.13` and `95.217.144.93` only). Then Atlas Tools wizard. Do not use `POST /dls/v1/pm/import-tracking-time-projects`.
+- [x] **Atlas TrackingTime import (PM in Atlas)** — Atlas Tools import + hourly open-task sync + Projects UI (optional Trello push) are in the Atlas tree. ddashboard still must serve [`stella-dashboard/atlas-client-lookup.md`](stella-dashboard/atlas-client-lookup.md) (`GET /dls/v1/atlas/clients`, `/clients/{id}`, `/users`; Bearer + IP allowlist). Atlas (`2.31.42.13`) currently gets 401 from ddashboard — see production-host TODO above. Do not use `POST /dls/v1/pm/import-tracking-time-projects`.
 - [x] **Optional: deploy trigger via API on the atlas host.** Live 2026-10-10 on the host API (`POST /system/deploy`, `atlas-dev` key only). See [`atlas/host-api.md`](atlas/host-api.md). Remaining work under Infrastructure.
 - [x] **Planned: health-api for the atlas host.** Live 2026-10-10 as the Atlas host API (`https://api.atlas.foxcraft.digital`). See [`atlas/host-api.md`](atlas/host-api.md). Atlas-side client live (Infrastructure).
 
@@ -55,16 +55,12 @@ Host rebuilt 2026-10-09 onto CX33 (`edison-ip` = `178.105.203.54`). See [`edison
 Service live at `https://stella-media-api.foxcraft.digital`. Contract: [`stella-server/media-api.md`](stella-server/media-api.md).
 
 - [ ] **Foxx Cloud PHP client** — MediaRaster using `/convert-remote` with `dest`; fallback to local convert; base URL and `MEDIA_HMAC_SECRET` in the nest’s `.env`. In progress.
-- [ ] **`POST /convert-remote` end to end** — **UNVERIFIED:** fetch, render, write-back with `dest`; compare the master with the Mac export. Being tested through the Foxx Cloud app. `sftp` listing from inside the container (key, pinned `known_hosts`, port 23) is verified. Outbound port 23 from the container works (verified).
-- [ ] **Dedicated SSH key and Storage Box sub-accounts** — live container uses a copy of Stella’s default `~/.ssh/id_ed25519`. **UNVERIFIED:** which other Storage Boxes (e.g. the restic backup box) that key also unlocks. Safer: dedicated key only on the media box; read-only `user` for originals, read-write `dest_user` for derivatives. See Security in [`stella-server/media-api.md`](stella-server/media-api.md).
+- [ ] **`POST /convert-remote` end to end** — **UNVERIFIED:** fetch and write-back; compare the master with the Mac export. Being tested through the Foxx Cloud app.
+- [ ] **Dedicated SSH key and Storage Box sub-accounts** — see Security in [`stella-server/media-api.md`](stella-server/media-api.md). **UNVERIFIED:** which other Storage Boxes the copied host key unlocks.
 - [ ] **`bake` op** — apply look edits once MediaLookBaker’s input format is known. Not built.
-- [x] **ZV-E10 ARW through `master`** — closed 2026-10-18. One real Sony ZV-E10 ARW via `POST /convert?op=master`: `X-Render: rawtherapee`, `X-Profile: Sony ZV-E10 Camera Standard.dcp`, 6016×4016, RTv4_sRGB, ~10 s. See [`stella-server/media-api.md`](stella-server/media-api.md).
-- [ ] **Colour / detail vs RawTherapee 5.13 Mac export** — **UNVERIFIED**. Stella JPEG 6.8 MB vs Mac 5.2 MB; bookworm RT is older than 5.13.
-- [ ] **Other `style` values** (`vivid`, `portrait`, `landscape`, `monochrome`) — **UNVERIFIED.**
-- [ ] **Other camera bodies** — **UNVERIFIED.** Cameras without a `profiles/` folder fall back to `dcraw_emu` + ImageMagick.
-- [ ] **Real DNG / CR3 / HEIC** and `poster` / `preview` / `tile` with real files through the API — **UNVERIFIED.** ARW `master` via `/convert` is verified.
-- [ ] **Atlas dashboard** — **UNVERIFIED** whether Atlas shows media-api (container, http, cert) after its next poll. health-api itself reported container up, http 200, cert ok (`days_left` 89) when the check functions were called inside the container.
-- [ ] **2026-10-19 03:00 backup** — first restic run that includes `media-api/` (including `profiles/` Adobe DCPs and `ssh/`). Check `/opt/services/backup/last-run.json` for `status` success.
+- [ ] **Real DNG / CR3 / HEIC and other styles** through the API — **UNVERIFIED.** ZV-E10 ARW `master` via `/convert` is verified (2026-10-18).
+- [ ] **Atlas dashboard** — **UNVERIFIED** whether Atlas shows media-api (container, http, cert) after its next poll.
+- [ ] **2026-10-19 03:00 backup** — **UNVERIFIED.** Check `/opt/services/backup/last-run.json` for `status` success.
 - [ ] **Bulk load** — watch `load_1m` vs Atlas thresholds during bulk RAW runs (Ollama cpuset `0-5`, media-api `6-11`, 2 workers).
 
 ---

@@ -104,7 +104,7 @@ Stella is a **service host**. It does not have a general-purpose UI. Atlas and d
 | `POST /api/auth/refresh` | `POST /dls/v1/auth/refresh` | Rotate access token |
 | `POST /api/auth/logout` | `POST /dls/v1/auth/logout` | Revoke refresh token |
 | Token middleware (cache miss) | `GET /dls/v1/auth/verify` | Validate bearer token, read `{ id, email, name, roles[] }` |
-| **Planned** Tools → TrackingTime Import | `GET /dls/v1/atlas/clients`, `/atlas/clients/{id}`, `/atlas/users` | Slim client stub + team users. Bearer + IP allowlist (Atlas `2.31.42.13`, Stella `95.217.144.93` only). **Not implemented.** [`../stella-dashboard/atlas-client-lookup.md`](../stella-dashboard/atlas-client-lookup.md) |
+| Tools → TrackingTime Import | `GET /dls/v1/atlas/clients`, `/atlas/clients/{id}`, `/atlas/users` | Slim client stub + team users. Bearer + IP allowlist (Atlas `2.31.42.13`, Stella `95.217.144.93` only). Atlas calls these; **not implemented on ddashboard yet.** [`../stella-dashboard/atlas-client-lookup.md`](../stella-dashboard/atlas-client-lookup.md) |
 
 Details: [`../atlas/auth.md`](../atlas/auth.md).
 
@@ -185,8 +185,8 @@ The private key never crosses the network. Only a short-lived signed payload (`a
 | Data | Source of truth | Replica / history |
 |------|-----------------|-------------------|
 | Users, roles, passwords | **ddashboard** (WordPress) | Atlas `users` + Spatie roles (synced on login / verify) |
-| Clients, invoices, mail | **ddashboard** MySQL | Atlas will store a **planned** client stub only (`ddashboard_id`, `tracking_time_pro_id`, `name`) — [`../stella-dashboard/atlas-client-lookup.md`](../stella-dashboard/atlas-client-lookup.md) |
-| PM board (`dls_pm_*`) | **ddashboard** MySQL | Existing in-theme board. **Planned:** new TrackingTime imports go to Atlas MySQL (tasks, lists, attachments, time entries) |
+| Clients, invoices, mail | **ddashboard** MySQL | Atlas stores a client stub (`ddashboard_id`, `tracking_time_pro_id`, `name`) after import — [`../stella-dashboard/atlas-client-lookup.md`](../stella-dashboard/atlas-client-lookup.md) |
+| PM board (`dls_pm_*`) | **ddashboard** MySQL | Existing in-theme board. New TrackingTime imports go to Atlas MySQL (tasks, lists, attachments, time entries) |
 | Deploy configs, runs, logs | **Atlas** MySQL | Stella deploy-api keeps its own in-memory/job logs during a run |
 | Stella health snapshots | **Atlas** (`stella_health_checks`, `stella_service_uptime_logs`) | health-api is live-only except last-seen container names in `seen.json`; Atlas stores the snapshots |
 | WP site registry + uptime | **Atlas** (`wp_sites`, `wp_site_uptime_logs`) | Site itself does not push status (Atlas pulls) |

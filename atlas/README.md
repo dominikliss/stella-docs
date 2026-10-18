@@ -2,7 +2,7 @@
 
 **Atlas** is the internal operations platform for foxcraft.digital. It is the UI and API that trigger deploys, watch Stella and WordPress-site health, and run IMAP mailbox copies.
 
-It is **not** the business dashboard. Clients, invoices, and mail live in **ddashboard**. Atlas took over the old ddashboard **Werkzeuge** screens (removed 2026-09-02). **Planned:** TrackingTime project import + task/time work in Atlas; ddashboard keeps CRM and `tracking_time_pro_id`. Spec: [`../stella-dashboard/atlas-client-lookup.md`](../stella-dashboard/atlas-client-lookup.md).
+It is **not** the business dashboard. Clients, invoices, and mail live in **ddashboard**. Atlas took over the old ddashboard **Werkzeuge** screens (removed 2026-09-02). TrackingTime project import, open-task sync, and a Projects UI (optional Trello push) live in Atlas; ddashboard keeps CRM and `tracking_time_pro_id`. Client stub: [`../stella-dashboard/atlas-client-lookup.md`](../stella-dashboard/atlas-client-lookup.md).
 
 **How Atlas sits in the company stack:** [`../integration/system-overview.md`](../integration/system-overview.md)
 
@@ -35,8 +35,10 @@ It is **not** the business dashboard. Clients, invoices, and mail live in **ddas
 | **WP Sites** | `/wp-sites` | Register sites, 5-min uptime, Atlas Connect login, start/list/explore backups |
 | **Monitoring** | `/monitoring/stella`, `/monitoring/atlas` | Stella and Atlas host health grids + history charts |
 | **Tools → IMAP Migration** | `/tools/imap-migration` | Trigger / poll `imapsync` jobs on Stella |
-| **Tools → TrackingTime Import** | *(planned)* `/tools/tracking-time-import` | One-way import of TT projects into Atlas. Needs ddashboard [`atlas-client-lookup.md`](../stella-dashboard/atlas-client-lookup.md) first |
-| **Settings** | `/settings` | SSH/GitHub key path, Brevo transactional email, Hetzner Cloud token, backup S3 + X25519 vault |
+| **Tools → TrackingTime Import** | `/tools/tracking-time-import` | Full one-way import of selected TrackingTime projects into Atlas MySQL |
+| **Tools → TrackingTime Sync** | `/tools/tracking-time-sync` | Hourly or manual open-task sync; job log |
+| **Projects** | `/projects` | Imported projects, tasks, attachments; optional Trello board push |
+| **Settings** | `/settings` | SSH/GitHub key path, Brevo, Hetzner Cloud token, backup S3 + X25519 vault, TrackingTime, Trello |
 
 ## Documents in this folder
 
@@ -50,7 +52,7 @@ It is **not** the business dashboard. Clients, invoices, and mail live in **ddas
 | [atlas-connect/](atlas-connect/) | WP plugin: login + backups |
 | [deploy-pipeline.md](deploy-pipeline.md) | ssh_rsync and stella_deploy_api |
 | [monitoring.md](monitoring.md) | Stella health + WP uptime |
-| [tools.md](tools.md) | IMAP copy via Stella; planned TrackingTime import |
+| [tools.md](tools.md) | IMAP copy via Stella; TrackingTime import and open-task sync |
 | [dotnet-azure.md](dotnet-azure.md) | .NET / Azure via `stella_deploy_api` |
 
 ---

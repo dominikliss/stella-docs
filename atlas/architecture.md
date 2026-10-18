@@ -32,8 +32,9 @@ Business code lives under `app/Domain/{Name}/` (controllers, models, jobs, servi
 | `Deploy` | Configs, servers, runs, rsync, Stella deploy-api client, SSH signer, GitHub branches, folder browser |
 | `Monitoring` | Stella health-api + public-probe fallback; Atlas host-api health + optional self-deploy; Hetzner Cloud (atlas + edison backups); history + prune |
 | `WpSites` | Site registry, uptime job, Atlas Connect login, down-alert mail, backup driver + explorer — see [`atlas-connect/backups.md`](atlas-connect/backups.md) |
-| `Tools` | IMAP migration proxy to Stella `imap-sync`; **planned** TrackingTime import ([`../stella-dashboard/atlas-client-lookup.md`](../stella-dashboard/atlas-client-lookup.md)) |
-| `Settings` | `app_settings` key/value (SSH path, Brevo, Hetzner Cloud token, backup S3 + X25519 vault) |
+| `Tools` | IMAP migration proxy to Stella `imap-sync`; TrackingTime import / open-task sync (ddashboard [`../stella-dashboard/atlas-client-lookup.md`](../stella-dashboard/atlas-client-lookup.md) for client stubs) |
+| `Projects` | Imported customers/projects/tasks; attachment download; Trello push |
+| `Settings` | `app_settings` key/value (SSH path, Brevo, Hetzner Cloud token, backup S3 + X25519 vault, TrackingTime, Trello) |
 
 `App\Providers\AtlasServiceProvider` binds `TokenAuthDriver`. With `ATLAS_DEMO_MODE=true` it binds `FakeTokenAuthDriver` instead so the UI can be exercised without ddashboard.
 
@@ -54,6 +55,9 @@ Entry: `resources/views/app.blade.php` → Vite → `resources/js/routes/index.t
 | `/monitoring/edison` | `domains/monitoring/EdisonDetailPage` |
 | `/tools` | `domains/tools/ToolsPage` |
 | `/tools/imap-migration` | `domains/tools/imap-migration/ImapMigrationPage` |
+| `/tools/tracking-time-import` | `domains/tools/tracking-time-import/TrackingTimeImportPage` |
+| `/tools/tracking-time-sync` | `domains/tools/tracking-time-sync/TrackingTimeSyncPage` |
+| `/projects` | `domains/projects/ProjectsPage` |
 | `/settings` | `domains/settings/SettingsPage` |
 
 API calls go through `resources/js/lib/api-client.ts` with the bearer token from `lib/token-store.ts` (access + refresh). The browser never calls Stella, GitHub, or the Atlas Connect plugin directly.
