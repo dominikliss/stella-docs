@@ -84,7 +84,7 @@ List endpoint returns the latest 100 rows.
 
 ## TrackingTime Import and Sync
 
-One-way pull of TrackingTime Pro projects into Atlas MySQL (task lists, tasks, subtasks, attachments, time entries). Atlas talks to TrackingTime itself. ddashboard only supplies the client stub via [`../stella-dashboard/atlas-client-lookup.md`](../stella-dashboard/atlas-client-lookup.md). Credentials: Settings → TrackingTime (encrypted `app_settings`; env fallbacks in `.env.example`).
+One-way pull of TrackingTime Pro projects into Atlas MySQL (task lists, tasks, subtasks, attachments, time entries). Running / unsaved timers (no end time) are skipped. Atlas talks to TrackingTime itself. ddashboard only supplies the client stub via [`../stella-dashboard/atlas-client-lookup.md`](../stella-dashboard/atlas-client-lookup.md). Credentials: Settings → TrackingTime (encrypted `app_settings`; env fallbacks in `.env.example`).
 
 **Import** (`/tools/tracking-time-import`):
 
