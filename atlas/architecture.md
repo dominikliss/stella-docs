@@ -98,7 +98,7 @@ Login / refresh / logout skip token middleware (still IP-filtered) and proxy to 
 | `stella_health_checks`, `stella_service_uptime_logs` | 5-min Stella snapshots (30-day retention) |
 | `wp_sites`, `wp_site_uptime_logs` | Site registry + 7-day uptime |
 | `imap_migration_jobs` | Atlas-side IMAP history (hosts/users only — **no passwords**) |
-| `customers`, `projects`, `task_lists`, `tasks`, `task_checklist_items`, `task_comments`, `time_entries`, `attachments` | TrackingTime import (one-way). Trello ids live on projects/tasks/check items/attachments. `projects.max_hours_per_week` / `trello_pushed_hash` are Atlas-local |
+| `customers`, `projects`, `task_lists`, `tasks`, `task_checklist_items`, `task_comments`, `time_entries`, `attachments` | TrackingTime import (one-way). Trello ids live on projects/tasks/check items/attachments. `projects.max_hours_per_week` / `trello_pushed_hash` and `tasks.skip_trello` are Atlas-local |
 | `slack_destinations`, `notification_rules`, `notification_rule_channels`, `notification_rule_projects`, `notification_bindings`, `notification_events`, `notification_deliveries` | Notification rules, Slack webhooks (encrypted), fires + per-channel deliveries |
 | `tracking_time_import_jobs` | Import / open-task sync history |
 | Redis | Cache, including hashed access tokens after login |

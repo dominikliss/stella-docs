@@ -22,7 +22,7 @@ Per project, the operator maps:
 | Backlog task list | Backlog column |
 | Hours worked field (optional) | Number or text custom field (e.g. **Zeit gearbeitet**) |
 
-A mapping is ready when at least one of the two list pairs is complete (active + both columns, or backlog + backlog column).
+A mapping is ready when at least one of the two list pairs is complete (active + both columns, or backlog + backlog column). Individual tasks in those lists can be marked **keep off the board** (`tasks.skip_trello`) in the project Trello panel. That flag is Atlas-local and is not overwritten by TrackingTime import.
 
 ---
 
@@ -35,7 +35,7 @@ Identity is **`tasks.trello_card_id` only**. Comments are never pushed.
 | Open, in the mapped active list, no card yet | Create a card in **In progress** |
 | Later archived (`is_archived`) and already has a card | Move that card to **Done** (list move only — not `dueComplete`, not forced to the top) |
 | Open, in the mapped backlog list, no card yet | Create a card in **Backlog** |
-| Archived, never had a card | Skip — old done work is not published |
+| `skip_trello` on a mapped-list task | Skip — stays in Atlas, no create/update. An existing card is left on the board as-is |
 
 Card name: `!` / `!!` / `!!!` from `tasks.priority` (1–3), then the task name.
 
@@ -73,7 +73,7 @@ The field must exist **on the mapped board**. `GET /boards/{id}/customFields` on
 
 There is **no** dedicated Trello cron. Hourly Trello is a side effect of `projects:sync-tracking-time-open` (Laravel scheduler, every hour). Quiet hours (TrackingTime upserted the same values) do not rewrite Trello cards.
 
-The hash covers board/list/hours mapping plus candidate tasks (name, description, due, priority, estimate, archive, hours, subtasks, checklists, attachments, whether a card already exists). Comments are ignored. **Reset Trello IDs** clears the hash so the next auto-push recreates cards.
+The hash covers board/list/hours mapping, skipped task ids (`tasks.skip_trello`), plus candidate tasks (name, description, due, priority, estimate, archive, hours, subtasks, checklists, attachments, whether a card already exists). Comments are ignored. **Reset Trello IDs** clears the hash so the next auto-push recreates cards.
 
 Progress (`trello_push_status` / `done` / `total` / `log`) is stored on the project and polled by the project page.
 
@@ -95,7 +95,7 @@ Use this after changing to a different board so the next push creates new cards 
 | `GET` | `/api/projects/{id}` | Project detail (lists, tasks, `trello` state) |
 | `PATCH` | `/api/projects/{id}` | Update name, notes, color, customer, archived, max hours / week |
 | `GET` | `/api/projects/{id}/trello` | Mapping + push progress |
-| `PATCH` | `/api/projects/{id}/trello` | Save board / columns / task lists / hours field |
+| `PATCH` | `/api/projects/{id}/trello` | Save board / columns / task lists / hours field / `skip_trello_task_ids` |
 | `POST` | `/api/projects/{id}/trello/push` | Queue a push |
 | `POST` | `/api/projects/{id}/trello/reset` | Clear stored Trello ids for this project |
 | `GET` | `/api/trello/boards` | Open boards for the saved token |

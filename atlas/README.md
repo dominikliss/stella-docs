@@ -54,7 +54,7 @@ It is **not** the business dashboard. Clients, invoices, and mail live in **ddas
 | [deploy-pipeline.md](deploy-pipeline.md) | ssh_rsync and stella_deploy_api |
 | [monitoring.md](monitoring.md) | Stella health + WP uptime |
 | [tools.md](tools.md) | IMAP copy via Stella; TrackingTime import and open-task sync |
-| [projects.md](projects.md) | Projects UI; one-way Trello push (mapping, hours field, reset ids) |
+| [projects.md](projects.md) | Projects UI; one-way Trello push (mapping, skip tasks, hours field, reset ids) |
 | [notifications.md](notifications.md) | Inbox, Slack/email channels, weekly hour-budget rules |
 | [dotnet-azure.md](dotnet-azure.md) | .NET / Azure via `stella_deploy_api` |
 
@@ -275,7 +275,7 @@ The **public** key must be in:
 | `GET` | `/api/projects/{id}` | Project detail + `trello` state |
 | `PATCH` | `/api/projects/{id}` | Update name, notes, color, customer, archived, max hours / week |
 | `GET` | `/api/projects/{id}/trello` | Mapping + push progress |
-| `PATCH` | `/api/projects/{id}/trello` | Save Trello mapping |
+| `PATCH` | `/api/projects/{id}/trello` | Save Trello mapping (including tasks to keep off the board) |
 | `POST` | `/api/projects/{id}/trello/push` | Queue a one-way Trello push |
 | `POST` | `/api/projects/{id}/trello/reset` | Clear stored Trello ids for this project |
 | `GET` | `/api/attachments/{id}/download` | Download an imported attachment |

@@ -160,7 +160,7 @@ A built-in PM board, optionally synced with TrackingTime Pro.
 - Import projects, tasks, task lists, and time entries from TrackingTime Pro API v4 into `dls_pm_*`
 - Idempotent import via `tt_project_id` / `tt_task_id` stored on each record
 - Configurable via Verwaltung → Projekte (API key in WP options)
-- **Atlas:** TrackingTime import + hourly open-task sync live in Atlas Tools; imported work is `/projects` there. Optional one-way Trello push (board/column mapping, hours custom field or card description, reset stored card ids). See [`../atlas/projects.md`](../atlas/projects.md). ddashboard keeps CRM + `tracking_time_pro_id`. Atlas will not call `POST /dls/v1/pm/import-tracking-time-projects`. Client stub: [`atlas-client-lookup.md`](atlas-client-lookup.md).
+- **Atlas:** TrackingTime import + hourly open-task sync live in Atlas Tools; imported work is `/projects` there. Optional one-way Trello push (board/column mapping, per-task skip, hours custom field or card description, reset stored card ids). See [`../atlas/projects.md`](../atlas/projects.md). ddashboard keeps CRM + `tracking_time_pro_id`. Atlas will not call `POST /dls/v1/pm/import-tracking-time-projects`. Client stub: [`atlas-client-lookup.md`](atlas-client-lookup.md).
 
 **Custom MySQL tables** (option `dls_pm_db_version`):
 `dls_pm_project`, `dls_pm_task_list`, `dls_pm_task`, `dls_pm_task_assignee`, `dls_pm_comment`, `dls_pm_time_entry`
