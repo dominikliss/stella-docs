@@ -2,7 +2,7 @@
 
 Imported TrackingTime work is shown at **`/projects`**. Project name, notes, customer, archived flag, and **max hours per week** can be edited in the project header (**Edit**). Those edits are **Atlas-local only** — they are stored on the `projects` row and are never written back to TrackingTime. Later import / hourly open-task sync still refreshes tasks and `estimated_seconds`, but does not overwrite those local fields.
 
-When max hours per week is set, the project list and detail show a **this-week** progress bar. Hours are the sum of `time_entries.duration_seconds` on the project’s tasks (including archived tasks and subtasks) whose `started_at` falls in the current Monday–Sunday week in `Europe/Vienna`. TrackingTime timers still running (no end time) are not imported. Settings → Notification rules can alert (inbox / Slack / email) when that bar crosses a threshold — [`notifications.md`](notifications.md). Each project can optionally push **one way** to a Trello board. Trello never writes back into Atlas.
+When max hours per week is set, the project list and detail show **two** this-week sliders against the same cap: **commented** hours (trimmed `time_entries.notes` nonempty) and **no comment**. The weekly limit, weekly-hours alerts, and Trello “hours worked” use **commented** hours only. Both sums include archived tasks and subtasks whose `started_at` falls in the current Monday–Sunday week in `Europe/Vienna`. TrackingTime timers still running (no end time) are not imported. Settings → Notification rules can alert (inbox / Slack / email) when the commented bar crosses a threshold — [`notifications.md`](notifications.md). Each project can optionally push **one way** to a Trello board. Trello never writes back into Atlas.
 
 TrackingTime import / hourly open-task sync: [`tools.md`](tools.md#trackingtime-import-and-sync).  
 Client stubs: [`../stella-dashboard/atlas-client-lookup.md`](../stella-dashboard/atlas-client-lookup.md).
@@ -49,7 +49,7 @@ Updates send **`idBoard` + `idList`** so a remapped board can move existing card
 
 ## Hours worked
 
-Hours = sum of `time_entries.duration_seconds` on the task **and its subtasks**, ÷ 3600.
+Hours = sum of `time_entries.duration_seconds` on the task **and its subtasks** that have a nonempty text comment (`notes`), ÷ 3600. Uncommented entries stay in Atlas but are not pushed.
 
 | Hours field mapping | Where hours go |
 |---------------------|----------------|

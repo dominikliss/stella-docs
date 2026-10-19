@@ -2,26 +2,29 @@
 
 Rules live in **Settings → Notification rules**. Slack incoming webhooks live in **Settings → Slack**. The header bell opens an in-app inbox at **`/notifications`**. Per-project mute / Slack override is on the project page.
 
-The first (and currently only) rule type is **weekly hours monitoring** (`project.week_hours_threshold`): when a project’s this-week hours cross a threshold of its **max hours per week**, Atlas fires once per rule + project + ISO week + threshold. Week window is Monday–Sunday in `Europe/Vienna` — same as the project progress bar ([`projects.md`](projects.md)).
+Rule types:
+
+| Type | When it fires |
+|------|----------------|
+| **Weekly hours monitoring** (`project.week_hours_threshold`) | A project’s this-week **commented** hours cross a threshold of its **max hours per week**. Once per rule + project + ISO week + threshold. Week window is Monday–Sunday in `Europe/Vienna` — same as the project progress bar ([`projects.md`](projects.md)). |
+| **Time entries with no comment** (`time_entry.missing_comment`) | Selected projects have uncommented time entries (`notes` empty / whitespace) starting **2026-10-19**. Once per rule per Vienna calendar day. Optional `user_ids` (empty = every user). Body lists tasks plus TrackingTime links (`https://pro.trackingtime.co/#/project/{projectId}/{taskId}`). |
 
 ---
 
 ## How a fire happens
 
-Hourly Laravel scheduler: `notifications:check-week-hours` (`CheckProjectWeekHoursCommand`). Manual: `php artisan notifications:check-week-hours` (`--project=` limits to one id). Settings **Test** on a rule calls `NotificationDispatcher::simulate` (does not use real hours).
+Hourly Laravel scheduler: `notifications:check-week-hours` (`CheckProjectWeekHoursCommand`). Daily 07:00 `Europe/Vienna`: `notifications:check-missing-comments` (`CheckTimeEntryMissingCommentsCommand`). Manual: `php artisan notifications:check-week-hours` (`--project=` limits to one id) or `php artisan notifications:check-missing-comments`. Settings **Test** on a rule calls `NotificationDispatcher::simulate` (does not use real hours).
 
-A real fire requires:
+Weekly hours also requires: project in the rule’s list, not archived, `max_hours_per_week` > 0, binding not muted, this-week **commented** seconds ≥ threshold % of the cap.
 
-| Condition | Else |
-|-----------|------|
-| Rule `enabled` | Skip |
-| Project in the rule’s project list | Skip |
-| Project not archived, `max_hours_per_week` > 0 | Skip |
-| Binding not muted | Skip (no event) |
-| This-week seconds ≥ threshold % of the cap | Skip |
-| `dedupe_key` not already stored | Unique violation → skip (already fired this week) |
+Missing-comment requires: project list nonempty, at least one uncommented entry since 2026-10-19 for the selected users (or all users), project not archived.
 
-Dedupe key: `project.week_hours_threshold:{ruleId}:{projectId}:{isoWeekYear}-W{isoWeek}:{threshold}`.
+Dedupe keys:
+
+| Type | Key |
+|------|-----|
+| Weekly hours | `project.week_hours_threshold:{ruleId}:{projectId}:{isoWeekYear}-W{isoWeek}:{threshold}` |
+| Missing comment | `time_entry.missing_comment:{ruleId}:{Y-m-d}` (Vienna date) |
 
 Title / body come from optional rule templates (`{project}`, `{customer}`, `{customer_line}`, `{used}`, `{cap}`, `{threshold}`, `{used_percent}`). Empty templates use the type defaults.
 
@@ -51,6 +54,7 @@ Webhook URLs must be `https://hooks.slack.com/…`. Stored encrypted on `slack_d
 | `DELETE` | `/api/settings/slack-destinations/{id}` | Delete; 409 if a rule still uses it |
 | `POST` | `/api/settings/slack-destinations/{id}/test` | Send a test webhook |
 | `GET` | `/api/notification-rule-types` | Catalog (labels, placeholders, conditions) |
+| `GET` | `/api/notification-users` | Atlas users for the missing-comment rule picker |
 | `GET` | `/api/notification-rules` | List rules + channels + project ids |
 | `POST` | `/api/notification-rules` | Create |
 | `PATCH` | `/api/notification-rules/{id}` | Update |
@@ -70,11 +74,13 @@ Webhook URLs must be `https://hooks.slack.com/…`. Stored encrypted on `slack_d
 
 | Piece | Role |
 |-------|------|
-| `NotificationRule` / `NotificationRuleChannel` | Type, templates, config (`thresholds`), in-app flag, Slack/email channels |
+| `NotificationRule` / `NotificationRuleChannel` | Type, templates, config (`thresholds` or `user_ids`), in-app flag, Slack/email channels |
 | `notification_rule_projects` | Which projects a rule watches |
 | `NotificationBinding` | Per-project mute + Slack override |
 | `NotificationEvent` / `NotificationDelivery` | Fire + per-channel outcome (`sent` / `failed` / `skipped`) |
 | `SlackDestination` / `SlackClient` | Encrypted webhook; `POST { text }` |
 | `NotificationDispatcher` | Insert event (unique `dedupe_key`), then in-app / Slack / email |
-| `ProjectWeekHoursThresholdChecker` | Hourly evaluation + placeholders |
+| `ProjectWeekHoursThresholdChecker` | Hourly evaluation + placeholders (commented hours only) |
 | `CheckProjectWeekHoursCommand` | `notifications:check-week-hours` |
+| `TimeEntryMissingCommentChecker` | Daily 07:00 Vienna evaluation + task list |
+| `CheckTimeEntryMissingCommentsCommand` | `notifications:check-missing-comments` |

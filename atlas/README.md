@@ -143,6 +143,7 @@ Both health loops run via `php artisan schedule:run` (cron every minute). They u
 | every 5 min | `CheckWpSiteUptime` (once per site) | `HEAD https://{domain}`; `up` / `degraded` (>1 s) / `down`. Brevo email on first `down` transition. Prune logs older than 7 days. |
 | hourly | `projects:sync-tracking-time-open` | Open-task TrackingTime sync; queues a Trello push for mapped projects only when Atlas content changed |
 | hourly | `notifications:check-week-hours` | Fire weekly hour-budget notifications when a watched project crosses a threshold |
+| daily 07:00 Europe/Vienna | `notifications:check-missing-comments` | Summary when selected projects have uncommented time entries since 2026-10-19 |
 | every minute | `wp-sites:drive-backups` | Backups feature still in development; backup driver not finished |
 
 ---
@@ -298,6 +299,7 @@ See [`projects.md`](projects.md).
 | `DELETE` | `/api/settings/slack-destinations/{id}` | Delete; 409 if a rule still uses it |
 | `POST` | `/api/settings/slack-destinations/{id}/test` | Send a test webhook |
 | `GET` | `/api/notification-rule-types` | Rule type catalog |
+| `GET` | `/api/notification-users` | Users for missing-comment rules |
 | `GET` | `/api/notification-rules` | List rules |
 | `POST` | `/api/notification-rules` | Create a rule |
 | `PATCH` | `/api/notification-rules/{id}` | Update a rule |
