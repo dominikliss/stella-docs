@@ -1,6 +1,6 @@
 # Atlas
 
-**Atlas** is the internal operations platform for foxcraft.digital. It is the UI and API that trigger deploys, watch Stella and WordPress-site health, and run IMAP mailbox copies.
+**Atlas** is the internal operations platform for foxcraft.digital. It is the UI and API that trigger deploys, watch Stella and WordPress-site health, run IMAP mailbox copies, and fire in-app / Slack / email alerts.
 
 It is **not** the business dashboard. Clients, invoices, and mail live in **ddashboard**. Atlas took over the old ddashboard **Werkzeuge** screens (removed 2026-09-02). TrackingTime project import, open-task sync, and a Projects UI (optional Trello push) live in Atlas; ddashboard keeps CRM and `tracking_time_pro_id`. Client stub: [`../stella-dashboard/atlas-client-lookup.md`](../stella-dashboard/atlas-client-lookup.md).
 
@@ -37,8 +37,9 @@ It is **not** the business dashboard. Clients, invoices, and mail live in **ddas
 | **Tools → IMAP Migration** | `/tools/imap-migration` | Trigger / poll `imapsync` jobs on Stella |
 | **Tools → TrackingTime Import** | `/tools/tracking-time-import` | Full one-way import of selected TrackingTime projects into Atlas MySQL |
 | **Tools → TrackingTime Sync** | `/tools/tracking-time-sync` | Hourly or manual open-task sync; job log |
-| **Projects** | `/projects` | Imported projects, tasks, attachments; one-way Trello push ([`projects.md`](projects.md)) |
-| **Settings** | `/settings` | SSH/GitHub key path, Brevo, Hetzner Cloud token, backup S3 + X25519 vault, TrackingTime, Trello |
+| **Projects** | `/projects` | Imported projects, tasks, attachments; edit name/notes/customer/archived/max hours; one-way Trello push ([`projects.md`](projects.md)) |
+| **Notifications** | `/notifications` | In-app inbox (header bell). Rules and Slack webhooks in Settings ([`notifications.md`](notifications.md)) |
+| **Settings** | `/settings` | SSH/GitHub key path, Brevo, Hetzner Cloud token, backup S3 + X25519 vault, TrackingTime, Trello, Slack, notification rules |
 
 ## Documents in this folder
 
@@ -54,6 +55,7 @@ It is **not** the business dashboard. Clients, invoices, and mail live in **ddas
 | [monitoring.md](monitoring.md) | Stella health + WP uptime |
 | [tools.md](tools.md) | IMAP copy via Stella; TrackingTime import and open-task sync |
 | [projects.md](projects.md) | Projects UI; one-way Trello push (mapping, hours field, reset ids) |
+| [notifications.md](notifications.md) | Inbox, Slack/email channels, weekly hour-budget rules |
 | [dotnet-azure.md](dotnet-azure.md) | .NET / Azure via `stella_deploy_api` |
 
 ---
@@ -71,6 +73,7 @@ Browser (IP-allowlisted)
         → WP sites            HEAD uptime + Atlas Connect login / backup driver
         → TrackingTime Pro    import + hourly open-task sync
         → Trello REST v1      one-way card push (key + token)
+        → Slack webhooks      incoming webhooks for notification rules
 ```
 
 Atlas **does not** call Stella `/chat/*`. That is ddashboard’s AI path.
@@ -138,7 +141,8 @@ Both health loops run via `php artisan schedule:run` (cron every minute). They u
 | every 5 min | `CheckStellaHealth` | Signed health-api request; store `StellaHealthCheck` + per-service `StellaServiceUptimeLog`. Public-endpoint probes if health-api is down. Prune older than 30 days. |
 | every 5 min | `CheckAtlasHealth` | Signed host-api request; store `AtlasHealthCheck` + per-service `AtlasServiceUptimeLog`. Prune older than 30 days. |
 | every 5 min | `CheckWpSiteUptime` (once per site) | `HEAD https://{domain}`; `up` / `degraded` (>1 s) / `down`. Brevo email on first `down` transition. Prune logs older than 7 days. |
-| hourly | `projects:sync-tracking-time-open` | Open-task TrackingTime sync; if the project is Trello-mapped, queues a Trello push |
+| hourly | `projects:sync-tracking-time-open` | Open-task TrackingTime sync; queues a Trello push for mapped projects only when Atlas content changed |
+| hourly | `notifications:check-week-hours` | Fire weekly hour-budget notifications when a watched project crosses a threshold |
 | every minute | `wp-sites:drive-backups` | Backups feature still in development; backup driver not finished |
 
 ---
@@ -269,6 +273,7 @@ The **public** key must be in:
 | `GET` | `/api/customers` | Imported customer stubs |
 | `GET` | `/api/projects` | List imported projects |
 | `GET` | `/api/projects/{id}` | Project detail + `trello` state |
+| `PATCH` | `/api/projects/{id}` | Update name, notes, color, customer, archived, max hours / week |
 | `GET` | `/api/projects/{id}/trello` | Mapping + push progress |
 | `PATCH` | `/api/projects/{id}/trello` | Save Trello mapping |
 | `POST` | `/api/projects/{id}/trello/push` | Queue a one-way Trello push |
@@ -282,6 +287,31 @@ The **public** key must be in:
 | `POST` | `/api/settings/trello/test` | Test Trello credentials |
 
 See [`projects.md`](projects.md).
+
+### Notifications / Slack
+
+| Method | Path | Purpose |
+|--------|------|---------|
+| `GET` | `/api/settings/slack-destinations` | List Slack webhooks (URL never returned) |
+| `POST` | `/api/settings/slack-destinations` | Create a Slack incoming webhook |
+| `PATCH` | `/api/settings/slack-destinations/{id}` | Rename / replace webhook |
+| `DELETE` | `/api/settings/slack-destinations/{id}` | Delete; 409 if a rule still uses it |
+| `POST` | `/api/settings/slack-destinations/{id}/test` | Send a test webhook |
+| `GET` | `/api/notification-rule-types` | Rule type catalog |
+| `GET` | `/api/notification-rules` | List rules |
+| `POST` | `/api/notification-rules` | Create a rule |
+| `PATCH` | `/api/notification-rules/{id}` | Update a rule |
+| `POST` | `/api/notification-rules/{id}/test` | Simulate a fire |
+| `DELETE` | `/api/notification-rules/{id}` | Delete a rule |
+| `GET` | `/api/notification-events` | Recent fires |
+| `GET` | `/api/projects/{id}/notification-bindings` | Per-project mute / Slack override |
+| `PATCH` | `/api/projects/{id}/notification-bindings` | Save mute / Slack override |
+| `GET` | `/api/notifications` | Current user’s in-app inbox |
+| `GET` | `/api/notifications/unread-count` | Unread count |
+| `POST` | `/api/notifications/read-all` | Mark all read |
+| `POST` | `/api/notifications/{delivery}/read` | Mark one read |
+
+See [`notifications.md`](notifications.md).
 
 ### Settings
 

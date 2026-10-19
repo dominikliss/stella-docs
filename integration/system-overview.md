@@ -172,8 +172,9 @@ Details: [`../atlas/deploy-pipeline.md`](../atlas/deploy-pipeline.md).
 |---------|--------|------|----------|
 | Tools → TrackingTime Import / hourly open-task sync | TrackingTime Pro API v4 | App password in Settings | [`../atlas/tools.md`](../atlas/tools.md) |
 | Projects → Trello push | Trello REST v1 | API key + token in Settings | [`../atlas/projects.md`](../atlas/projects.md) |
+| Notification rules → Slack | Incoming webhooks (`https://hooks.slack.com/…`) | Encrypted webhook URL per destination | [`../atlas/notifications.md`](../atlas/notifications.md) |
 
-One-way only. Trello never writes back. Hourly Trello is a side effect of the TrackingTime open-task sync, not its own cron.
+One-way only. Trello never writes back. Hourly Trello is a side effect of the TrackingTime open-task sync, not its own cron. Slack is outbound webhooks only.
 
 ---
 

@@ -33,7 +33,8 @@ Business code lives under `app/Domain/{Name}/` (controllers, models, jobs, servi
 | `Monitoring` | Stella health-api + public-probe fallback; Atlas host-api health + optional self-deploy; Hetzner Cloud (atlas + edison backups); history + prune |
 | `WpSites` | Site registry, uptime job, Atlas Connect login, down-alert mail, backup driver + explorer — see [`atlas-connect/backups.md`](atlas-connect/backups.md) |
 | `Tools` | IMAP migration proxy to Stella `imap-sync`; TrackingTime import / open-task sync (ddashboard [`../stella-dashboard/atlas-client-lookup.md`](../stella-dashboard/atlas-client-lookup.md) for client stubs) |
-| `Projects` | Imported customers/projects/tasks; attachment download; one-way Trello push ([`projects.md`](projects.md)) |
+| `Projects` | Imported customers/projects/tasks; project metadata edit; attachment download; one-way Trello push ([`projects.md`](projects.md)) |
+| `Notifications` | Rules, Slack webhooks, in-app inbox, weekly hour-budget checker ([`notifications.md`](notifications.md)) |
 | `Settings` | `app_settings` key/value (SSH path, Brevo, Hetzner Cloud token, backup S3 + X25519 vault, TrackingTime, Trello) |
 
 `App\Providers\AtlasServiceProvider` binds `TokenAuthDriver`. With `ATLAS_DEMO_MODE=true` it binds `FakeTokenAuthDriver` instead so the UI can be exercised without ddashboard.
@@ -57,7 +58,8 @@ Entry: `resources/views/app.blade.php` → Vite → `resources/js/routes/index.t
 | `/tools/imap-migration` | `domains/tools/imap-migration/ImapMigrationPage` |
 | `/tools/tracking-time-import` | `domains/tools/tracking-time-import/TrackingTimeImportPage` |
 | `/tools/tracking-time-sync` | `domains/tools/tracking-time-sync/TrackingTimeSyncPage` |
-| `/projects` | `domains/projects/ProjectsPage` (+ `TrelloProjectSettings` on the detail view) |
+| `/projects` | `domains/projects/ProjectsPage` (+ `ProjectEditForm` and `TrelloProjectSettings` on the detail view) |
+| `/notifications` | `domains/notifications/NotificationsPage` |
 | `/settings` | `domains/settings/SettingsPage` |
 
 API calls go through `resources/js/lib/api-client.ts` with the bearer token from `lib/token-store.ts` (access + refresh). The browser never calls Stella, GitHub, or the Atlas Connect plugin directly.
@@ -96,7 +98,8 @@ Login / refresh / logout skip token middleware (still IP-filtered) and proxy to 
 | `stella_health_checks`, `stella_service_uptime_logs` | 5-min Stella snapshots (30-day retention) |
 | `wp_sites`, `wp_site_uptime_logs` | Site registry + 7-day uptime |
 | `imap_migration_jobs` | Atlas-side IMAP history (hosts/users only — **no passwords**) |
-| `customers`, `projects`, `task_lists`, `tasks`, `task_checklist_items`, `task_comments`, `time_entries`, `attachments` | TrackingTime import (one-way). Trello ids live on projects/tasks/check items/attachments |
+| `customers`, `projects`, `task_lists`, `tasks`, `task_checklist_items`, `task_comments`, `time_entries`, `attachments` | TrackingTime import (one-way). Trello ids live on projects/tasks/check items/attachments. `projects.max_hours_per_week` / `trello_pushed_hash` are Atlas-local |
+| `slack_destinations`, `notification_rules`, `notification_rule_channels`, `notification_rule_projects`, `notification_bindings`, `notification_events`, `notification_deliveries` | Notification rules, Slack webhooks (encrypted), fires + per-channel deliveries |
 | `tracking_time_import_jobs` | Import / open-task sync history |
 | Redis | Cache, including hashed access tokens after login |
 | Database queue `jobs` / `deployments` | `DeployRunJob`, `ImportTrackingTimeJob`, `PushProjectToTrelloJob` |
@@ -109,7 +112,8 @@ Login / refresh / logout skip token middleware (still IP-filtered) and proxy to 
 |-----------|-----------|----------|
 | systemd `atlas-queue.service` | `queue:work database --queue=deployments --sleep=3 --timeout=7200 --max-time=3500` | `DeployRunJob`, `ImportTrackingTimeJob`, `PushProjectToTrelloJob` |
 | Laravel scheduler (`dispatchSync`) | In-process during `schedule:run` | `CheckStellaHealth`, `CheckAtlasHealth`, `CheckWpSiteUptime`, `wp-sites:drive-backups` (backups still in development) |
-| Laravel scheduler (command) | Hourly `projects:sync-tracking-time-open` | Open-task TrackingTime sync; queues Trello push when the project is mapped |
+| Laravel scheduler (command) | Hourly `projects:sync-tracking-time-open` | Open-task TrackingTime sync; queues Trello push when the project is mapped **and** Atlas content changed since the last successful push |
+| Laravel scheduler (command) | Hourly `notifications:check-week-hours` | Fire weekly hour-budget notifications for watched projects that crossed a threshold |
 
 Do not assume Horizon / Redis queues are driving deploys. Production **hard-codes** `database` and the `deployments` queue. `scripts/queue-deployments.sh` no longer applies on `atlas`.
 

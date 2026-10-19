@@ -1,6 +1,8 @@
 # Atlas projects and Trello push
 
-Imported TrackingTime work is shown at **`/projects`**. Each project can optionally push **one way** to a Trello board. Trello never writes back into Atlas.
+Imported TrackingTime work is shown at **`/projects`**. Project name, notes, customer, archived flag, and **max hours per week** can be edited in the project header (**Edit**). Those edits are **Atlas-local only** — they are stored on the `projects` row and are never written back to TrackingTime. Later import / hourly open-task sync still refreshes tasks and `estimated_seconds`, but does not overwrite those local fields.
+
+When max hours per week is set, the project list and detail show a **this-week** progress bar. Hours are the sum of `time_entries.duration_seconds` on the project’s tasks (including archived tasks and subtasks) whose `started_at` falls in the current Monday–Sunday week in `Europe/Vienna`. Settings → Notification rules can alert (inbox / Slack / email) when that bar crosses a threshold — [`notifications.md`](notifications.md). Each project can optionally push **one way** to a Trello board. Trello never writes back into Atlas.
 
 TrackingTime import / hourly open-task sync: [`tools.md`](tools.md#trackingtime-import-and-sync).  
 Client stubs: [`../stella-dashboard/atlas-client-lookup.md`](../stella-dashboard/atlas-client-lookup.md).
@@ -66,10 +68,12 @@ The field must exist **on the mapped board**. `GET /boards/{id}/customFields` on
 
 | Trigger | Behaviour |
 |---------|-----------|
-| Project UI **Push to Trello** | `POST /api/projects/{id}/trello/push` — 409 if already pending/running, 422 if unmapped or Trello is not configured |
-| After a TrackingTime import/sync of that project | `TrelloPushStarter::startIfMapped` — no-op if unmapped, unconfigured, or already running |
+| Project UI **Push to Trello** | `POST /api/projects/{id}/trello/push` — always queues; 409 if already pending/running, 422 if unmapped or Trello is not configured |
+| After a TrackingTime import/sync of that project | `TrelloPushStarter::startIfMapped` — no-op if unmapped, unconfigured, or already running. Also **skips** when the mapped content hash matches `projects.trello_pushed_hash` (last successful push). |
 
-There is **no** dedicated Trello cron. Hourly Trello is a side effect of `projects:sync-tracking-time-open` (Laravel scheduler, every hour).
+There is **no** dedicated Trello cron. Hourly Trello is a side effect of `projects:sync-tracking-time-open` (Laravel scheduler, every hour). Quiet hours (TrackingTime upserted the same values) do not rewrite Trello cards.
+
+The hash covers board/list/hours mapping plus candidate tasks (name, description, due, priority, estimate, archive, hours, subtasks, checklists, attachments, whether a card already exists). Comments are ignored. **Reset Trello IDs** clears the hash so the next auto-push recreates cards.
 
 Progress (`trello_push_status` / `done` / `total` / `log`) is stored on the project and polled by the project page.
 
@@ -89,6 +93,7 @@ Use this after changing to a different board so the next push creates new cards 
 |--------|------|---------|
 | `GET` | `/api/projects` | List imported projects |
 | `GET` | `/api/projects/{id}` | Project detail (lists, tasks, `trello` state) |
+| `PATCH` | `/api/projects/{id}` | Update name, notes, color, customer, archived, max hours / week |
 | `GET` | `/api/projects/{id}/trello` | Mapping + push progress |
 | `PATCH` | `/api/projects/{id}/trello` | Save board / columns / task lists / hours field |
 | `POST` | `/api/projects/{id}/trello/push` | Queue a push |
@@ -108,6 +113,6 @@ Use this after changing to a different board so the next push creates new cards 
 |-------|------|
 | `TrelloClient` | REST v1 (`key` + `token` query params) |
 | `TrelloPusher` | Create/update/move cards, hours, checklists, attachments |
-| `TrelloPushStarter` | Queue guard + hourly hook |
+| `TrelloPushStarter` | Queue guard + hourly hook (skip when content hash matches) |
 | `PushProjectToTrelloJob` | `deployments` queue, 30 min timeout, 1 try |
 | `TrelloSettings` | Encrypted credentials |
