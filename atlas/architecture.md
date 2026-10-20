@@ -49,7 +49,7 @@ Entry: `resources/views/app.blade.php` → Vite → `resources/js/routes/index.t
 |-------|------|
 | `/login` | `domains/auth/LoginPage` |
 | `/dashboard` | `domains/dashboard/DashboardPage` (+ `StellaServerStatus`, `AtlasServerStatus`, `EdisonServerStatus`) |
-| `/deployments` | `domains/deployments/DeploymentsPage` |
+| `/deployments` | `domains/deployments/DeploymentsPage` (+ `ConfirmDeployModal` before each run) |
 | `/wp-sites` | `domains/wp-sites/WpSitesPage` |
 | `/monitoring/stella` | `domains/monitoring/StellaDetailPage` |
 | `/monitoring/atlas` | `domains/monitoring/AtlasDetailPage` |
@@ -93,7 +93,7 @@ Login / refresh / logout skip token middleware (still IP-filtered) and proxy to 
 | `users`, `teams`, Spatie permission tables | Local user projection of ddashboard identity |
 | `personal_access_tokens` | Sanctum leftover — **not** the live Atlas API auth path |
 | `app_settings` | SSH key path/passphrase, Brevo keys, Hetzner Cloud token, TrackingTime, Trello key/token (encrypted), alert recipient |
-| `deploy_configs`, `deploy_destinations`, `deploy_servers` | What/where to deploy |
+| `deploy_configs`, `deploy_destinations`, `deploy_servers` | What/where to deploy (`deploy_destinations.is_active` defaults true) |
 | `deploy_runs`, `deploy_run_destinations` | Run history + per-target logs / `stella_job_id` |
 | `stella_health_checks`, `stella_service_uptime_logs` | 5-min Stella snapshots (30-day retention) |
 | `wp_sites`, `wp_site_uptime_logs` | Site registry + 7-day uptime |

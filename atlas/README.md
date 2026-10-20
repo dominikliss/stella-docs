@@ -86,7 +86,7 @@ Full map: [`../integration/system-overview.md`](../integration/system-overview.m
 
 ```
 DeployConfig          — what to deploy (type: ssh_rsync | stella_deploy_api)
-  └── DeployDestination — where (server + path + optional endpoint URLs)  [ssh_rsync only]
+  └── DeployDestination — where (server + path + optional endpoint URLs + is_active)  [ssh_rsync only]
         └── DeployServer  — the SSH target (host, port, user)
 
 DeployRun             — one triggered deploy (status, commit SHA / tag, message)
@@ -98,7 +98,7 @@ DeployRun             — one triggered deploy (status, commit SHA / tag, messag
 - `ssh_rsync` (default) — clone from GitHub, rsync to one or more SSH servers, optional post-deploy HTTP hook
 - `stella_deploy_api` — signed HTTP to Stella deploy-api; Atlas polls for completion. No SSH destinations. Stores `stella_deploy_url` and `stella_deploy_app`.
 
-A single `ssh_rsync` config can have multiple destinations (e.g. staging then production) with a configurable cooldown between them.
+A single `ssh_rsync` config can have multiple destinations (e.g. staging then production) with a configurable cooldown between them. Each destination is **active** by default. Inactive destinations stay in the config but are skipped unless the operator re-enables them for a specific run. The Deployments UI confirms before starting (`ConfirmDeployModal`); that confirmation warns the deploy cannot be reverted and can override active/inactive **for this run only**. Skipped destinations are stored as `DeployRunDestination.status = skipped` with a log line. `POST /api/deploy/runs` accepts optional `destination_ids` for that override.
 
 ---
 
@@ -119,7 +119,7 @@ Database queue (deployments)
 DeployRunJob (queue worker)
   If ssh_rsync:
     1. git clone --depth=1  (GitHub SSH → /tmp/atlas-deploy-run-{id}/)
-    2. rsync -az --delete    (local clone → each SSH destination)
+    2. rsync -az --delete    (local clone → each active SSH destination; inactive/overridden destinations stay `skipped`)
     3. POST post_deploy_endpoint (optional, per destination)
     4. cleanup tmp dir
   If stella_deploy_api:
@@ -217,7 +217,7 @@ The **public** key must be in:
 | `PATCH` | `/api/deploy/servers/{id}` | Update an SSH server |
 | `DELETE` | `/api/deploy/servers/{id}` | Delete an SSH server |
 | `POST` | `/api/deploy/servers/{id}/test` | Test SSH connection |
-| `POST` | `/api/deploy/runs` | Trigger a deploy run |
+| `POST` | `/api/deploy/runs` | Trigger a deploy run (optional `destination_ids` override; omitted → currently active destinations) |
 | `GET` | `/api/deploy/runs` | List deploy runs |
 | `GET` | `/api/deploy/runs/{id}` | Poll run status + logs |
 | `GET` | `/api/deploy/active-run` | Any currently-running runs |
