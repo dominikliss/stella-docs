@@ -93,7 +93,7 @@ One-way pull of TrackingTime Pro projects into Atlas MySQL (task lists, tasks, s
 3. Operator picks a customer; Atlas upserts `{ ddashboard_id, tracking_time_pro_id, name }` and lists TT projects.
 4. `POST /api/tools/tracking-time-import/start` queues `ImportTrackingTimeJob` on the `deployments` queue (`mode=full`).
 
-**Open-task sync** (`/tools/tracking-time-sync`): `POST /api/tools/tracking-time-import/sync-open` (manual) or hourly `projects:sync-tracking-time-open`. Job history is the same table as import.
+**Open-task sync** (`/tools/tracking-time-sync`): `POST /api/tools/tracking-time-import/sync-open` (manual) or hourly `projects:sync-tracking-time-open`. Job history is the same table as import. Hourly close-detection is unchanged: Atlas-open tasks missing from the open list get one last `GET /tasks/:id`, then `is_archived=true`. Tasks that come back in the list/batch payload **without comments** are also fetched individually (`GET /tasks/:id`) so a done status set in TrackingTime is applied even when the usual batch merge stays stale.
 
 Imported work is shown at `/projects`. Project edits in Atlas stay in MySQL only — nothing is written back to TrackingTime. Later import / open-task sync still refreshes tasks and `estimated_seconds`, but does not overwrite local name, notes, customer, color, or archived flag. After each import/sync of a mapped project, Atlas queues a one-way Trello push **unless** the mapped content is unchanged since the last successful push. Mapping, hours field, and **Reset Trello IDs**: [`projects.md`](projects.md). Settings → Trello.
 
