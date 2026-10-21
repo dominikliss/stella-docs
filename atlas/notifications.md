@@ -13,7 +13,7 @@ Rule types:
 
 ## How a fire happens
 
-Hourly Laravel scheduler: `notifications:check-week-hours` (`CheckProjectWeekHoursCommand`). Daily 07:00 `Europe/Vienna`: `notifications:check-missing-comments` (`CheckTimeEntryMissingCommentsCommand`). Manual: `php artisan notifications:check-week-hours` (`--project=` limits to one id) or `php artisan notifications:check-missing-comments`. Settings **Test** on a rule calls `NotificationDispatcher::simulate` (does not use real hours).
+Hourly Laravel scheduler: `notifications:check-week-hours` (`CheckProjectWeekHoursCommand`). Daily 07:00 `Europe/Vienna`: `notifications:check-missing-comments` queues the same `tracking_time_import_jobs` row as a manual run (`mode=uncommented`, `trigger=daily`) on the `deployments` queue. The worker **first** individually refreshes every task that has uncommented time entries since 2026-10-19 (`TrackingTimeImporter::runUncommented`), including Atlas-done tasks hourly sync skips, logs each task, then fires the summary. Manual: Tools → TrackingTime Sync → **Refresh uncommented now** (`POST /api/tools/tracking-time-import/refresh-uncommented`, `trigger=manual`). Job log is the same list as open-task sync. Settings **Test** on a rule calls `NotificationDispatcher::simulate` (does not use real hours, does not refresh tasks).
 
 Weekly hours also requires: project in the rule’s list, not archived, `max_hours_per_week` > 0, binding not muted, this-week **commented** seconds ≥ threshold % of the cap.
 
@@ -83,4 +83,6 @@ Webhook URLs must be `https://hooks.slack.com/…`. Stored encrypted on `slack_d
 | `ProjectWeekHoursThresholdChecker` | Hourly evaluation + placeholders (commented hours only) |
 | `CheckProjectWeekHoursCommand` | `notifications:check-week-hours` |
 | `TimeEntryMissingCommentChecker` | Daily 07:00 Vienna evaluation + task list |
+| `TrackingTimeImporter::refreshTasksWithUncommentedEntries` | Per-task GET for uncommented time since 2026-10-19 (including Atlas-done) |
+| `TimeEntryMissingCommentRunner` | Queue `mode=uncommented` job (manual or daily) |
 | `CheckTimeEntryMissingCommentsCommand` | `notifications:check-missing-comments` |

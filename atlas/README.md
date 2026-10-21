@@ -36,7 +36,7 @@ It is **not** the business dashboard. Clients, invoices, and mail live in **ddas
 | **Monitoring** | `/monitoring/stella`, `/monitoring/atlas` | Stella and Atlas host health grids + history charts |
 | **Tools → IMAP Migration** | `/tools/imap-migration` | Trigger / poll `imapsync` jobs on Stella |
 | **Tools → TrackingTime Import** | `/tools/tracking-time-import` | Full one-way import of selected TrackingTime projects into Atlas MySQL |
-| **Tools → TrackingTime Sync** | `/tools/tracking-time-sync` | Hourly or manual open-task sync; job log |
+| **Tools → TrackingTime Sync** | `/tools/tracking-time-sync` | Hourly or manual open-task sync; morning or manual uncommented-time refresh; job log |
 | **Projects** | `/projects` | Imported projects, tasks, attachments; edit name/notes/customer/archived/max hours; one-way Trello push ([`projects.md`](projects.md)) |
 | **Notifications** | `/notifications` | In-app inbox (header bell). Rules and Slack webhooks in Settings ([`notifications.md`](notifications.md)) |
 | **Settings** | `/settings` | SSH/GitHub key path, Brevo, Hetzner Cloud token, backup S3 + X25519 vault, TrackingTime, Trello, Slack, notification rules |
@@ -143,7 +143,7 @@ Both health loops run via `php artisan schedule:run` (cron every minute). They u
 | every 5 min | `CheckWpSiteUptime` (once per site) | `HEAD https://{domain}`; `up` / `degraded` (>1 s) / `down`. Brevo email on first `down` transition. Prune logs older than 7 days. |
 | hourly | `projects:sync-tracking-time-open` | Open-task TrackingTime sync; queues a Trello push for mapped projects only when Atlas content changed |
 | hourly | `notifications:check-week-hours` | Fire weekly hour-budget notifications when a watched project crosses a threshold |
-| daily 07:00 Europe/Vienna | `notifications:check-missing-comments` | Summary when selected projects have uncommented time entries since 2026-10-19 |
+| daily 07:00 Europe/Vienna | `notifications:check-missing-comments` | Refresh tasks with uncommented time since 2026-10-19 (including done), then notify |
 | every minute | `wp-sites:drive-backups` | Backups feature still in development; backup driver not finished |
 
 ---

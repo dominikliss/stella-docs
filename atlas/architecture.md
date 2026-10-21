@@ -114,7 +114,7 @@ Login / refresh / logout skip token middleware (still IP-filtered) and proxy to 
 | Laravel scheduler (`dispatchSync`) | In-process during `schedule:run` | `CheckStellaHealth`, `CheckAtlasHealth`, `CheckWpSiteUptime`, `wp-sites:drive-backups` (backups still in development) |
 | Laravel scheduler (command) | Hourly `projects:sync-tracking-time-open` | Open-task TrackingTime sync; queues Trello push when the project is mapped **and** Atlas content changed since the last successful push |
 | Laravel scheduler (command) | Hourly `notifications:check-week-hours` | Fire weekly hour-budget notifications for watched projects that crossed a threshold |
-| Laravel scheduler (command) | Daily 07:00 `Europe/Vienna` `notifications:check-missing-comments` | Summary when selected projects have uncommented time entries since 2026-10-19 |
+| Laravel scheduler (command) | Daily 07:00 `Europe/Vienna` `notifications:check-missing-comments` | Refresh tasks with uncommented time since 2026-10-19 (including done), then notify |
 
 Do not assume Horizon / Redis queues are driving deploys. Production **hard-codes** `database` and the `deployments` queue. `scripts/queue-deployments.sh` no longer applies on `atlas`.
 
