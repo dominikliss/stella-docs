@@ -31,7 +31,7 @@ Business code lives under `app/Domain/{Name}/` (controllers, models, jobs, servi
 | `Auth` | Login proxy, token middleware, IP allowlist, `DdashboardTokenDriver` / `FakeTokenAuthDriver` |
 | `Deploy` | Configs, servers, runs, rsync, Stella deploy-api client, SSH signer, GitHub branches, folder browser |
 | `Monitoring` | Stella health-api + public-probe fallback; Atlas host-api health + optional self-deploy; Hetzner Cloud (atlas + edison backups); history + prune |
-| `WpSites` | Site registry, uptime job, Atlas Connect login, down-alert mail, backup driver + explorer — see [`atlas-connect/backups.md`](atlas-connect/backups.md) |
+| `WpSites` | Site registry, uptime job, Atlas Connect login, down-alert mail, backup driver + explorer — see [`atlas-connect/backups.md`](atlas-connect/backups.md). Infection scan plugin-ready, Atlas driver TODO — [`atlas-connect/security-scan.md`](atlas-connect/security-scan.md) |
 | `Tools` | IMAP migration proxy to Stella `imap-sync`; TrackingTime import / open-task sync (ddashboard [`../stella-dashboard/atlas-client-lookup.md`](../stella-dashboard/atlas-client-lookup.md) for client stubs) |
 | `Projects` | Imported customers/projects/tasks; project metadata edit; attachment download; one-way Trello push ([`projects.md`](projects.md)) |
 | `Notifications` | Rules, Slack webhooks, in-app inbox, weekly hour-budget checker ([`notifications.md`](notifications.md)) |
@@ -111,7 +111,7 @@ Login / refresh / logout skip token middleware (still IP-filtered) and proxy to 
 | Mechanism | Transport | Used for |
 |-----------|-----------|----------|
 | systemd `atlas-queue.service` | `queue:work database --queue=deployments --sleep=3 --timeout=7200 --max-time=3500` | `DeployRunJob`, `ImportTrackingTimeJob`, `PushProjectToTrelloJob` |
-| Laravel scheduler (`dispatchSync`) | In-process during `schedule:run` | `CheckStellaHealth`, `CheckAtlasHealth`, `CheckWpSiteUptime`, `wp-sites:drive-backups` (backups still in development) |
+| Laravel scheduler (`dispatchSync`) | In-process during `schedule:run` | `CheckStellaHealth`, `CheckAtlasHealth`, `CheckWpSiteUptime`, `wp-sites:drive-backups` (backups still in development). Infection scan scheduler not built — [`atlas-connect/security-scan.md`](atlas-connect/security-scan.md) |
 | Laravel scheduler (command) | Hourly `projects:sync-tracking-time-open` | Open-task TrackingTime sync; queues Trello push when the project is mapped **and** Atlas content changed since the last successful push |
 | Laravel scheduler (command) | Hourly `notifications:check-week-hours` | Fire weekly hour-budget notifications for watched projects that crossed a threshold |
 | Laravel scheduler (command) | Daily 07:00 `Europe/Vienna` `notifications:check-missing-comments` | Refresh tasks with uncommented time since 2026-10-19 (including done), then notify |

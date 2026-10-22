@@ -293,7 +293,7 @@ If `brevo_api_key` is not set, alerts are silently skipped — no exception, jus
 
 ## Further reading
 
-- Atlas Connect login and backups (not part of the uptime loop): [`atlas-connect/`](atlas-connect/)
+- Atlas Connect login, backups, and infection scan (not part of the uptime loop): [`atlas-connect/`](atlas-connect/)
 - Stella-side health-api: [`../stella-server/health-api.md`](../stella-server/health-api.md)
 - Stella backup + restore: [`../stella-server/backup.md`](../stella-server/backup.md), [`../stella-server/restore.md`](../stella-server/restore.md)
 - System map: [`../integration/system-overview.md`](../integration/system-overview.md)

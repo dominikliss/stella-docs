@@ -153,6 +153,7 @@ PHP client in MediaRaster: in progress (prefer `/convert-remote` with `dest` whe
 | Uptime every 5 min | `HEAD https://{domain}` | None (TLS verify off) |
 | One-click WP admin login | `POST https://{domain}/wp-json/atlas-connect/v1/generate-token` | Shared **Atlas Connect** secret; Atlas host IP must be allowlisted on the site |
 | Encrypted backup (plugin ready; Atlas driver TODO) | `POST …/atlas-connect/v1/backup/{start,chunk,cancel}` | Same secret + IP allowlist. Atlas sends S3 credentials in the JSON body; the site does not store them |
+| Infection scan (plugin ready; Atlas driver TODO) | `POST …/atlas-connect/v1/security/scan/{start,chunk}` | Same secret + IP allowlist. Atlas sends `{ path, hash }` allowlist on start; stores inventory + report; site does not keep results |
 
 Details: [`../atlas/atlas-connect/`](../atlas/atlas-connect/).
 
@@ -261,7 +262,7 @@ Hetzner Cloud  (same project)
 |------|---------|
 | **ddashboard** | WordPress theme / business product |
 | **Atlas** | Laravel ops platform at `atlas.foxcraft.digital` (old URL `dev.atlas.foxcraft.digital` still on the managed host until retired). Dev instance: `atlas.dev.foxcraft.digital` on Stella |
-| **Atlas Connect** | WordPress plugin on each managed site; one-time admin login + encrypted S3 backups (`atlas-connect/v1`). Site never phones home |
+| **Atlas Connect** | WordPress plugin on each managed site; one-time admin login + encrypted S3 backups + infection scan (`atlas-connect/v1`). Site never phones home |
 | **Stella** | Dedicated server hosting AI and ops services |
 | **stella-api** | FastAPI app — `/chat/*` only |
 | **deploy-api** | FastAPI app — signed deploy trigger + status |

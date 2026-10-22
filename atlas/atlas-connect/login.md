@@ -4,7 +4,7 @@ Atlas calls the plugin from **Laravel**, not from the browser, so the Atlas host
 
 UI today: WP Sites drawer → **03. Atlas Connect**.
 
-Full contract index: [`README.md`](README.md).
+Full contract index: [`README.md`](README.md). Backups: [`backups.md`](backups.md). Infection scan: [`security-scan.md`](security-scan.md).
 
 ---
 
@@ -45,7 +45,7 @@ Success `200`:
 { "url": "https://client.com/?atlas_autologin=AbCdEfGh1234567890123456789012" }
 ```
 
-The token is single-use: deleted **before** `wp_set_auth_cookie()`. Do not store or log `url`. Optional `?redirect=` on the login URL is `sanitize_url`’d.
+The token is single-use: deleted **before** `wp_set_auth_cookie()`. Do not store or log `url`. Optional `?redirect=` on the login URL goes through `wp_safe_redirect()`: same-site targets only, other hosts fall back to WP admin.
 
 ---
 

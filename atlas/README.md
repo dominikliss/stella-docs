@@ -32,7 +32,7 @@ It is **not** the business dashboard. Clients, invoices, and mail live in **ddas
 |--------|----------|--------------|
 | **Dashboard** | `/dashboard` | Home + Stella status summary |
 | **Deployments** | `/deployments` | SSH rsync deploys and Stella deploy-api deploys |
-| **WP Sites** | `/wp-sites` | Register sites, 5-min uptime, Atlas Connect login, start/list/explore backups |
+| **WP Sites** | `/wp-sites` | Register sites, 5-min uptime, Atlas Connect login, start/list/explore backups; infection scan driver **not built** |
 | **Monitoring** | `/monitoring/stella`, `/monitoring/atlas` | Stella and Atlas host health grids + history charts |
 | **Tools → IMAP Migration** | `/tools/imap-migration` | Trigger / poll `imapsync` jobs on Stella |
 | **Tools → TrackingTime Import** | `/tools/tracking-time-import` | Full one-way import of selected TrackingTime projects into Atlas MySQL |
@@ -50,7 +50,7 @@ It is **not** the business dashboard. Clients, invoices, and mail live in **ddas
 | [host-api.md](host-api.md) | Atlas host API (`api.atlas.foxcraft.digital`) |
 | [dev-instance.md](dev-instance.md) | Stella-hosted `atlas.dev.foxcraft.digital` |
 | [auth.md](auth.md) | ddashboard token proxy, roles, IP allowlist |
-| [atlas-connect/](atlas-connect/) | WP plugin: login + backups |
+| [atlas-connect/](atlas-connect/) | WP plugin: login + backups + infection scan |
 | [deploy-pipeline.md](deploy-pipeline.md) | ssh_rsync and stella_deploy_api |
 | [monitoring.md](monitoring.md) | Stella health + WP uptime |
 | [tools.md](tools.md) | IMAP copy via Stella; TrackingTime import and open-task sync |
@@ -70,7 +70,7 @@ Browser (IP-allowlisted)
         → Stella health-api   signed dynamic container / Caddyfile-cert / disk / backup snapshot
         → Stella imap-sync    mailbox copy (no HTTP auth)
         → GitHub + SSH hosts  ssh_rsync deploys
-        → WP sites            HEAD uptime + Atlas Connect login / backup driver
+        → WP sites            HEAD uptime + Atlas Connect login / backup / scan driver
         → TrackingTime Pro    import + hourly open-task sync
         → Trello REST v1      one-way card push (key + token)
         → Slack webhooks      incoming webhooks for notification rules
@@ -145,6 +145,7 @@ Both health loops run via `php artisan schedule:run` (cron every minute). They u
 | hourly | `notifications:check-week-hours` | Fire weekly hour-budget notifications when a watched project crosses a threshold |
 | daily 07:00 Europe/Vienna | `notifications:check-missing-comments` | Refresh tasks with uncommented time since 2026-10-19 (including done), then notify |
 | every minute | `wp-sites:drive-backups` | Backups feature still in development; backup driver not finished |
+| — | infection scan | Plugin ready ([`atlas-connect/security-scan.md`](atlas-connect/security-scan.md)); Atlas scheduler / store / UI not built |
 
 ---
 
@@ -242,6 +243,7 @@ The **public** key must be in:
 | `GET` | `/api/wp-sites/{id}/backups/{backup}/tree` | List objects in the backup prefix |
 | `POST` | `/api/wp-sites/{id}/backups/{backup}/objects` | Decrypt one backup object |
 | `POST` | `/api/wp-sites/{id}/backups/{backup}/cancel` | Cancel a running backup |
+| — | `/api/wp-sites/{id}/scans*` | **Not built.** Plugin contract: [`atlas-connect/security-scan.md`](atlas-connect/security-scan.md) |
 
 ### Monitoring
 
@@ -376,7 +378,7 @@ TRELLO_TOKEN=
 - [`dev-instance.md`](dev-instance.md) — Stella-hosted `atlas.dev`
 - [`architecture.md`](architecture.md) — domains, SPA routes, hosting, demo mode
 - [`auth.md`](auth.md) — ddashboard token proxy, roles, IP allowlist
-- [`atlas-connect/`](atlas-connect/) — WP plugin: login + backups (Atlas driver + Settings vault + WP Sites UI)
+- [`atlas-connect/`](atlas-connect/) — WP plugin: login + backups (Atlas driver + Settings vault + WP Sites UI); infection scan plugin-ready, Atlas driver TODO
 - [`deploy-pipeline.md`](deploy-pipeline.md) — ssh_rsync and stella_deploy_api
 - [`monitoring.md`](monitoring.md) — Stella health, Atlas host health, WP uptime
 - [`tools.md`](tools.md) — IMAP migration via Stella; TrackingTime import/sync

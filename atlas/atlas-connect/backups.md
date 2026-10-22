@@ -2,7 +2,7 @@
 
 Atlas starts and drives every backup. The WordPress site never phones home and never stores S3 keys.
 
-Index and vault fields: [`README.md`](README.md). Login: [`login.md`](login.md).
+Index and vault fields: [`README.md`](README.md). Login: [`login.md`](login.md). Infection scan: [`security-scan.md`](security-scan.md).
 
 ---
 
@@ -415,11 +415,11 @@ On `complete`, list/get `{prefix}manifest.json` from the bucket with **Atlas’s
 
 ## Plugin internals (not required to implement Atlas)
 
-`config.php` modules: `autologin` and `backup` on; `security` / `email` off.
+`config.php` modules: `autologin`, `backup`, and `security` on; `email` off.
 
 Job state: option `atlas_backup_job_{job_id}` (not autoloaded). Active id: `atlas_backup_active_job`. TTL default 86400s. Daily cron `atlas_cleanup_cron` drops expired jobs and scratch files under `uploads/atlas-backup-tmp/` (file list, inventory queue, object catalog, pack index, file fingerprints, DB part). Cron cannot abort S3 multipart (it has no credentials).
 
-WP admin: Connection (secret, SSL, default autologin user), Backups (history + max logs only), Log table `{prefix}atlas_backup_log`.
+WP admin: Connection (secret, SSL, default autologin user) and Backups (max logs setting + history from `{prefix}atlas_backup_log`, last 100 runs, AJAX refresh via the generic table component).
 
 Public key on this site: `config.php` → `backup.public_key`. Must match Atlas’s private key.
 

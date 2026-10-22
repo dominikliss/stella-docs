@@ -2,10 +2,11 @@
 
 **Atlas Connect** is the WordPress plugin on each site Atlas manages. Atlas is always the caller. The site never phones home.
 
-It does two jobs:
+It does three jobs:
 
 1. **One-time WP admin login** — [`login.md`](login.md)
 2. **Encrypted chunked backups** to S3-compatible storage — [`backups.md`](backups.md)
+3. **Infection scan** (file integrity + persistence) — [`security-scan.md`](security-scan.md)
 
 Uptime pings do **not** use the plugin (`HEAD https://{domain}`). See [`../monitoring.md`](../monitoring.md).
 
@@ -48,12 +49,13 @@ One X25519 pair for the whole fleet is fine.
 ## Security rules
 
 1. **Site never calls Atlas.** No callbacks, license checks, or “fetch my key”.
-2. **Only Atlas starts backups.** WP admin has history only — no Start button, no S3 fields.
-3. **`secret` and S3 keys go in the JSON body** of POSTs. Never as query parameters (access logs).
-4. `GET /backup/status/{job_id}` is GET-only, so `?secret=` will appear in the site’s access logs. Do **not** put S3 keys on that URL.
+2. **Only Atlas starts backups and scans.** WP admin has backup history only — no Start button, no S3 fields, no scan results.
+3. **`secret`, S3 keys, and the scan allowlist go in the JSON body** of POSTs. Never as query parameters (access logs).
+4. `GET /backup/status/{job_id}` and `GET /security/scan/status/{job_id}` are GET-only, so `?secret=` will appear in the site’s access logs. Do **not** put S3 keys or the allowlist on those URLs.
 5. Send S3 credentials on **start, chunk, and cancel**. The plugin uses them for that request only and does not persist them.
-6. Prefer a **per-site prefix-scoped** S3 key (`backups/{site_id}/*`) if the provider allows it. Hetzner keys are long-lived; “short-lived” only means the site does not keep them.
-7. Drive `/backup/chunk` **sequentially**. Do not parallelize the same `job_id`.
+6. Send the scan **allowlist** on **start** only. Path + SHA-256. The site does not persist it.
+7. Prefer a **per-site prefix-scoped** S3 key (`backups/{site_id}/*`) if the provider allows it. Hetzner keys are long-lived; “short-lived” only means the site does not keep them.
+8. Drive `/backup/chunk` and `/security/scan/chunk` **sequentially**. Do not parallelize the same `job_id`.
 
 ---
 
@@ -88,7 +90,7 @@ In Atlas
 
 1. Keep the X25519 pair and S3 keys in the vault — never in WP.
 2. Store `secret_key` + `wp_user` per site.
-3. Login: [`login.md`](login.md). Backups: [`backups.md`](backups.md).
+3. Login: [`login.md`](login.md). Backups: [`backups.md`](backups.md). Scans: [`security-scan.md`](security-scan.md).
 
 No S3 setup is done in WordPress.
 
@@ -102,7 +104,8 @@ The plugin contract is live. Atlas still needs:
 |---|---|---|
 | Login | `POST /api/wp-sites/{id}/login` → plugin `generate-token` | Switch path from `dl-connect/v1` to **`atlas-connect/v1`**. Always send `user`. Treat plugin `401` as auth (incl. IP) |
 | Backup | Implemented: `WpSiteBackupDriver` + `RunWpSiteBackupJob`; Settings vault; WP Sites start / progress / history / explorer | Keep in line with [`backups.md`](backups.md) |
-| WP Sites UI | Secret + `wp_user`; backup panel | — |
+| Infection scan | Plugin ready. Atlas has no driver, store, or UI yet | Implement [`security-scan.md`](security-scan.md): daily job, chunk loop, persist inventory + report, allowlist, verdict |
+| WP Sites UI | Secret + `wp_user`; backup panel | Scan history + last verdict + allowlist action |
 
 ---
 
