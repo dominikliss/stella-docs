@@ -34,6 +34,7 @@ Identity is **`tasks.trello_card_id` only**. Comments are never pushed.
 |------------|--------|
 | Open, in the mapped active list, no card yet | Create a card in **In progress** |
 | Later archived (`is_archived`) and already has a card | Move that card to **Done** and mark it complete (`dueComplete=true`). Position is not forced to the top. |
+| Reopened (archived → open again, e.g. in TrackingTime) and has a card | Move the card back to **In progress** (or **Backlog**) and clear complete (`dueComplete=false`) |
 | Open, in the mapped backlog list, no card yet | Create a card in **Backlog** |
 | `skip_trello` on a mapped-list task | Skip — stays in Atlas, no create/update. An existing card is left on the board as-is |
 
@@ -41,7 +42,7 @@ Card name: `!` / `!!` / `!!!` from `tasks.priority` (1–3), then the task name.
 
 Sort inside a column: priority high first, then tasks with a due date (earliest first), then undated. Position is `(index + 1) * 65536` (lower `pos` = top).
 
-Description: HTML → Trello markdown, plus estimated hours when set, plus a Subtasks checklist-style block. Checklists and attachments (≤ 10 MB) are created once and updated by stored Trello ids.
+Description: HTML → Trello markdown, plus estimated hours when set, plus a Subtasks checklist-style block, plus a **History** block: one `Name: note` line per commented time entry on the task and its subtasks, oldest first, case-insensitive duplicates per person dropped, no dates or durations. Notes are cut at 200 characters; only the latest 20 lines are kept (`… N earlier entries` above them). A changed note changes the content hash, so the hourly sync re-pushes. Checklists and attachments (≤ 10 MB) are created once and updated by stored Trello ids.
 
 Updates send **`idBoard` + `idList`** so a remapped board can move existing cards. If the stored card is gone (GET 404), Atlas clears the ids and treats the task as unpublished.
 
@@ -73,7 +74,7 @@ The field must exist **on the mapped board**. `GET /boards/{id}/customFields` on
 
 There is **no** dedicated Trello cron. Hourly Trello is a side effect of `projects:sync-tracking-time-open` (Laravel scheduler, every hour). Quiet hours (TrackingTime upserted the same values) do not rewrite Trello cards.
 
-The hash covers board/list/hours mapping, skipped task ids (`tasks.skip_trello`), plus candidate tasks (name, description, due, priority, estimate, archive, hours, subtasks, checklists, attachments, whether a card already exists). Comments are ignored. **Reset Trello IDs** clears the hash so the next auto-push recreates cards.
+The hash covers board/list/hours mapping, skipped task ids (`tasks.skip_trello`), plus candidate tasks (name, description, due, priority, estimate, archive, hours, subtasks, checklists, attachments, whether a card already exists). Comments are ignored. The hash also includes a push format version (`TrelloPusher::PUSH_FORMAT`); bump it when push behaviour changes (e.g. marking Done cards complete) so the next hourly sync re-pushes existing cards once. **Reset Trello IDs** clears the hash so the next auto-push recreates cards.
 
 Progress (`trello_push_status` / `done` / `total` / `log`) is stored on the project and polled by the project page.
 
