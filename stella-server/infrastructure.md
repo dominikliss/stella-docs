@@ -44,10 +44,12 @@ Core Docker-managed services live at `/opt/services/docker-compose.yml`. Dev/sta
 | `osgar-datahub-db` | Docker (MSSQL 2022) | — (internal only) | `mcr.microsoft.com/mssql/server:2022-latest`, data volume `osgar-datahub-mssql-data`; same compose file as `osgar-datahub-dev` |
 | `osgar-datahub-ssh` | Docker (sshd in SDK image) | 2201 | Per-app Cursor Remote-SSH — [`dev-ssh-access.md`](dev-ssh-access.md). **Must not** join `edge` |
 | `advoapp-ssh` | Docker (sshd in SDK image) | 2202 | Same pattern for finditoo advoapp — [`dev-ssh-access.md`](dev-ssh-access.md) |
-| `dominikliss.foxcraft.digital` | Docker (`wordpress:php8.4-apache`) | — (Caddy `:80`) | First WP staging site — [`wordpress-staging.md`](wordpress-staging.md) |
+| `dominikliss.foxcraft.digital` | Docker (`wordpress:php8.5-apache`) | — (Caddy `:80`) | First WP staging site — [`wordpress-staging.md`](wordpress-staging.md) |
 | `dominikliss.foxcraft.digital-db` | Docker (MariaDB 11) | — (internal only) | Never on `edge` |
-| `dominikliss.foxcraft.digital-ssh` | Docker (sshd in `php:8.4-cli`) | 2204 | WP staging SSH — [`wordpress-staging.md`](wordpress-staging.md). **Must not** join `edge` |
+| `dominikliss.foxcraft.digital-ssh` | Docker (sshd in `php:8.5-cli`) | 2204 | WP staging SSH — [`wordpress-staging.md`](wordpress-staging.md). **Must not** join `edge` |
 | `atlas.dev.foxcraft.digital` | Docker (`php:8.5-apache` + MySQL 8.4 + queue/scheduler + ssh) | 2205 (ssh) | Atlas **dev** instance — [`../atlas/dev-instance.md`](../atlas/dev-instance.md). SSH must **not** join `edge` |
+
+**PHP updates** (inventory + per-stack procedure): [`php-updates.md`](php-updates.md).
 
 ### Non-Docker systemd services
 - `fail2ban.service`
@@ -415,6 +417,7 @@ Folders are named by subdomain, for easy visual mapping:
   ├── laravel/
   │     └── atlas.dev.foxcraft.digital/  ← Atlas dev — [`../atlas/dev-instance.md`](../atlas/dev-instance.md)
   └── wordpress/
+        ├── uploads.ini                  ← shared PHP limits (see [`wordpress-staging.md`](wordpress-staging.md#php-limits))
         └── <subdomain>/                 ← first site: dominikliss.foxcraft.digital
               ├── .env
               ├── docker-compose.yml

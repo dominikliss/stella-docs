@@ -31,7 +31,7 @@ Admin work as **root** via `ssh atlas`. App runs as Linux user **`atlas`**.
 
 | Layer | What runs |
 |-------|-----------|
-| PHP | 8.5.4-FPM, pool `atlas`, socket `/run/php/atlas.sock`, pool file `/etc/php/8.5/fpm/pool.d/atlas.conf` |
+| PHP | 8.5.4-FPM, Ubuntu `8.5.4-0ubuntu1.5` (includes CVE-2026-109618/109619 backports), pool `atlas`, socket `/run/php/atlas.sock`, pool file `/etc/php/8.5/fpm/pool.d/atlas.conf` |
 | App | Laravel 12.61 |
 | MySQL | 8.4, database `atlas_prod`, user `atlas`, localhost only |
 | Redis | 8.0, localhost only — **cache only** (not the deploy queue) |
@@ -40,6 +40,29 @@ Admin work as **root** via `ssh atlas`. App runs as Linux user **`atlas`**.
 | Host API | Python/FastAPI, user `atlasapi`, systemd `atlas-api`, `127.0.0.1:8090` — see [`host-api.md`](host-api.md) |
 
 Old DB name on the managed host was `dev_atlas_foxcraft_digital` (docs previously said `atlas_dev`). Migrated via phpMyAdmin dump (MariaDB 10.11 → MySQL 8.4) into `atlas_prod`, 27 tables, all migrations Ran. Import used `mysql --default-character-set=utf8mb4`. A dump from MariaDB imports into MySQL 8.4 when it has no `DEFINER` and no `CREATE DATABASE` / `USE` lines.
+
+### PHP security updates
+
+Do not judge by `php -v` alone (it correctly shows 8.5.4). `apt changelog php8.5-fpm` returned 404 for this version (changelogs.ubuntu.com). Use `apt-cache policy php8.5-fpm` plus `/usr/share/doc/php8.5-common/changelog.Debian.gz` — that file lists `SECURITY UPDATE: Remote RCE via state corruption issue` with `CVE-2026-109618_109619.patch`.
+
+No Sury repo (`packages.sury.org`) on prod. Ubuntu security backports are enough. Sury would be the way to reach 8.5.12 exactly. Not used.
+
+Full inventory and other hosts: [`../stella-server/php-updates.md`](../stella-server/php-updates.md).
+
+Verified 2026-10-23: FPM main process (`/usr/sbin/php-fpm8.5`) and `atlas-queue` (`/usr/bin/php8.5`) run without `(deleted)` in `/proc/<pid>/exe`.
+
+Also 2026-10-22: `apt upgrade` (18 packages: systemd 259.5 → 259.9, udev, cloud-init, snapd, open-iscsi, open-vm-tools, …). No reboot required. Services active: `mysql`, `redis-server`, `php8.5-fpm`, `caddy`, `atlas-queue`, `atlas-api`. `systemctl --failed` empty. `needrestart` restarted `redis-server` and `php8.5-fpm`. Caddy stays on the xcaddy build (`apt-mark hold`).
+
+```bash
+# confirm no customer deploy is running
+apt update
+apt install --only-upgrade $(dpkg -l | awk '/^ii  php8\.5-/{print $2}')
+systemctl reload php8.5-fpm
+sudo -u atlas php /var/www/atlas/artisan queue:restart
+# then: readlink /proc/<fpm-pid>/exe and /proc/<queue-pid>/exe — no "(deleted)"
+```
+
+`queue:restart` is graceful and replaces `systemctl restart atlas-queue` for this update.
 
 ---
 

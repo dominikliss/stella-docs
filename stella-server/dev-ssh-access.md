@@ -8,7 +8,7 @@
 
 - Host topology, `DOCKER-USER`, core compose: [`infrastructure.md`](infrastructure.md)
 - .NET app folder / `-dev` pattern: [`dotnet-app-deployment.md`](dotnet-app-deployment.md)
-- WordPress staging SSH variant (`php:8.4-cli`, group `www-data`): [`wordpress-staging.md`](wordpress-staging.md)
+- WordPress staging SSH variant (`php:8.5-cli`, group `www-data`): [`wordpress-staging.md`](wordpress-staging.md)
 - Edison coding-agent host (sshfs into this container as user `edison`): [`../edison/README.md`](../edison/README.md)
 
 ---
@@ -223,7 +223,7 @@ Do not write the supervisorctl password into any doc. **TODO (Dominik):** `Docke
 
 ## WordPress staging variant
 
-WordPress sites do **not** use the .NET `Dockerfile.ssh` above. Base image is `php:8.4-cli`; users are in group `www-data` (GID 33) instead of GID 1000, because WordPress files are owned by `www-data`. Full compose, Dockerfile, permissions, and first-start ACL gotcha: [`wordpress-staging.md`](wordpress-staging.md).
+WordPress sites do **not** use the .NET `Dockerfile.ssh` above. Base image is `php:8.5-cli`; users are in group `www-data` (GID 33) instead of GID 1000, because WordPress files are owned by `www-data`. Full compose, Dockerfile, permissions, and first-start ACL gotcha: [`wordpress-staging.md`](wordpress-staging.md).
 
 A second per-app SSH container with an `edison` user now exists on port **2204** (`dominikliss.foxcraft.digital`). That image currently copies one shared `authorized_keys` to all three users (same as osgar today). **TODO (Dominik):** whether to split `edison` onto its own key file, as this page requires.
 
@@ -233,7 +233,7 @@ A standalone script exists for manually confirming no port is reachable from a n
 
 ## Adding SSH to a new app — checklist
 
-1. Add `Dockerfile.ssh` + `authorized_keys` next to `Dockerfile.dev` (template above — includes Node.js and `supervisor`). For WordPress staging, use [`wordpress-staging.md`](wordpress-staging.md) instead (`php:8.4-cli`, group `www-data`).
+1. Add `Dockerfile.ssh` + `authorized_keys` next to `Dockerfile.dev` (template above — includes Node.js and `supervisor`). For WordPress staging, use [`wordpress-staging.md`](wordpress-staging.md) instead (`php:8.5-cli`, group `www-data`).
 2. Fix host `src/` group perms:
    - Step 1: `chgrp 1000` / `g+rwX` / SetGID (one-time fix on existing tree)
    - Step 2: `setfacl` default ACLs (permanent fix for future build artefacts — required, not optional)

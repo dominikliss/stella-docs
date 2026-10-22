@@ -11,7 +11,7 @@ Companion to [`README.md`](README.md). This page is the **code and hosting** map
 | Public URL | `https://atlas.foxcraft.digital` (old: `https://dev.atlas.foxcraft.digital`) |
 | Host | Hetzner Cloud CX33 `atlas`, `2.31.42.13`, Ubuntu 26.04, user `atlas`. Runbook: [`server.md`](server.md) |
 | App path | `/var/www/atlas` |
-| PHP | 8.5.4-FPM (pool `atlas`, socket `/run/php/atlas.sock`) |
+| PHP | 8.5.4-FPM (Ubuntu `8.5.4-0ubuntu1.5`, includes CVE-2026-109618/109619 backports; pool `atlas`, socket `/run/php/atlas.sock`) |
 | Laravel | 12.61 |
 | MySQL | 8.4 `atlas_prod` (migrated from managed-host `dev_atlas_foxcraft_digital`; docs previously said `atlas_dev`) |
 | Redis | 8.0, cache + token verify cache (`CACHE_STORE=redis`) — localhost only, **not** the deploy queue |

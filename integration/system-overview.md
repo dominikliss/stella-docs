@@ -232,7 +232,7 @@ Hetzner Cloud  (same project as Edison)
 └── atlas  CX33  2.31.42.13
     │     https://atlas.foxcraft.digital
     │     api.atlas.foxcraft.digital → atlas-api (127.0.0.1:8090), allowlist 2.31.42.13 + 95.217.144.93
-    │     Laravel 12.61, PHP 8.5.4-FPM, MySQL `atlas_prod`, Redis (cache)
+    │     Laravel 12.61, PHP 8.5.4-FPM (Ubuntu 8.5.4-0ubuntu1.5, includes CVE-2026-109618/109619 backports), MySQL `atlas_prod`, Redis (cache)
     │     systemd atlas-queue.service  →  queue:work database --queue=deployments
     │     /etc/cron.d/atlas → schedule:run (health + WP uptime + drive-backups + hourly TT open sync)
     │

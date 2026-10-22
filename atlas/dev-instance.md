@@ -26,9 +26,9 @@ Laravel Atlas running on **Stella**, not on the production CX33. Separate databa
 
 | Service | Image / notes | Networks |
 |---------|---------------|----------|
-| `app` | `php:8.5-apache` | `edge` + internal |
-| `queue` | same anchor; user `33:33` | TODO: verify networks (anchor) |
-| `scheduler` | same anchor; user `33:33` | TODO: verify networks (anchor) |
+| `app` | Locally built `atlasdev-app` (`build: .`; Dockerfile `FROM php:8.5-apache`; `x-atlas` sets `image: atlasdev-app`). Not a pulled image — `docker compose pull app` fails with "pull access denied". | `edge` + internal |
+| `queue` | same image via `x-atlas`; user `33:33` | TODO: verify networks (anchor) |
+| `scheduler` | same image via `x-atlas`; user `33:33` | TODO: verify networks (anchor) |
 | `db` | `mysql:8.4`, internal only | internal |
 | `ssh` | `Dockerfile.ssh`, `2205:22` | internal only — **must not** join `edge` |
 
@@ -43,6 +43,19 @@ Users: `dominik`, `pawel`, `edison` (group `www-data`). `authorized_keys` copied
 ### `src/` permissions
 
 Owner `33:33`, `g+rwX`, SetGID on directories, ACLs for gid `33`.
+
+### Updating PHP
+
+`app` / `queue` / `scheduler` share `atlasdev-app`. Check no customer deploy is running before recreating `queue`. `db` is untouched. Full runbook: [`../stella-server/php-updates.md`](../stella-server/php-updates.md).
+
+```bash
+docker compose build --pull app
+docker compose up -d app queue scheduler
+docker compose build --pull ssh
+docker compose up -d ssh
+```
+
+Verified 2026-10-23: PHP 8.5.12 in `app`; all five containers Up (`atlas.dev.foxcraft.digital`, `-db`, `-queue`, `-scheduler`, `-ssh`); Caddy returns 403 from Stella itself (expected, IP filter). SSH container PHP version after the rebuild: **UNVERIFIED**.
 
 ---
 

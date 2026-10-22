@@ -1,6 +1,6 @@
 # Open Gaps & Next Steps
 
-Last updated: 2026-10-18
+Last updated: 2026-10-23
 
 **Cross-system overview:** [integration/system-overview.md](integration/system-overview.md) (Atlas + ddashboard + Stella + Edison). AI-chat path only: [integration/ddashboard-and-stella-server.md](integration/ddashboard-and-stella-server.md).
 
@@ -97,6 +97,10 @@ Service live at `https://stella-media-api.foxcraft.digital`. Contract: [`stella-
 - [ ] **WP staging: `FS_CHMOD_FILE` / `FS_CHMOD_DIR`** — residual risk (UNVERIFIED): WordPress updates that chmod files to `0644` may lower the ACL mask again. Possible mitigation not tested. **TODO (Dominik).** See [`stella-server/wordpress-staging.md`](stella-server/wordpress-staging.md).
 - [ ] **WP staging: mails and MainWP identity on `dominikliss.foxcraft.digital`** — exact copy; `mailpoet`, `wp-mail-smtp`, and `mainwp-child` left active. Real emails can leave staging; `mainwp-child` carries the live site’s identity. **TODO (Dominik):** decide whether to neutralise them. See [`stella-server/wordpress-staging.md`](stella-server/wordpress-staging.md).
 - [ ] **WP staging: leftovers after the 2026-10-11 live import** — `wordpress:cli` image on the Stella host; `/tmp/wp-cli.phar` inside the `wp` container (removal not confirmed); `~/relaunch_dominikliss_com.sql` in the `-ssh` container (110 MB); leftover zip/dump on the managed host (**UNVERIFIED**). **TODO (Dominik).** See [`stella-server/wordpress-staging.md`](stella-server/wordpress-staging.md).
+- [ ] **WP staging: `/root/wp-before-php85.sql`** — 86 MB dump on Stella from the 2026-10-23 PHP 8.5 bump. **TODO (Dominik):** delete once `dominikliss.foxcraft.digital` is confirmed fine. See [`stella-server/wordpress-staging.md`](stella-server/wordpress-staging.md).
+- [ ] **`dominikliss` `wordpress:php8.5-apache` is a moving tag** — patch level only visible via `php -v` inside the container; updates only on `docker compose pull wp`. See [`stella-server/php-updates.md`](stella-server/php-updates.md).
+- [ ] **Managed host `dedi6724` PHP version** — operator says updated after CVE-2026-109618/109619 (ddashboard, Foxx Cloud, `dominikliss.com` live); exact version **UNVERIFIED**. See [`stella-server/php-updates.md`](stella-server/php-updates.md).
+- [ ] **`hypershape.foxcraft.digital`** — WP staging on Stella according to notes, not documented here. PHP version and update status unknown. **UNVERIFIED.**
 - [ ] **Hetzner Cloud project name for `foxcraft.digital`** — zone moved; ID still `567656`. **TODO (Dominik):** name of the new project (docs previously said `konsoleH`).
 - [x] **Stella `DOCKER-USER` 443 ACCEPT for Atlas** — `2.31.42.13` added. After any `rm` + nano recreation of `/usr/local/bin/docker-user-firewall.sh` it must be `chmod 755`. Port **2205** added (Dominik’s IP, managed host, Edison). Next free SSH port: **2206**.
 - [ ] **Caddy `propagation_delay` on `dominikliss`** — untested idea after the zone-move ACME delay. Live `dominikliss` block does not currently have it (**UNVERIFIED**). **TODO (Dominik):** `grep -n propagation_delay /opt/services/caddy/Caddyfile`. `stella-media-api` **does** have `propagation_delay 45s` + `propagation_timeout 3m` (verified 2026-10-18). See [`stella-server/infrastructure.md`](stella-server/infrastructure.md) Issue 2.
