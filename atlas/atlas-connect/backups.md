@@ -92,6 +92,8 @@ while status.status == "running":
 
 Stop when `status` is `complete`, `error`, or `cancelled`.
 
+**Failed chunks (Atlas):** a chunk that returns `500` or can't be reached (Atlas maps network errors and other 5xx to `502`) is retried. Atlas waits 15s, reads `/backup/status/{job_id}`, and sends the next chunk. The backup fails, and Atlas cancels the job on the site, after 4 failed chunks in a row, or right away if status reports `error` / `cancelled`. A `500` with no JSON `error` field means the request never reached the plugin's error handling. On `cgi-fcgi` hosts (Apache + mod_fcgid) this is usually `FcgidIOTimeout` (default 40s) killing a chunk that ran too long. Otherwise it is a PHP fatal error. Atlas shows the first 160 characters of the response body. 4xx responses are not retried.
+
 ```http
 POST /wp-json/atlas-connect/v1/backup/chunk
 Content-Type: application/json
