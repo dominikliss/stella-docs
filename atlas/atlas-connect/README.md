@@ -108,6 +108,8 @@ Note the shape: **`code` / `message`, not `error`**. Route-level errors (after a
 
 The plugin never says which check failed. Atlas cannot tell SSL, IP, and secret apart, so the UI message should name all three: “Atlas Connect rejected the request — check the secret, that the site is on HTTPS, and that the Atlas IP is allowlisted.”
 
+**Temporary:** while a 401 is being diagnosed, every auth attempt is appended to `wp-content/atlas-connect-debug/auth.log` on the site (result, SSL/proxy headers, client IP, last 4 characters of the provided secret, secret hint). The plaintext secret is never logged. This logging will be removed again.
+
 Things that now fail with `401` that used to work:
 
 - `secret` only in the query string (`?secret=…`).
@@ -138,7 +140,8 @@ Things that now fail with `401` that used to work:
 `atlas_client_ip()`:
 
 1. If `REMOTE_ADDR` is **not** in `config.php` → `trusted_proxies`, the client IP is `REMOTE_ADDR`.
-2. If `REMOTE_ADDR` **is** a trusted proxy, the client IP is the **rightmost** entry of `X-Forwarded-For` (the one the proxy itself appended). Entries to the left are client-supplied and ignored. If the header is missing or that entry is not a valid IP, the client IP is empty → `401`.
+2. If `REMOTE_ADDR` **is** a trusted proxy and `X-Forwarded-For` is missing or empty, the client IP is `REMOTE_ADDR`. Either the request really came from the proxy host, or Apache's `mod_remoteip` (enabled in the official `wordpress` image) already moved the client IP into `REMOTE_ADDR` and dropped the header.
+3. Otherwise the client IP is the **rightmost** entry of `X-Forwarded-For` (the one the proxy itself appended). Entries to the left are client-supplied and ignored. If that entry is not a valid IP, the client IP is empty → `401`.
 
 `trusted_proxies` today: `172.20.0.1` (Docker `edge` gateway on Stella — Caddy → WordPress).
 
