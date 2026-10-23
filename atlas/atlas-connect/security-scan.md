@@ -236,7 +236,7 @@ Skipped directories: `.git`, `.svn`, `node_modules` (exact name), plus any direc
 | `special_files` | SHA-256 of those four names, or `null` if absent |
 | `admins` | Administrators: `id`, `login`, `registered`. No emails |
 | `dropins` | Present drop-in filenames in `wp-content/`. Globally allowlisted names omitted |
-| `mu_plugins` | Must-use plugin basenames |
+| `mu_plugins` | Must-use plugin basenames. Globally allowlisted names omitted |
 | `cron` | Unique WP-Cron hook names + schedule |
 | `urls` | `home_url` and `siteurl` option |
 
@@ -248,7 +248,7 @@ Finding objects are `{ path, sha256, mtime, size }` only. No snippets, no file b
 
 **Data files.** Paths listed in `config.php` → `security.data_files` may also start with `<?php __halt_compiler();`. PHP stops at that call, so whatever follows is data and never runs. Such a file is treated as code-free (no size limit) only while nothing but tags, comments, and whitespace come before `__halt_compiler();`. The path alone is never trusted. Today's entry: `wp-content/uploads/aios/firewall-rules/settings.php` (All In One Security firewall settings).
 
-**Global allowlist.** Paths listed in `config.php` → `security.global_allowlist` are never findings: omitted from `core.mismatched`, `core.unexpected`, `php_in_uploads`, `dropins`, and `inventory_delta`. Path-only — no hash. A trailing slash matches that directory and everything under it. Today's entries: `wp-content/advanced-cache.php`, `wp-content/uploads/borlabs-cookie/`, `wp-content/uploads/backwpup-restore/index.php`, `liesmich.html`, `.htpasswd`, `wp-admin/.htaccess`, `wartung.html`, and `version01-0ajfz1h9pt1m82`. A hacked replacement at those paths is **not** detected.
+**Global allowlist.** Paths listed in `config.php` → `security.global_allowlist` are never findings: omitted from `core.mismatched`, `core.unexpected`, `php_in_uploads`, `dropins`, `mu_plugins`, and `inventory_delta`. Path-only — no hash. A trailing slash matches that directory and everything under it. `*` is a glob (including slashes). Today's entries include `wp-content/mu-plugins/*ionos*` and `wp-content/plugins/ionos*` (IONOS host helpers). A hacked replacement at those paths is **not** detected.
 
 **Ignored changes.** Paths listed in `config.php` → `security.ignore_changes` are real PHP that plugins regenerate, so they are left out of `inventory_delta` and their hash changes never alert. Drop-ins among them are still listed under `dropins`, so a newly appearing one is still visible. Empty today; use `global_allowlist` when the file should also disappear from `dropins`.
 

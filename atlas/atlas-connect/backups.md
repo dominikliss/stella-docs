@@ -14,7 +14,7 @@ Index and vault fields: [`README.md`](README.md). Login: [`login.md`](login.md).
 - The S3 destination is **pinned** on the site: bucket `atlas-wp-sites-backups`, Hetzner Object Storage over HTTPS. See [S3 destination is pinned](#s3-destination-is-pinned).
 - One running job per site. A second start is `409` until the first is `complete`, `error`, or `cancelled`, or the job TTL expires (default 24h).
 - Drive `/backup/chunk` **sequentially**. Do not parallelize the same `job_id`.
-- HTTP client timeout: **at least 60 seconds** per chunk (the site aims for ~25s of work).
+- HTTP client timeout: **at least 60 seconds** per chunk. A chunk's budget is `chunk_time_limit` (40s), counted from the request start; on `cgi-fcgi` hosts (Apache + mod_fcgid) it is capped at `fcgid_chunk_time_limit` (25s) and in-flight uploads at `fcgid_max_inflight_mb` (64 MB). New uploads stop early enough for the ones in flight to finish, based on the upload throughput measured on earlier chunks. Uploads still running 8s after the budget are cut off and the job fails with `… chunk time limit reached …`.
 
 ---
 
@@ -92,7 +92,7 @@ while status.status == "running":
 
 Stop when `status` is `complete`, `error`, or `cancelled`.
 
-**Failed chunks (Atlas):** a chunk that returns `500` or can't be reached (Atlas maps network errors and other 5xx to `502`) is retried. Atlas waits 15s, reads `/backup/status/{job_id}`, and sends the next chunk. The backup fails, and Atlas cancels the job on the site, after 4 failed chunks in a row, or right away if status reports `error` / `cancelled`. A `500` with no JSON `error` field means the request never reached the plugin's error handling. On `cgi-fcgi` hosts (Apache + mod_fcgid) this is usually `FcgidIOTimeout` (default 40s) killing a chunk that ran too long. Otherwise it is a PHP fatal error. Atlas shows the first 160 characters of the response body. 4xx responses are not retried.
+**Failed chunks (Atlas):** a chunk that returns `500` or can't be reached (Atlas maps network errors and other 5xx to `502`) is retried. Atlas waits 15s, reads `/backup/status/{job_id}`, and sends the next chunk. The backup fails, and Atlas cancels the job on the site, after 4 failed chunks in a row, or right away if status reports `error` / `cancelled`. A `500` with no JSON `error` field means the request never reached the plugin's error handling. On `cgi-fcgi` hosts (Apache + mod_fcgid) this is usually `FcgidIOTimeout` (default 40s) killing a chunk that ran too long. Otherwise it is a PHP fatal error; the plugin then sets the job to `error` with `PHP fatal error in <phase> phase: …`, so the next status read stops the backup. Atlas shows the first 160 characters of the response body. 4xx responses are not retried.
 
 ```http
 POST /wp-json/atlas-connect/v1/backup/chunk
