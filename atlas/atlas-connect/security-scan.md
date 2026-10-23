@@ -147,7 +147,7 @@ On `status=complete` the same object also has:
 | `progress` | 0–100, approximate |
 | `files_total` | Candidate files (PHP-like + specials + all files under `wp-admin` / `wp-includes` / site root) |
 | `files_hashed` | How many of those have been hashed |
-| `inventory_delta` | Only on hash chunks. PHP-like + special files (`wp-config.php`, `.htaccess`, `.user.ini`, `web.config`). **Not** every core JS/CSS file |
+| `inventory_delta` | Only on hash chunks. PHP-like + special files (`wp-config.php`, `.htaccess`, `.user.ini`, `web.config`). **Not** every core JS/CSS file, and not code-free PHP files (see below) |
 | `error` | Set when `status` is `error` |
 | `report` | Only when `status` is `complete` |
 
@@ -229,10 +229,10 @@ Skipped directories: `.git`, `.svn`, `node_modules` (exact name), plus any direc
 | Block | Meaning |
 |---|---|
 | `core.locales` | Locales whose checksums were merged. `en_US` is required (fetch failure = job `error`); other locales without an official package are skipped |
-| `core.mismatched` | File is in the official checksum list; MD5 matches **none** of the fetched locales. Allowlisted path+SHA-256 omitted. `wp-content/languages/` is never checked (language packs update it independently of core) |
+| `core.mismatched` | File is in the official checksum list; MD5 matches **none** of the fetched locales. Allowlisted path+SHA-256 omitted. Nothing under `wp-content/` is checked against core checksums: bundled themes (Twenty Twenty-*), bundled plugins (Akismet, Hello Dolly) and translations are updated independently of core. Their PHP files are still in `inventory_delta`, so the baseline diff covers them |
 | `core.unexpected` | Extra file in `wp-admin`, `wp-includes`, or the site root that is not in any locale's checksum list. `wp-config.php` / `.htaccess` / `.user.ini` / `web.config` are excluded (they live under `special_files`) |
 | `core.missing` | Core file shipped by **every** fetched locale but not on disk (broken install more often than malware) |
-| `php_in_uploads` | PHP-like file under uploads (`.php`, `.phtml`, `.php5`, `.phar`, …). Allowlisted omitted. A tiny `uploads/index.php` “silence is golden” file will appear here on the first scan — allowlist it |
+| `php_in_uploads` | PHP-like file under uploads (`.php`, `.phtml`, `.php5`, `.phar`, …). Allowlisted and code-free files omitted |
 | `special_files` | SHA-256 of those four names, or `null` if absent |
 | `admins` | Administrators: `id`, `login`, `registered`. No emails |
 | `dropins` | Present drop-in filenames in `wp-content/` |
@@ -241,6 +241,14 @@ Skipped directories: `.git`, `.svn`, `node_modules` (exact name), plus any direc
 | `urls` | `home_url` and `siteurl` option |
 
 Finding objects are `{ path, sha256, mtime, size }` only. No snippets, no file bodies.
+
+**Code-free PHP files are never reported.** A PHP-like file is code-free when it is empty, or contains only `<?php` / `?>` tags, comments, and whitespace (e.g. `<?php // Silence is golden`). Such files are left out of `core.mismatched`, `core.unexpected`, `php_in_uploads`, and `inventory_delta`. Anything else counts as code, including `<?=`, short `<?` tags, a lone `;`, and HTML after a `?>`. Files over 64 KB are always treated as code. If code is later added to one of these files, it shows up as a new PHP path and is flagged as usual.
+
+**Google Search Console verification files** (`google<hex>.html`) are not reported in `core.unexpected` when their content is exactly `google-site-verification: <same file name>` (surrounding whitespace allowed). Any other content, a different name in the body, or a different extension is reported as usual.
+
+**Data files.** Paths listed in `config.php` → `security.data_files` may also start with `<?php __halt_compiler();`. PHP stops at that call, so whatever follows is data and never runs. Such a file is treated as code-free (no size limit) only while nothing but tags, comments, and whitespace come before `__halt_compiler();`. The path alone is never trusted. Today's entry: `wp-content/uploads/aios/firewall-rules/settings.php` (All In One Security firewall settings).
+
+**Ignored changes.** Paths listed in `config.php` → `security.ignore_changes` are real PHP that plugins regenerate, so they are left out of `inventory_delta` and their hash changes never alert. Drop-ins among them are still listed under `dropins`, so a newly appearing one is still visible. Today's entry: `wp-content/advanced-cache.php` (page cache drop-in). Malicious code inside it is **not** detected by the baseline diff.
 
 ---
 
