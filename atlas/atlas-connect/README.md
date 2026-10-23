@@ -130,6 +130,7 @@ Things that now fail with `401` that used to work:
 |---|---|
 | `2.31.42.13` | Atlas production (`atlas.foxcraft.digital`, Hetzner CX33 `atlas`) |
 | `95.217.144.93` | Atlas dev instance on Stella (`atlas.dev`). Note: anything else running on Stella shares this IP |
+| `172.20.0.1` | Docker `edge` gateway on Stella. Matches only when a request starts on Stella itself (host or a container) and loops back through Caddy to a site hosted on Stella — e.g. Atlas dev calling a Stella-hosted site. Outside traffic never matches it (see below) |
 
 `23.88.90.12` (managed host) was **removed**. Allowlist the Atlas host, never an operator laptop.
 
@@ -140,12 +141,15 @@ Things that now fail with `401` that used to work:
 1. If `REMOTE_ADDR` is **not** in `config.php` → `trusted_proxies`, the client IP is `REMOTE_ADDR`.
 2. If `REMOTE_ADDR` **is** a trusted proxy, the client IP is the **rightmost** entry of `X-Forwarded-For` (the one the proxy itself appended). Entries to the left are client-supplied and ignored. If the header is missing or that entry is not a valid IP, the client IP is empty → `401`.
 
-`trusted_proxies` today: `172.20.0.1` (Docker `edge` gateway on Stella — Caddy → WordPress). This used to be in `ip_whitelist`, which let **every** request routed through Caddy pass the IP check. It now only marks Caddy as trusted to report the real IP.
+`trusted_proxies` today: `172.20.0.1` (Docker `edge` gateway on Stella — Caddy → WordPress).
+
+`172.20.0.1` is in **both** lists. Before 1.0.7 the plugin compared `REMOTE_ADDR` directly, so having Caddy's address in `ip_whitelist` let **every** request routed through Caddy pass the IP check. Now the check uses the IP Caddy reports in `X-Forwarded-For`: an outside caller shows up as its public IP and must be `2.31.42.13` / `95.217.144.93`; only traffic that reaches Caddy from Stella's own Docker network shows up as `172.20.0.1` and matches that entry. The rightmost `X-Forwarded-For` entry is always the address Caddy itself received the connection from, so an outsider cannot fake it.
 
 Requirements for this to work:
 
 - Caddy's `reverse_proxy` must send `X-Forwarded-For` (it does by default). If it doesn't, every request — Atlas's included — gets `401`.
-- Atlas must reach the site from its **public** IP. Atlas dev on Stella calling a site that is also on Stella can hairpin through Caddy with a Docker-internal source address in `X-Forwarded-For`, which is not allowlisted → `401`. Test `generate-token` from Atlas dev once after deploying.
+- Atlas dev on Stella calling a site that is also on Stella hairpins through Caddy. If the source Caddy sees is the `edge` gateway `172.20.0.1`, it is allowlisted. If it is some other Docker address (a container on a different network, e.g. `172.18.x.x`), it is **not** → `401`. Test `generate-token` from Atlas dev once after deploying and add that address if needed.
+- If another proxy (e.g. Cloudflare) is ever put in front of Caddy, the rightmost entry becomes that proxy's address and Atlas would `401`. The plugin would then need to trust that hop too.
 - IPv6: neither Atlas IP has an IPv6 entry. If Atlas ever connects over IPv6 it fails closed (`401`). Force IPv4 in the Atlas HTTP client if that happens.
 
 ---
@@ -205,7 +209,7 @@ These break against the new plugin until Atlas is updated.
 | 7 | Login UI | Tell the operator the link only works from the **office network** (`194.126.177.181`). A `403` page “Login link expired or invalid.” from another network is expected | Browser step is now IP-locked |
 | 8 | Site onboarding UI | Copy: “In WP → Settings → Atlas Connect click **Generate**, copy the key — it is shown only once.” Remove any mention of copying an existing key later | Secret is hash-only on the site |
 | 9 | `wp_user` field | Hint: “must be an administrator”. Keep sending it | Non-admins → `403` |
-| 10 | Outbound IP | Make sure Atlas prod calls sites from `2.31.42.13` and Atlas dev from `95.217.144.93` over **IPv4** | Only these are allowlisted |
+| 10 | Outbound IP | Make sure Atlas prod calls sites from `2.31.42.13` and Atlas dev from `95.217.144.93` (or via Caddy's `edge` gateway `172.20.0.1` for Stella-hosted sites) over **IPv4** | Only these are allowlisted |
 
 ### Still open from before
 

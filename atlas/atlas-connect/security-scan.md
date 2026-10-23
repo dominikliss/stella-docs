@@ -366,7 +366,7 @@ Daily: same pattern as `wp-sites:drive-backups` — one scheduled command that s
 
 `config.php` → `modules.security` is **on**. Routes register only when that flag is true.
 
-Auth is `atlas_secret_authentication()`: SSL → client IP in `ip_whitelist` (`2.31.42.13`, `95.217.144.93`; `X-Forwarded-For` trusted only from `trusted_proxies`) → `secret` from the JSON body, compared as SHA-256. Same `401` as login/backup. Details: [`README.md`](README.md#authentication-every-plugin-route).
+Auth is `atlas_secret_authentication()`: SSL → client IP in `ip_whitelist` (`2.31.42.13`, `95.217.144.93`, `172.20.0.1` for Stella-internal hairpin; `X-Forwarded-For` trusted only from `trusted_proxies`) → `secret` from the JSON body, compared as SHA-256. Same `401` as login/backup. Details: [`README.md`](README.md#authentication-every-plugin-route).
 
 Job state: option `atlas_scan_job_{job_id}` (not autoloaded). Active id: `atlas_scan_active_job`. TTL default 86400s. Scratch (file list, inventory queue, hashes) in `atlas_scratch_dir( 'atlas-scan-tmp' )` — a private `0700` dir under `sys_get_temp_dir()`, or `uploads/atlas-scan-tmp-{random}/` as a fallback (see [`backups.md`](backups.md#plugin-internals-not-required-to-implement-atlas)). The old fixed `uploads/atlas-scan-tmp/` is deleted on upgrade. Daily `atlas_cleanup_cron` drops expired jobs and scratch.
 
