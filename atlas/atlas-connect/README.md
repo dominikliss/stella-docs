@@ -61,13 +61,13 @@ Optional but useful: store the **last 4 characters** of `secret_key` (or derive 
 
 | Field | Role |
 |---|---|
-| X25519 **key pair** | Public half (64 hex chars) goes in every site's `config.php` → `backup.public_key`. Private half never leaves Atlas |
+| X25519 **key pair** | Public half (64 hex chars) goes in every site’s `config.php` → `backup.public_key`. Atlas stores only the public half. The private half stays with the operator (password manager / offline) and is pasted into the browser when decrypting; Atlas never receives it |
 | S3 `endpoint` | **Must** be `https://fsn1.your-objectstorage.com`, `https://nbg1.your-objectstorage.com`, or `https://hel1.your-objectstorage.com`. Anything else → `400` on every backup call |
 | S3 `bucket` | **Must** be `atlas-wp-sites-backups`. Anything else → `400` on every backup call |
 | S3 `region` | e.g. `fsn1` (default if omitted) |
 | S3 `access_key` + `secret_key` | Sent on every backup start / chunk / cancel (not status). **Not** stored on the WordPress site |
 
-Encrypt site secrets, S3 keys, and the sodium private key at rest. Never log them. Never log a generated login URL.
+Encrypt site secrets and S3 keys at rest. Never log them. Never log a generated login URL.
 
 One X25519 pair for the whole fleet is fine.
 
@@ -174,7 +174,7 @@ There is no way to fetch the secret from the site. Atlas is the only place it ex
 
 On the WordPress site
 
-1. Install / activate `atlas-connect`.
+1. Install / activate `atlas-connect`. On **WP Sites**, **Download Atlas Connect** always clones the current `main` of `foxcraftdigital/atlas-connect` (same SSH key and excludes as deployments: `.git`, `.cursor`, `docs`) and saves a zip you can upload in WP Admin → Plugins. Nothing is cached — every click rebuilds.
 2. Settings → Atlas Connect → Connection → **Generate**. Copy the key **now** into Atlas.
 3. Pick the **Auto-login Username** (administrators only in the dropdown) and **Save**. Used when Atlas omits `user`.
 4. Make sure Atlas's IP is in `config.php` → `ip_whitelist` (already true for `2.31.42.13` and `95.217.144.93` in the shipped config).
@@ -200,6 +200,15 @@ No S3 setup is done in WordPress.
 
 These break against the new plugin until Atlas is updated.
 
+**Atlas status (2026-10-23): done in the Atlas tree.**
+
+- Rows 1–3: Atlas never polls the status routes (it drives with `chunk`). Every plugin call is `POST` + JSON body (`AtlasConnectClient::post()`).
+- Row 4: `AtlasConnectClient::decode()` reads `error ?? message` and keeps WP's `code` on `AtlasConnectException::$pluginCode`.
+- Row 5: `BackupVault::assertAllowedDestination()` (`ALLOWED_BUCKET`, `ALLOWED_ENDPOINT_HOSTS`). Settings → Backups rejects other values (`422`, plus inline checks in the form). Start / chunk / cancel use `pluginS3CredentialsFor()` and fail in Atlas without calling the site. Atlas’s own bucket reads (explorer, delete, manifest) are not pinned, so older backups stay readable.
+- Row 6: login maps `401` / `400` / `403` (not admin) / `404` (no such user) / `404 rest_no_route` → `502`, with the messages in [`login.md`](login.md#atlas-http-mapping). Scan chunks treat `403` as fatal.
+- Rows 7–9: WP Sites form and login toast copy (Generate + shown once, administrator only, office network only).
+- Row 10: `AtlasConnectClient` forces IPv4 (`CURLOPT_IPRESOLVE`). Which public IP the host uses is infrastructure, not code. Still test it once from prod and dev (see [`../../open-gaps.md`](../../open-gaps.md)).
+
 | # | Area | Change in Atlas | Why |
 |---|---|---|---|
 | 1 | Backup status | `GET /backup/status/{job_id}?secret=…` → **`POST /backup/status/{job_id}`** with JSON `{ "secret": "…" }` | `GET` routes were removed (`404 rest_no_route`). Secret no longer accepted in the URL |
@@ -219,8 +228,8 @@ These break against the new plugin until Atlas is updated.
 |---|---|---|
 | Login | `POST /api/wp-sites/{id}/login` → plugin `generate-token` | Path is **`atlas-connect/v1`** (not `dl-connect/v1`). Send `user`. Map `401` (auth incl. IP), `403` (not admin), `404` (no such user) |
 | Backup | Implemented: `WpSiteBackupDriver` + `RunWpSiteBackupJob`; Settings vault; WP Sites start / progress / history / explorer | Apply rows 1, 3–5 above. Keep in line with [`backups.md`](backups.md) |
-| Infection scan | Plugin ready. Atlas has no driver, store, or UI yet | Implement [`security-scan.md`](security-scan.md): daily job, chunk loop, persist inventory + report, allowlist, verdict. Use `POST` status from the start |
-| WP Sites UI | Secret + `wp_user`; backup panel | Scan history + last verdict + allowlist action. Rows 7–9 above |
+| Infection scan | Implemented: `WpSiteScanDriver` + `RunWpSiteScanJob` (`scans` queue), daily `wp-sites:run-daily-scans`, inventory + report + verdict + baseline + allowlist in DB, `wp_site.security_scan` alerts. See [`security-scan.md`](security-scan.md#atlas-implementation) | Apply rows 2–4 above. Keep in line with [`security-scan.md`](security-scan.md) |
+| WP Sites UI | Secret + `wp_user`; backup panel; security scan panel (start, progress, history, report modal with allowlist + trust baseline); scan badge in the site list | Rows 7–9 above |
 
 ---
 

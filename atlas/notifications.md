@@ -8,6 +8,7 @@ Rule types:
 |------|----------------|
 | **Weekly hours monitoring** (`project.week_hours_threshold`) | A project’s this-week **commented** hours cross a threshold of its **max hours per week**. Once per rule + project + ISO week + threshold. Week window is Monday–Sunday in `Europe/Vienna` — same as the project progress bar ([`projects.md`](projects.md)). |
 | **Time entries with no comment** (`time_entry.missing_comment`) | Selected projects have uncommented time entries (`notes` empty / whitespace) starting **2026-10-19**. Once per rule per Vienna calendar day. Optional `user_ids` (empty = every user). Body lists tasks plus TrackingTime links (`https://pro.trackingtime.co/#/project/{projectId}/{taskId}`). |
+| **WP site security scan** (`wp_site.security_scan`) | An Atlas Connect infection scan finishes `infected` / `suspicious` with at least one finding that was **not** in the site’s previous complete scan, or a scan **fails** after a non-failed one. Global (no project list, no config). Fired from `WpSiteScanDriver` when the scan finishes — see [`atlas-connect/security-scan.md`](atlas-connect/security-scan.md#atlas-implementation). |
 
 ---
 
@@ -25,8 +26,9 @@ Dedupe keys:
 |------|-----|
 | Weekly hours | `project.week_hours_threshold:{ruleId}:{projectId}:{isoWeekYear}-W{isoWeek}:{threshold}` |
 | Missing comment | `time_entry.missing_comment:{ruleId}:{Y-m-d}` (Vienna date) |
+| WP site security scan | `wp_site.security_scan:{ruleId}:{scanId}` |
 
-Title / body come from optional rule templates (`{project}`, `{customer}`, `{customer_line}`, `{used}`, `{cap}`, `{threshold}`, `{used_percent}`). Empty templates use the type defaults.
+Title / body come from optional rule templates (`{project}`, `{customer}`, `{customer_line}`, `{used}`, `{cap}`, `{threshold}`, `{used_percent}`; scan rules: `{site}`, `{domain}`, `{verdict}`, `{new_count}`, `{finding_list}`). Empty templates use the type defaults. The type catalog has `scope`: `projects` or `global`; the Settings UI hides the project picker for `global` types.
 
 ---
 
@@ -86,3 +88,4 @@ Webhook URLs must be `https://hooks.slack.com/…`. Stored encrypted on `slack_d
 | `TrackingTimeImporter::refreshTasksWithUncommentedEntries` | Per-task GET for uncommented time since 2026-10-19 (including Atlas-done) |
 | `TimeEntryMissingCommentRunner` | Queue `mode=uncommented` job (manual or daily) |
 | `CheckTimeEntryMissingCommentsCommand` | `notifications:check-missing-comments` |
+| `WpSiteScanAlerter` | `wp_site.security_scan` fires (new findings only, or first failure); subject is the `wp_site` |

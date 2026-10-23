@@ -16,6 +16,7 @@ Dedicated AI / services host. No general-purpose UI — **Atlas**, **ddashboard*
 | [stella-api.md](stella-api.md) | FastAPI `/chat/*` (ddashboard) |
 | [deploy-api.md](deploy-api.md) | Signed deploy trigger (Atlas) |
 | [health-api.md](health-api.md) | Signed system-status snapshot for Atlas — dynamic containers + Caddyfile certs |
+| [wp-staging-api.md](wp-staging-api.md) | Signed: build a WordPress staging copy from an encrypted Atlas backup (not deployed yet) |
 | [media-api.md](media-api.md) | RAW/HEIC/JPEG/video-poster decode for Foxx Cloud (HMAC; `/convert` and `/convert-remote`) — `stella-media-api.foxcraft.digital` |
 | [imap-sync-service.md](imap-sync-service.md) | Express + `imapsync` mailbox copy (Atlas) |
 | [backup.md](backup.md) | Nightly restic → Storage Box — automatic scope, DB dumps, weekly verify |
@@ -24,6 +25,7 @@ Dedicated AI / services host. No general-purpose UI — **Atlas**, **ddashboard*
 | [client-ip-access.md](client-ip-access.md) | Per-subdomain client IP grants |
 | [dotnet-app-deployment.md](dotnet-app-deployment.md) | .NET pattern: Stella dev containers → Azure production |
 | [wordpress-staging.md](wordpress-staging.md) | WordPress staging: `/opt/apps/wordpress/<subdomain>/` |
+| [php-updates.md](php-updates.md) | PHP inventory and per-stack update procedure (CVE-2026-109618 / 109619) |
 
 Atlas halves of the signed APIs: [`../atlas/deploy-pipeline.md`](../atlas/deploy-pipeline.md), [`../atlas/monitoring.md`](../atlas/monitoring.md), [`../atlas/tools.md`](../atlas/tools.md).
 

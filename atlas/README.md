@@ -32,7 +32,7 @@ It is **not** the business dashboard. Clients, invoices, and mail live in **ddas
 |--------|----------|--------------|
 | **Dashboard** | `/dashboard` | Home + Stella status summary |
 | **Deployments** | `/deployments` | SSH rsync deploys and Stella deploy-api deploys |
-| **WP Sites** | `/wp-sites` | Register sites, 5-min uptime, Atlas Connect login, start/list/explore backups; infection scan driver **not built** |
+| **WP Sites** | `/wp-sites` | Register sites, 5-min uptime, Atlas Connect login, start/list/explore backups; browser decrypt (`/backup-decrypt`); daily + manual infection scans with verdict, report, allowlist, trusted baseline; build a Stella staging site from a completed full backup; download a fresh installable Atlas Connect zip |
 | **Monitoring** | `/monitoring/stella`, `/monitoring/atlas` | Stella and Atlas host health grids + history charts |
 | **Tools → IMAP Migration** | `/tools/imap-migration` | Trigger / poll `imapsync` jobs on Stella |
 | **Tools → TrackingTime Import** | `/tools/tracking-time-import` | Full one-way import of selected TrackingTime projects into Atlas MySQL |
@@ -144,8 +144,10 @@ Both health loops run via `php artisan schedule:run` (cron every minute). They u
 | hourly | `projects:sync-tracking-time-open` | Open-task TrackingTime sync; queues a Trello push for mapped projects only when Atlas content changed |
 | hourly | `notifications:check-week-hours` | Fire weekly hour-budget notifications when a watched project crosses a threshold |
 | daily 07:00 Europe/Vienna | `notifications:check-missing-comments` | Refresh tasks with uncommented time since 2026-10-19 (including done), then notify |
-| every minute | `wp-sites:drive-backups` | Backups feature still in development; backup driver not finished |
-| — | infection scan | Plugin ready ([`atlas-connect/security-scan.md`](atlas-connect/security-scan.md)); Atlas scheduler / store / UI not built |
+| daily 04:00 Europe/Vienna | `wp-sites:run-daily-scans` | Start an Atlas Connect infection scan on every site with a secret key; prune old scans ([`atlas-connect/security-scan.md`](atlas-connect/security-scan.md#atlas-implementation)) |
+| daily 05:00 Europe/Vienna | `wp-sites:run-daily-backups` | Start a full backup on every site with a secret key; prune old backups |
+| every minute | `wp-sites:drive-backups` | Chunk running backups (50 s budget) when no `backups` queue worker picked them up |
+| every minute | `wp-sites:drive-scans` | Chunk running scans (50 s budget) when no `scans` queue worker picked them up |
 
 ---
 
@@ -167,7 +169,7 @@ The old managed-host instance still has those two crons until they are deactivat
 
 ## Authentication
 
-All API routes except `/api/health`, `/api/auth/login`, `/api/auth/refresh`, `/api/auth/logout` require:
+All API routes except `/api/health`, `/api/auth/login`, `/api/auth/refresh`, `/api/auth/logout`, and signed `GET /api/wp-backups/{backup}/archive` require:
 
 ```
 Authorization: Bearer {access_token}
@@ -232,7 +234,9 @@ The **public** key must be in:
 | Method | Path | Purpose |
 |--------|------|---------|
 | `GET` | `/api/wp-sites` | List all WP sites with latest uptime status |
+| `GET` | `/api/wp-sites/atlas-connect.zip` | Fresh GitHub clone of Atlas Connect, strip `.git` / `.cursor` / `docs`, stream a WP-installable zip. Never cached |
 | `POST` | `/api/wp-sites` | Register a new WP site |
+| `POST` | `/api/wp-sites/test-storage` | Probe the backup bucket with typed or saved S3 keys |
 | `PATCH` | `/api/wp-sites/{id}` | Update a WP site |
 | `DELETE` | `/api/wp-sites/{id}` | Remove a WP site |
 | `POST` | `/api/wp-sites/{id}/login` | One-time WP admin URL via Atlas Connect |
@@ -241,9 +245,21 @@ The **public** key must be in:
 | `POST` | `/api/wp-sites/{id}/backups` | Start a backup (`full` / `db` / `files`) |
 | `GET` | `/api/wp-sites/{id}/backups/{backup}` | Show one backup |
 | `GET` | `/api/wp-sites/{id}/backups/{backup}/tree` | List objects in the backup prefix |
-| `POST` | `/api/wp-sites/{id}/backups/{backup}/objects` | Decrypt one backup object |
+| `GET` | `/api/wp-sites/{id}/backups/{backup}/compare/{other}` | Diff two backup manifests without decrypting |
+| `GET` | `/api/wp-sites/{id}/backups/{backup}/objects/raw` | Stream one encrypted object (browser decrypts) |
+| `POST` | `/api/wp-sites/{id}/backups/{backup}/download-link` | Signed URL for the encrypted `.atlas.tar` |
 | `POST` | `/api/wp-sites/{id}/backups/{backup}/cancel` | Cancel a running backup |
-| — | `/api/wp-sites/{id}/scans*` | **Not built.** Plugin contract: [`atlas-connect/security-scan.md`](atlas-connect/security-scan.md) |
+| `DELETE` | `/api/wp-sites/{id}/backups/{backup}` | Delete a finished backup and its objects |
+| `POST` | `/api/wp-sites/{id}/backups/{backup}/staging` | Build a Stella staging site from a completed full backup |
+| `GET` | `/api/wp-sites/{id}/stagings` | List staging builds for the site |
+| `DELETE` | `/api/wp-sites/{id}/stagings/{staging}` | Tear down a staging site |
+| `GET` | `/api/wp-backups/{backup}/archive` | Encrypted `.atlas.tar` via signed URL (no bearer; `ATLAS_BACKUP_ARCHIVE_IPS` also allowed) |
+| `GET` | `/api/wp-sites/{id}/scans` | List infection scans |
+| `POST` | `/api/wp-sites/{id}/scans` | Start an infection scan |
+| `GET` | `/api/wp-sites/{id}/scans/{scan}` | Scan report, findings, run log |
+| `POST` | `/api/wp-sites/{id}/scans/{scan}/trust` | Make a scan the trusted baseline (optional rescan) |
+| `POST` | `/api/wp-sites/{id}/scans/{scan}/allowlist` | Allowlist a finding (`path` + SHA-256) |
+| `GET` / `DELETE` | `/api/wp-sites/{id}/scan-allowlist[/{entry}]` | List / remove allowlist entries. Details: [`atlas-connect/security-scan.md`](atlas-connect/security-scan.md#atlas-implementation) |
 
 ### Monitoring
 
@@ -378,7 +394,7 @@ TRELLO_TOKEN=
 - [`dev-instance.md`](dev-instance.md) — Stella-hosted `atlas.dev`
 - [`architecture.md`](architecture.md) — domains, SPA routes, hosting, demo mode
 - [`auth.md`](auth.md) — ddashboard token proxy, roles, IP allowlist
-- [`atlas-connect/`](atlas-connect/) — WP plugin: login + backups (Atlas driver + Settings vault + WP Sites UI); infection scan plugin-ready, Atlas driver TODO
+- [`atlas-connect/`](atlas-connect/) — WP plugin: login + backups (Atlas driver + Settings vault + WP Sites UI); infection scan (Atlas driver, verdict, allowlist, WP Sites UI)
 - [`deploy-pipeline.md`](deploy-pipeline.md) — ssh_rsync and stella_deploy_api
 - [`monitoring.md`](monitoring.md) — Stella health, Atlas host health, WP uptime
 - [`tools.md`](tools.md) — IMAP migration via Stella; TrackingTime import/sync

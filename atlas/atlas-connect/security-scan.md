@@ -361,16 +361,80 @@ export async function runScan(
 
 On `complete`, persist `inventory`, persist `job.report`, compute the verdict, alert if it is new.
 
-Suggested Atlas surface (not built yet):
+---
+
+## Atlas implementation
+
+Built in Atlas (Laravel) on the same pattern as backups: `WpSiteScanDriver` + `RunWpSiteScanJob` + a per-minute drive tick + a daily command.
+
+### Flow
+
+1. **Start** — `POST /api/wp-sites/{id}/scans` (WP Sites → expand a site → Security scan → **Scan now**) or the daily `wp-sites:run-daily-scans` (04:00 `Europe/Vienna`, one hour before backups). Sends the site’s full allowlist. Rejects with `409` while an Atlas scan row for the site is `pending` / `running`. A failed start (401, plugin 409, unreachable) is still saved as an `error` row.
+2. **Drive** — `RunWpSiteScanJob` on the **`scans`** queue (`scripts/queue-backups.sh` now runs `--queue=backups,scans`). Fallback: scheduler `wp-sites:drive-scans` every minute (50 s budget). A `Cache::lock` per scan keeps chunks sequential.
+3. **Inventory** — every `inventory_delta` row is inserted into `wp_site_scan_files` as soon as the chunk returns.
+4. **Chunk errors** — `400` / `401` / `404` fail the scan at once. Other failures (timeouts, 5xx) are retried up to **5** consecutive times; the scan is then flagged `inventory_complete = false` because a lost chunk may have dropped delta rows.
+5. **Complete** — no `report` on `status=complete` is treated as **error**, never clean. Otherwise Atlas scores the run (`ScanEvaluator`), stores `findings` + `summary` + `report`, updates `wp_sites.last_scan_verdict` / `last_scan_at`, alerts, prunes.
+
+### Scoring (`ScanEvaluator`)
+
+Always (first scan and later): `php_in_uploads` → infected; `core.mismatched` → infected; `core.unexpected` → infected if PHP-like, else suspicious.
+
+First scan (no baseline): every drop-in / mu-plugin → suspicious (“confirm it is yours”).
+
+Later scans, against the trusted baseline’s inventory and report:
+
+| Finding code | Severity |
+|---|---|
+| `file_added` (PHP-like) / `file_changed` | infected |
+| `file_added` (non-PHP inventory row, e.g. a sub-directory `.htaccess`) | suspicious |
+| `admin_added` (new `id` + `login`) | infected |
+| `special_file_changed` — `wp-config.php`, `.htaccess`, `.user.ini` (changed, appeared, removed) | infected |
+| `special_file_changed` — `web.config` | suspicious |
+| `url_changed` (`home` / `siteurl`, trailing slash ignored) | infected |
+| `dropin_added`, `mu_plugin_added`, `cron_added` | suspicious |
+
+Root `wp-config.php` / `.htaccess` / `.user.ini` / `web.config` (and `../wp-config.php`) are skipped in the inventory diff; `special_files` covers them. A path already flagged by an absolute finding is not repeated as `file_added`. Removed files are counted in `summary.files_removed` only. `core.missing` is counted, not scored.
+
+Each finding has a `key` (`code:path-or-subject:sha256`) and `new` (= key not in the previous complete scan). Atlas also drops any finding whose `path + sha256` is on the allowlist (in addition to the plugin’s own filter).
+
+### Baseline
+
+- A **clean** scan with a complete inventory becomes the baseline automatically (`trusted_by = auto`).
+- Infected / suspicious scans never do. The operator reviews the report and clicks **Trust as baseline** (`POST …/scans/{scan}/trust`, `rescan: true` starts a fresh scan right away so the site verdict reflects the new baseline).
+- A scan with `inventory_complete = false` or a pruned inventory cannot be trusted.
+
+### Allowlist
+
+**Allow** on a finding (`POST …/scans/{scan}/allowlist` with `{ path, hash, note? }`) only accepts a `path + sha256` that is a finding of that scan. Atlas re-scores that scan’s stored findings immediately (and the site verdict if it is the latest scan). Remove entries from the report modal; removal applies from the next scan.
+
+### Alerts
+
+Notification rule type `wp_site.security_scan` ([`../notifications.md`](../notifications.md)): fires when a finished scan has at least one **new** finding, or when a scan fails after a non-failed one. Dedupe key per rule + scan.
+
+### Storage and retention
+
+| Table | Holds |
+|---|---|
+| `wp_site_scans` | Job state, verdict, `findings`, `summary`, plugin `report`, `baseline_scan_id`, `trusted_at` / `trusted_by`, append-only run `log`, `initiated_by` |
+| `wp_site_scan_files` | Inventory rows (`path`, `sha256`, `mtime`, `size`) per scan |
+| `wp_site_scan_allowlist` | `path` + `sha256` + note + who added it, per site |
+| `wp_sites` | `scan_baseline_id`, `last_scan_at`, `last_scan_verdict` (`clean` / `suspicious` / `infected` / `failed`; non-clean sets `has_issues`) |
+
+Keep `ATLAS_SCAN_RETAIN` (default 30) finished scans per site; the baseline is never pruned. Inventory rows are kept for the latest `ATLAS_SCAN_INVENTORY_RETAIN` (default 3) complete scans plus the baseline.
+
+Every lifecycle step is also written to the Laravel log (`WP scan started` / `chunk failed` / `complete` / `failed` / `trusted as baseline` / allowlist added or removed, `Daily WP scans queued`).
+
+### API
 
 | Method | Path | Purpose |
 |---|---|---|
-| `POST` | `/api/wp-sites/{id}/scans` | Start + queue drive (or run sync like backups) |
-| `GET` | `/api/wp-sites/{id}/scans` | History |
-| `GET` | `/api/wp-sites/{id}/scans/{scan}` | One report + verdict |
-| `POST` | `/api/wp-sites/{id}/scans/{scan}/allowlist` | Add `{ path, hash }` from a finding |
-
-Daily: same pattern as `wp-sites:drive-backups` — one scheduled command that starts a scan per site and chunks until `complete`.
+| `GET` | `/api/wp-sites/{id}/scans` | History (50, without `findings` / `report` / `log`) |
+| `POST` | `/api/wp-sites/{id}/scans` | Start + queue the driver |
+| `GET` | `/api/wp-sites/{id}/scans/{scan}` | Full report, findings, log, `is_baseline` |
+| `POST` | `/api/wp-sites/{id}/scans/{scan}/trust` | Make it the baseline; `{ rescan: true }` starts a new scan |
+| `POST` | `/api/wp-sites/{id}/scans/{scan}/allowlist` | Add `{ path, hash, note? }` from a finding |
+| `GET` | `/api/wp-sites/{id}/scan-allowlist` | List allowlist entries |
+| `DELETE` | `/api/wp-sites/{id}/scan-allowlist/{entry}` | Remove an entry |
 
 ---
 

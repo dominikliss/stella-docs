@@ -134,8 +134,10 @@ Logs: `journalctl -u atlas-queue`.
 |----------|-----|--------|
 | `*/5` | `stella:check-health` | Verified 2026-10-10 via cron |
 | `*/5` | `wp-sites:check-uptime` | |
-| every minute | `wp-sites:drive-backups` | Not documented before. Backups feature still in development; backup driver not finished |
-| — | infection scan | Plugin ready; Atlas scheduler not built. See [`atlas-connect/security-scan.md`](atlas-connect/security-scan.md) |
+| daily 04:00 Vienna | `wp-sites:run-daily-scans` | Infection scan per site. See [`atlas-connect/security-scan.md`](atlas-connect/security-scan.md#atlas-implementation) |
+| daily 05:00 Vienna | `wp-sites:run-daily-backups` | Full backup per site with a secret key; prune old backups |
+| every minute | `wp-sites:drive-backups` | Chunks running backups; `scripts/queue-backups.sh` (or a worker) should serve `--queue=backups,scans` |
+| every minute | `wp-sites:drive-scans` | Chunks running scans |
 
 ---
 

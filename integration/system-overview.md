@@ -152,8 +152,8 @@ PHP client in MediaRaster: in progress (prefer `/convert-remote` with `dest` whe
 |---------|--------|------|
 | Uptime every 5 min | `HEAD https://{domain}` | None (TLS verify off) |
 | One-click WP admin login | `POST https://{domain}/wp-json/atlas-connect/v1/generate-token` | Shared **Atlas Connect** secret (JSON body; site stores only its SHA-256) + Atlas IP (`2.31.42.13` / `95.217.144.93`) in the plugin's `ip_whitelist`. Administrators only. The returned link only opens from the team office IP `194.126.177.181` |
-| Encrypted backup (plugin ready; Atlas driver TODO) | `POST …/atlas-connect/v1/backup/{start,chunk,cancel,status/{job_id}}` | Same secret + IP allowlist. Atlas sends S3 credentials in the JSON body; the site does not store them. Destination pinned to bucket `atlas-wp-sites-backups` on `https://{fsn1,nbg1,hel1}.your-objectstorage.com` |
-| Infection scan (plugin ready; Atlas driver TODO) | `POST …/atlas-connect/v1/security/scan/{start,chunk,status/{job_id}}` | Same secret + IP allowlist. Atlas sends `{ path, hash }` allowlist on start; stores inventory + report; site does not keep results |
+| Encrypted backup | `POST …/atlas-connect/v1/backup/{start,chunk,cancel,status/{job_id}}` | Same secret + IP allowlist. Atlas sends S3 credentials in the JSON body; the site does not store them. Destination pinned to bucket `atlas-wp-sites-backups` on `https://{fsn1,nbg1,hel1}.your-objectstorage.com` |
+| Infection scan | `POST …/atlas-connect/v1/security/scan/{start,chunk,status/{job_id}}` | Same secret + IP allowlist. Atlas sends `{ path, hash }` allowlist on start; stores inventory + report; site does not keep results |
 
 All plugin routes are `POST`; the former `GET …/status/{job_id}?secret=` routes are gone (2026-10-23).
 
