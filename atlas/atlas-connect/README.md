@@ -131,7 +131,6 @@ Things that now fail with `401` that used to work:
 | `2.31.42.13` | Atlas production (`atlas.foxcraft.digital`, Hetzner CX33 `atlas`) |
 | `95.217.144.93` | Atlas dev instance on Stella (`atlas.dev`). Note: anything else running on Stella shares this IP |
 | `172.20.0.1` | Docker `edge` gateway on Stella. Matches only when a request starts on Stella itself (host or a container) and loops back through Caddy to a site hosted on Stella — e.g. Atlas dev calling a Stella-hosted site. Outside traffic never matches it (see below) |
-
 `23.88.90.12` (managed host) was **removed**. Allowlist the Atlas host, never an operator laptop.
 
 ### How the client IP is determined

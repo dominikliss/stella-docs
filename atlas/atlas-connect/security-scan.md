@@ -177,7 +177,7 @@ If WordPress.org checksums cannot be fetched, the job ends as `error` (do **not*
 |---|---|
 | `inventory` | Walk the tree. Collect PHP-like files everywhere, all files in `wp-admin` / `wp-includes` / site root, plus `wp-config.php` (including the parent-dir copy), `.htaccess`, `.user.ini`, `web.config` |
 | `hash` | SHA-256 every candidate; MD5 as well for core-area files. Stream PHP rows as `inventory_delta` |
-| `analyze` | Fetch `https://api.wordpress.org/core/checksums/1.0/?version={wp}&locale={locale}`, build findings, collect persistence, apply allowlist, wipe scratch + allowlist |
+| `analyze` | Fetch `https://api.wordpress.org/core/checksums/1.0/?version={wp}&locale={locale}` for `en_US` plus every installed locale (site locale, `$wp_local_package`, `get_available_languages()`), cached for a week per version+locale. Build findings, collect persistence, apply allowlist, wipe scratch + allowlist |
 | `done` | `status=complete` |
 
 Skipped directories: `.git`, `.svn`, `node_modules` (exact name), plus any directory whose name **starts with** `atlas-backup-tmp`, `atlas-scan-tmp`, `.atlas-…`, or `.dlc-…` (the plugin's own scratch, including the random-suffix fallback dirs in uploads). Symlinks are not followed. Files over 32 MB are not hashed.
@@ -191,7 +191,8 @@ Skipped directories: `.git`, `.svn`, `node_modules` (exact name), plus any direc
     "generated_at": "2026-10-22T23:00:00+00:00",
     "core": {
         "version": "6.8.3",
-        "locale": "en_US",
+        "locale": "de_DE",
+        "locales": ["en_US", "de_DE"],
         "checked": 1850,
         "mismatched": [
             { "path": "wp-includes/functions.php", "sha256": "…", "mtime": 1727791200, "size": 12000 }
@@ -227,9 +228,10 @@ Skipped directories: `.git`, `.svn`, `node_modules` (exact name), plus any direc
 
 | Block | Meaning |
 |---|---|
-| `core.mismatched` | File is in the official checksum list; MD5 does not match. Allowlisted path+SHA-256 omitted |
-| `core.unexpected` | Extra file in `wp-admin`, `wp-includes`, or the site root that is not in the checksum list. `wp-config.php` / `.htaccess` / `.user.ini` / `web.config` are excluded (they live under `special_files`) |
-| `core.missing` | Official core file not on disk (broken install more often than malware) |
+| `core.locales` | Locales whose checksums were merged. `en_US` is required (fetch failure = job `error`); other locales without an official package are skipped |
+| `core.mismatched` | File is in the official checksum list; MD5 matches **none** of the fetched locales. Allowlisted path+SHA-256 omitted. `wp-content/languages/` is never checked (language packs update it independently of core) |
+| `core.unexpected` | Extra file in `wp-admin`, `wp-includes`, or the site root that is not in any locale's checksum list. `wp-config.php` / `.htaccess` / `.user.ini` / `web.config` are excluded (they live under `special_files`) |
+| `core.missing` | Core file shipped by **every** fetched locale but not on disk (broken install more often than malware) |
 | `php_in_uploads` | PHP-like file under uploads (`.php`, `.phtml`, `.php5`, `.phar`, …). Allowlisted omitted. A tiny `uploads/index.php` “silence is golden” file will appear here on the first scan — allowlist it |
 | `special_files` | SHA-256 of those four names, or `null` if absent |
 | `admins` | Administrators: `id`, `login`, `registered`. No emails |
