@@ -177,7 +177,7 @@ If WordPress.org checksums cannot be fetched, the job ends as `error` (do **not*
 |---|---|
 | `inventory` | Walk the tree. Collect PHP-like files everywhere, all files in `wp-admin` / `wp-includes` / site root, plus `wp-config.php` (including the parent-dir copy), `.htaccess`, `.user.ini`, `web.config` |
 | `hash` | SHA-256 every candidate; MD5 as well for core-area files. Stream PHP rows as `inventory_delta` |
-| `analyze` | Fetch `https://api.wordpress.org/core/checksums/1.0/?version={wp}&locale={locale}` for `en_US` plus every installed locale (site locale, `$wp_local_package`, `get_available_languages()`), cached for a week per version+locale. Build findings, collect persistence, apply allowlist, wipe scratch + allowlist |
+| `analyze` | Fetch `https://api.wordpress.org/core/checksums/1.0/?version={wp}&locale={locale}` for `en_US` plus every installed locale (site locale, `$wp_local_package`, `get_available_languages()`), cached for a week per version+locale (`atlas_core_sums_v2_*`; anything under `wp-content/` is dropped, including stale cached lists). Build findings, collect persistence, apply allowlist + `security.global_allowlist`, wipe scratch + allowlist |
 | `done` | `status=complete` |
 
 Skipped directories: `.git`, `.svn`, `node_modules` (exact name), plus any directory whose name **starts with** `atlas-backup-tmp`, `atlas-scan-tmp`, `.atlas-…`, or `.dlc-…` (the plugin's own scratch, including the random-suffix fallback dirs in uploads). Symlinks are not followed. Files over 32 MB are not hashed.
@@ -235,7 +235,7 @@ Skipped directories: `.git`, `.svn`, `node_modules` (exact name), plus any direc
 | `php_in_uploads` | PHP-like file under uploads (`.php`, `.phtml`, `.php5`, `.phar`, …). Allowlisted and code-free files omitted |
 | `special_files` | SHA-256 of those four names, or `null` if absent |
 | `admins` | Administrators: `id`, `login`, `registered`. No emails |
-| `dropins` | Present drop-in filenames in `wp-content/` |
+| `dropins` | Present drop-in filenames in `wp-content/`. Globally allowlisted names omitted |
 | `mu_plugins` | Must-use plugin basenames |
 | `cron` | Unique WP-Cron hook names + schedule |
 | `urls` | `home_url` and `siteurl` option |
@@ -248,7 +248,9 @@ Finding objects are `{ path, sha256, mtime, size }` only. No snippets, no file b
 
 **Data files.** Paths listed in `config.php` → `security.data_files` may also start with `<?php __halt_compiler();`. PHP stops at that call, so whatever follows is data and never runs. Such a file is treated as code-free (no size limit) only while nothing but tags, comments, and whitespace come before `__halt_compiler();`. The path alone is never trusted. Today's entry: `wp-content/uploads/aios/firewall-rules/settings.php` (All In One Security firewall settings).
 
-**Ignored changes.** Paths listed in `config.php` → `security.ignore_changes` are real PHP that plugins regenerate, so they are left out of `inventory_delta` and their hash changes never alert. Drop-ins among them are still listed under `dropins`, so a newly appearing one is still visible. Today's entry: `wp-content/advanced-cache.php` (page cache drop-in). Malicious code inside it is **not** detected by the baseline diff.
+**Global allowlist.** Paths listed in `config.php` → `security.global_allowlist` are never findings: omitted from `core.mismatched`, `core.unexpected`, `php_in_uploads`, `dropins`, and `inventory_delta`. Path-only — no hash. Today's entry: `wp-content/advanced-cache.php` (page cache drop-in). A hacked replacement at that path is **not** detected.
+
+**Ignored changes.** Paths listed in `config.php` → `security.ignore_changes` are real PHP that plugins regenerate, so they are left out of `inventory_delta` and their hash changes never alert. Drop-ins among them are still listed under `dropins`, so a newly appearing one is still visible. Empty today; use `global_allowlist` when the file should also disappear from `dropins`.
 
 ---
 
