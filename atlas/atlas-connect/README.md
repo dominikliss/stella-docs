@@ -202,7 +202,7 @@ These break against the new plugin until Atlas is updated.
 
 **Atlas status (2026-10-23): done in the Atlas tree.**
 
-- Rows 1–3: Atlas never polls the status routes (it drives with `chunk`). Every plugin call is `POST` + JSON body (`AtlasConnectClient::post()`).
+- Rows 1–3: Atlas drives with `chunk` and does not poll the status routes for progress. It only calls `POST /backup/status/{job_id}` (`AtlasConnectClient::backupStatus()`) to recover from a site-side `409` on start (see [Backup job recovery](#backup-job-recovery)). Every plugin call is `POST` + JSON body (`AtlasConnectClient::post()`).
 - Row 4: `AtlasConnectClient::decode()` reads `error ?? message` and keeps WP's `code` on `AtlasConnectException::$pluginCode`.
 - Row 5: `BackupVault::assertAllowedDestination()` (`ALLOWED_BUCKET`, `ALLOWED_ENDPOINT_HOSTS`). Settings → Backups rejects other values (`422`, plus inline checks in the form). Start / chunk / cancel use `pluginS3CredentialsFor()` and fail in Atlas without calling the site. Atlas’s own bucket reads (explorer, delete, manifest) are not pinned, so older backups stay readable.
 - Row 6: login maps `401` / `400` / `403` (not admin) / `404` (no such user) / `404 rest_no_route` → `502`, with the messages in [`login.md`](login.md#atlas-http-mapping). Scan chunks treat `403` as fatal.
@@ -221,6 +221,16 @@ These break against the new plugin until Atlas is updated.
 | 8 | Site onboarding UI | Copy: “In WP → Settings → Atlas Connect click **Generate**, copy the key — it is shown only once.” Remove any mention of copying an existing key later | Secret is hash-only on the site |
 | 9 | `wp_user` field | Hint: “must be an administrator”. Keep sending it | Non-admins → `403` |
 | 10 | Outbound IP | Make sure Atlas prod calls sites from `2.31.42.13` and Atlas dev from `95.217.144.93` (or via Caddy's `edge` gateway `172.20.0.1` for Stella-hosted sites) over **IPv4** | Only these are allowlisted |
+
+### Backup job recovery
+
+Atlas and the site each track a job's status. They can disagree when a chunk call fails.
+
+- **Chunk fails** (timeout, `5xx`, unreachable): `WpSiteBackupDriver::drive()` calls `/backup/cancel` for that job, then marks the Atlas row `error`. If the cancel also fails, the site keeps the job `running` until its TTL (24h).
+- **Start returns `409`** and Atlas has no `pending` / `running` row: Atlas checks its last 5 `error` / `cancelled` rows from the past 24h that have a `plugin_job_id`, asking `/backup/status/{job_id}` for each.
+  - Atlas row `error`, site `running`: the row goes back to `running` with the site's progress and `RunWpSiteBackupJob` is queued again. The job keeps its original `backup_type`; the UI toast says "Resumed".
+  - Atlas row `cancelled`, site `running`: Atlas cancels it on the site and retries the start once.
+  - No match: `409` "The site reports a backup is already running that Atlas is not tracking. It clears once that job expires (up to 24h)."
 
 ### Still open from before
 
