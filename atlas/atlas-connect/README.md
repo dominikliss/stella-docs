@@ -18,6 +18,31 @@ Uptime pings do **not** use the plugin (`HEAD https://{domain}`). See [`../monit
 
 System context: [`../../integration/system-overview.md`](../../integration/system-overview.md).
 
+**What changed in the security hardening (2026-10-23) and what Atlas must change:** [Atlas work still to do](#atlas-work-still-to-do). Read that section first if you are updating Atlas.
+
+---
+
+## Route overview
+
+Every route is **`POST`** with a **JSON body**. There are no `GET` routes any more.
+
+| Route | Purpose | Body (besides `secret`) | Doc |
+|---|---|---|---|
+| `POST /generate-token` | One-time login URL | `user?`, `ttl?` | [`login.md`](login.md) |
+| `POST /backup/start` | Start a backup job | `backup_type?`, `s3` | [`backups.md`](backups.md) |
+| `POST /backup/chunk` | Do the next slice of work | `job_id`, `s3` | [`backups.md`](backups.md) |
+| `POST /backup/status/{job_id}` | Read progress, no work | — | [`backups.md`](backups.md) |
+| `POST /backup/cancel` | Cancel a running backup | `job_id`, `s3` | [`backups.md`](backups.md) |
+| `POST /security/scan/start` | Start an infection scan | `allowlist?` | [`security-scan.md`](security-scan.md) |
+| `POST /security/scan/chunk` | Do the next slice of work | `job_id` | [`security-scan.md`](security-scan.md) |
+| `POST /security/scan/status/{job_id}` | Read progress / report, no work | — | [`security-scan.md`](security-scan.md) |
+
+A `GET` on any of these returns WordPress's `404`:
+
+```json
+{ "code": "rest_no_route", "message": "No route was found matching the URL and request method.", "data": { "status": 404 } }
+```
+
 ---
 
 ## What Atlas must store
@@ -27,18 +52,20 @@ System context: [`../../integration/system-overview.md`](../../integration/syste
 | Field | Source | Notes |
 |---|---|---|
 | Domain / `site_url` | Site home URL | No trailing path. Example: `https://client.com` |
-| `secret_key` | WP Admin → Settings → Atlas Connect → Connection → Copy | Encrypt at rest. Hide from JSON (`has_secret_key` only). Empty PATCH must not overwrite. Regenerating the secret in WP invalidates Atlas until updated |
-| `wp_user` | WP login on that site | **Required** on every plugin `generate-token` call. The plugin does not fall back to the WP “Auto-login Username” setting |
+| `secret_key` | WP Admin → Settings → Atlas Connect → Connection → **Generate** / **Regenerate**, then **Copy** | 32 chars `[A-Za-z0-9]`. **Shown once.** The site stores only a SHA-256 of it, so it cannot be read back from WordPress later. Encrypt at rest in Atlas. Hide from JSON (`has_secret_key` only). Empty PATCH must not overwrite. Regenerating in WP invalidates the old key immediately |
+| `wp_user` | WP login on that site | Must be an **administrator** (or super admin on multisite). Optional: if Atlas omits `user`, the plugin uses the site's “Auto-login Username” setting. Atlas should still send it explicitly |
 
-Atlas’s **outbound server IP** must be in that site’s `config.php` → `ip_whitelist` (code on the site, not a WP setting). Allowlist the Atlas host, not the operator laptop.
+Optional but useful: store the **last 4 characters** of `secret_key` (or derive them when displaying). WP admin shows the key as `****************************abcd`, so an operator can check which key a site expects without either side revealing it.
 
 ### Once, for the fleet (Atlas vault)
 
 | Field | Role |
 |---|---|
-| X25519 **key pair** | Public half (64 hex chars) goes in every site’s `config.php` → `backup.public_key`. Private half never leaves Atlas |
-| S3 `endpoint`, `bucket`, `region` | e.g. `https://fsn1.your-objectstorage.com`, `fsn1` |
-| S3 `access_key` + `secret_key` | Sent on every backup start / chunk / cancel. **Not** stored on the WordPress site |
+| X25519 **key pair** | Public half (64 hex chars) goes in every site's `config.php` → `backup.public_key`. Private half never leaves Atlas |
+| S3 `endpoint` | **Must** be `https://fsn1.your-objectstorage.com`, `https://nbg1.your-objectstorage.com`, or `https://hel1.your-objectstorage.com`. Anything else → `400` on every backup call |
+| S3 `bucket` | **Must** be `atlas-wp-sites-backups`. Anything else → `400` on every backup call |
+| S3 `region` | e.g. `fsn1` (default if omitted) |
+| S3 `access_key` + `secret_key` | Sent on every backup start / chunk / cancel (not status). **Not** stored on the WordPress site |
 
 Encrypt site secrets, S3 keys, and the sodium private key at rest. Never log them. Never log a generated login URL.
 
@@ -50,28 +77,90 @@ One X25519 pair for the whole fleet is fine.
 
 1. **Site never calls Atlas.** No callbacks, license checks, or “fetch my key”.
 2. **Only Atlas starts backups and scans.** WP admin has backup history only — no Start button, no S3 fields, no scan results.
-3. **`secret`, S3 keys, and the scan allowlist go in the JSON body** of POSTs. Never as query parameters (access logs).
-4. `GET /backup/status/{job_id}` and `GET /security/scan/status/{job_id}` are GET-only, so `?secret=` will appear in the site’s access logs. Do **not** put S3 keys or the allowlist on those URLs.
+3. **Every route is `POST`.** `secret`, S3 keys, and the scan allowlist go in the **JSON body**. The plugin ignores `?secret=` in the query string — a request that only has it there fails with `401`.
+4. **Only Atlas's IPs can call the REST API** (see [IP allowlist](#ip-allowlist)). Only the **team office IP** can open a login link (see [`login.md`](login.md)).
 5. Send S3 credentials on **start, chunk, and cancel**. The plugin uses them for that request only and does not persist them.
-6. Send the scan **allowlist** on **start** only. Path + SHA-256. The site does not persist it.
-7. Prefer a **per-site prefix-scoped** S3 key (`backups/{site_id}/*`) if the provider allows it. Hetzner keys are long-lived; “short-lived” only means the site does not keep them.
-8. Drive `/backup/chunk` and `/security/scan/chunk` **sequentially**. Do not parallelize the same `job_id`.
+6. **Backups can only go to bucket `atlas-wp-sites-backups` on Hetzner Object Storage over HTTPS** (see [`backups.md`](backups.md#s3-destination-is-pinned)).
+7. Send the scan **allowlist** on **start** only. Path + SHA-256. The site does not persist it.
+8. Prefer a **per-site prefix-scoped** S3 key (`backups/{hostname}/*`) if the provider allows it. Hetzner keys are long-lived; “short-lived” only means the site does not keep them.
+9. Drive `/backup/chunk` and `/security/scan/chunk` **sequentially**. Do not parallelize the same `job_id`.
+10. Login links are only issued for **administrators**.
 
 ---
 
 ## Authentication (every plugin route)
 
-`atlas_secret_authentication()`. Failure is always WordPress REST **`401`**. The plugin does not say whether SSL, IP, or secret failed.
+`atlas_secret_authentication()` runs as the `permission_callback` on all 8 routes. It checks, in this order, and stops at the first failure:
 
-All of these fail the same way:
+| # | Check | Passes when |
+|---|---|---|
+| 1 | **SSL** | `is_ssl()` is true, or SSL is not required on that site (see below) |
+| 2 | **Client IP** | The client IP (see [How the client IP is determined](#how-the-client-ip-is-determined)) is in `config.php` → `ip_whitelist` |
+| 3 | **Secret** | `secret` from the **JSON body** (or form body), is a **string**, non-empty, and `hash_equals( stored_sha256, sha256( secret ) )` |
 
-- HTTP while the site requires SSL (`atlas_require_ssl`, default on for production)
-- `REMOTE_ADDR` not in `ip_whitelist`
-- `secret` missing or not equal to `atlas_secret_key` (`hash_equals`)
+Any failure returns WordPress's standard REST error with HTTP **`401`**:
 
-Send `secret` in the JSON body (except GET status).
+```json
+{ "code": "rest_forbidden", "message": "Sorry, you are not allowed to do that.", "data": { "status": 401 } }
+```
 
-Atlas today maps plugin `403` → “IP not allowlisted”. The current plugin returns **`401` for IP as well**. Update that mapping when implementing against this contract.
+Note the shape: **`code` / `message`, not `error`**. Route-level errors (after auth passed) use `{ "error": "…" }`. Atlas's error parsing must handle both, e.g. `data.error ?? data.message`.
+
+The plugin never says which check failed. Atlas cannot tell SSL, IP, and secret apart, so the UI message should name all three: “Atlas Connect rejected the request — check the secret, that the site is on HTTPS, and that the Atlas IP is allowlisted.”
+
+Things that now fail with `401` that used to work:
+
+- `secret` only in the query string (`?secret=…`).
+- `secret` sent as a non-string (number, array, object).
+- A site that was never given a secret (fresh install, nobody clicked **Generate**).
+
+### SSL requirement
+
+- Setting: WP Admin → Atlas Connect → Connection → **Require SSL** (`atlas_require_ssl`).
+- If the setting was never saved, the default is **on**, unless `wp_get_environment_type()` is `local` or `development` (set via `WP_ENVIRONMENT_TYPE` in `wp-config.php`).
+- WordPress treats an unset environment type as `production`, so **dev sites on plain HTTP now require HTTPS** unless they set `WP_ENVIRONMENT_TYPE` or untick Require SSL.
+- The old rule (SSL off when the `Host` header contained `dev.`, `local.`, or `.test`) is gone — the client controls that header.
+- Behind a TLS-terminating proxy, `is_ssl()` needs `$_SERVER['HTTPS'] = 'on'` set from `X-Forwarded-Proto` in `wp-config.php` (see [`../../stella-server/wordpress-staging.md`](../../stella-server/wordpress-staging.md)).
+
+### IP allowlist
+
+`config.php` → `ip_whitelist` (code in the plugin repo, not a WP setting — changing it means a plugin release):
+
+| IP | Who |
+|---|---|
+| `2.31.42.13` | Atlas production (`atlas.foxcraft.digital`, Hetzner CX33 `atlas`) |
+| `95.217.144.93` | Atlas dev instance on Stella (`atlas.dev`). Note: anything else running on Stella shares this IP |
+
+`23.88.90.12` (managed host) was **removed**. Allowlist the Atlas host, never an operator laptop.
+
+### How the client IP is determined
+
+`atlas_client_ip()`:
+
+1. If `REMOTE_ADDR` is **not** in `config.php` → `trusted_proxies`, the client IP is `REMOTE_ADDR`.
+2. If `REMOTE_ADDR` **is** a trusted proxy, the client IP is the **rightmost** entry of `X-Forwarded-For` (the one the proxy itself appended). Entries to the left are client-supplied and ignored. If the header is missing or that entry is not a valid IP, the client IP is empty → `401`.
+
+`trusted_proxies` today: `172.20.0.1` (Docker `edge` gateway on Stella — Caddy → WordPress). This used to be in `ip_whitelist`, which let **every** request routed through Caddy pass the IP check. It now only marks Caddy as trusted to report the real IP.
+
+Requirements for this to work:
+
+- Caddy's `reverse_proxy` must send `X-Forwarded-For` (it does by default). If it doesn't, every request — Atlas's included — gets `401`.
+- Atlas must reach the site from its **public** IP. Atlas dev on Stella calling a site that is also on Stella can hairpin through Caddy with a Docker-internal source address in `X-Forwarded-For`, which is not allowlisted → `401`. Test `generate-token` from Atlas dev once after deploying.
+- IPv6: neither Atlas IP has an IPv6 entry. If Atlas ever connects over IPv6 it fails closed (`401`). Force IPv4 in the Atlas HTTP client if that happens.
+
+---
+
+## Secret key lifecycle
+
+| Event | What happens on the site | What Atlas does |
+|---|---|---|
+| Plugin activated (fresh install) | **No secret exists.** Every REST call → `401` | Nothing until the operator generates one |
+| Operator clicks **Generate** | New 32-char secret; the plugin stores `sha256(secret)` (`atlas_secret_hash`) + last 4 chars (`atlas_secret_hint`). The full key is shown in the page **once**, with a Copy button and a warning | Operator pastes it into Atlas → WP Sites → site |
+| Operator leaves / reloads the page | Key is gone from WP for good. WP shows `****…abcd` only | — |
+| Operator clicks **Regenerate** | Old key stops working **immediately**. New key shown once | Operator updates Atlas. Until then all calls `401` |
+| Existing site upgrades to this plugin version | On first page load the old plaintext `atlas_secret_key` is hashed into `atlas_secret_hash` and **deleted**. The key Atlas already has keeps working | Nothing — but nobody can read the key from WP any more. If Atlas lost it, regenerate |
+
+There is no way to fetch the secret from the site. Atlas is the only place it exists in plaintext after the copy.
 
 ---
 
@@ -80,11 +169,14 @@ Atlas today maps plugin `403` → “IP not allowlisted”. The current plugin r
 On the WordPress site
 
 1. Install / activate `atlas-connect`.
-2. Copy the **Secret Key** into Atlas.
-3. Put Atlas’s outbound IP in `config.php` → `ip_whitelist`.
-4. Put Atlas’s X25519 **public** key hex in `config.php` → `backup.public_key`.
-5. PHP `sodium` must be enabled (backup start → `500` otherwise).
-6. REST allowlists must keep `atlas-connect` (some hosts strip unknown namespaces → `404 rest_no_route`).
+2. Settings → Atlas Connect → Connection → **Generate**. Copy the key **now** into Atlas.
+3. Pick the **Auto-login Username** (administrators only in the dropdown) and **Save**. Used when Atlas omits `user`.
+4. Make sure Atlas's IP is in `config.php` → `ip_whitelist` (already true for `2.31.42.13` and `95.217.144.93` in the shipped config).
+5. `config.php` → `backup.public_key` holds Atlas's X25519 **public** key hex (shipped in the plugin).
+6. PHP `sodium` must be enabled (backup start → `500` otherwise).
+7. REST allowlists must keep `atlas-connect` (some hosts strip unknown namespaces → `404 rest_no_route`).
+8. Plain-HTTP dev site? Set `WP_ENVIRONMENT_TYPE` to `local` or `development`, or untick **Require SSL**.
+9. Behind Caddy on Stella: make sure Caddy sends `X-Forwarded-For` and `X-Forwarded-Proto`.
 
 In Atlas
 
@@ -96,16 +188,46 @@ No S3 setup is done in WordPress.
 
 ---
 
-## Atlas Laravel work still to do
+## Atlas work still to do
 
-The plugin contract is live. Atlas still needs:
+### Required by the 2026-10-23 plugin hardening
+
+These break against the new plugin until Atlas is updated.
+
+| # | Area | Change in Atlas | Why |
+|---|---|---|---|
+| 1 | Backup status | `GET /backup/status/{job_id}?secret=…` → **`POST /backup/status/{job_id}`** with JSON `{ "secret": "…" }` | `GET` routes were removed (`404 rest_no_route`). Secret no longer accepted in the URL |
+| 2 | Scan status | `GET /security/scan/status/{job_id}?secret=…` → **`POST /security/scan/status/{job_id}`** with JSON `{ "secret": "…" }` | Same |
+| 3 | Every call | Never put `secret` in the query string. Always JSON body, `Content-Type: application/json` | Query-string secret is ignored → `401` |
+| 4 | Error parsing | Read `error`, fall back to `message` (`data.error ?? data.message`). `401` bodies are WP's `{ code, message, data }` | Auth failures have no `error` key |
+| 5 | S3 vault validation | In Atlas Settings, reject any bucket other than `atlas-wp-sites-backups` and any endpoint other than `https://{fsn1,nbg1,hel1}.your-objectstorage.com` | The site now refuses them with `400` on start, chunk, and cancel. Fail fast in Atlas instead |
+| 6 | Login HTTP mapping | Add plugin **`403`** → Atlas `403` “WP user is not an administrator on this site”. Plugin IP failures are `401`, not `403` | New check in `generate-token` |
+| 7 | Login UI | Tell the operator the link only works from the **office network** (`194.126.177.181`). A `403` page “Login link expired or invalid.” from another network is expected | Browser step is now IP-locked |
+| 8 | Site onboarding UI | Copy: “In WP → Settings → Atlas Connect click **Generate**, copy the key — it is shown only once.” Remove any mention of copying an existing key later | Secret is hash-only on the site |
+| 9 | `wp_user` field | Hint: “must be an administrator”. Keep sending it | Non-admins → `403` |
+| 10 | Outbound IP | Make sure Atlas prod calls sites from `2.31.42.13` and Atlas dev from `95.217.144.93` over **IPv4** | Only these are allowlisted |
+
+### Still open from before
 
 | Area | Today | Implement |
 |---|---|---|
-| Login | `POST /api/wp-sites/{id}/login` → plugin `generate-token` | Switch path from `dl-connect/v1` to **`atlas-connect/v1`**. Always send `user`. Treat plugin `401` as auth (incl. IP) |
-| Backup | Implemented: `WpSiteBackupDriver` + `RunWpSiteBackupJob`; Settings vault; WP Sites start / progress / history / explorer | Keep in line with [`backups.md`](backups.md) |
-| Infection scan | Plugin ready. Atlas has no driver, store, or UI yet | Implement [`security-scan.md`](security-scan.md): daily job, chunk loop, persist inventory + report, allowlist, verdict |
-| WP Sites UI | Secret + `wp_user`; backup panel | Scan history + last verdict + allowlist action |
+| Login | `POST /api/wp-sites/{id}/login` → plugin `generate-token` | Path is **`atlas-connect/v1`** (not `dl-connect/v1`). Send `user`. Map `401` (auth incl. IP), `403` (not admin), `404` (no such user) |
+| Backup | Implemented: `WpSiteBackupDriver` + `RunWpSiteBackupJob`; Settings vault; WP Sites start / progress / history / explorer | Apply rows 1, 3–5 above. Keep in line with [`backups.md`](backups.md) |
+| Infection scan | Plugin ready. Atlas has no driver, store, or UI yet | Implement [`security-scan.md`](security-scan.md): daily job, chunk loop, persist inventory + report, allowlist, verdict. Use `POST` status from the start |
+| WP Sites UI | Secret + `wp_user`; backup panel | Scan history + last verdict + allowlist action. Rows 7–9 above |
+
+---
+
+## Plugin internals (not required to implement Atlas)
+
+| Thing | Where |
+|---|---|
+| Auth | `authentication.php` → `atlas_secret_authentication()`, `atlas_client_ip()`, `atlas_store_secret()` |
+| IP lists, trusted proxies, S3 pins, scratch dir | `config.php` (`ip_whitelist`, `trusted_proxies`, `autologin_ip_whitelist`, `backup.s3_bucket`, `backup.s3_endpoint_hosts`, `scratch_dir`) |
+| Secret storage | Options `atlas_secret_hash` (sha256 hex) + `atlas_secret_hint` (last 4 chars). No plaintext option. Old `atlas_secret_key` is migrated and deleted |
+| Scratch files | `atlas_scratch_dir()` in `lib/functions.php`. Private `0700` dir under `sys_get_temp_dir()/atlas-connect-{md5(ABSPATH)[0:12]}/`. Fallback when that is not writable (e.g. `open_basedir`): `uploads/atlas-{backup,scan}-tmp-{24 random chars}/` with a deny-all `.htaccess`. The old fixed `uploads/atlas-backup-tmp/` and `uploads/atlas-scan-tmp/` are deleted on upgrade |
+| Upgrade hook | `plugins_loaded`, when `atlas_db_version` ≠ `1.2`: hash the secret, delete legacy scratch dirs, run `dbDelta` |
+| Direct file access | Every PHP file starts with `defined( 'ABSPATH' ) \|\| exit;` |
 
 ---
 

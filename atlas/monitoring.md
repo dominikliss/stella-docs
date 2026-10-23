@@ -271,7 +271,7 @@ Alert email is sent to `brevo_alert_email` (Settings → Email).
 | `POST` | `/api/wp-sites` | Register a new site |
 | `PATCH` | `/api/wp-sites/{id}` | Update site config |
 | `DELETE` | `/api/wp-sites/{id}` | Remove a site |
-| `POST` | `/api/wp-sites/{id}/login` | Generate WP auto-login URL (requires `secret_key` + `wp_user`) |
+| `POST` | `/api/wp-sites/{id}/login` | Generate WP auto-login URL (requires `secret_key`; `wp_user` must be a WP administrator). Link opens only from `194.126.177.181`. See [`atlas-connect/login.md`](atlas-connect/login.md) |
 | `POST` | `/api/wp-sites/{id}/refresh` | Trigger an immediate uptime check for one site |
 
 ---

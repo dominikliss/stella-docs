@@ -9,7 +9,9 @@ Index and vault fields: [`README.md`](README.md). Login: [`login.md`](login.md).
 ## Policy
 
 - Only Atlas can start a backup. WP admin is history + log retention.
+- Every route is **`POST`** with a JSON body, including status. `secret` is never read from the query string.
 - Send S3 credentials on **start, chunk, and cancel**. The plugin uses them for that request and does not persist them.
+- The S3 destination is **pinned** on the site: bucket `atlas-wp-sites-backups`, Hetzner Object Storage over HTTPS. See [S3 destination is pinned](#s3-destination-is-pinned).
 - One running job per site. A second start is `409` until the first is `complete`, `error`, or `cancelled`, or the job TTL expires (default 24h).
 - Drive `/backup/chunk` **sequentially**. Do not parallelize the same `job_id`.
 - HTTP client timeout: **at least 60 seconds** per chunk (the site aims for ~25s of work).
@@ -27,7 +29,7 @@ Content-Type: application/json
     "backup_type": "full",
     "s3": {
         "endpoint": "https://fsn1.your-objectstorage.com",
-        "bucket": "atlas-backups",
+        "bucket": "atlas-wp-sites-backups",
         "region": "fsn1",
         "access_key": "{s3_access_key}",
         "secret_key": "{s3_secret_key}"
@@ -37,17 +39,46 @@ Content-Type: application/json
 
 | Field | Required | Notes |
 |---|---|---|
-| `secret` | yes | Site secret |
+| `secret` | yes | Site secret. JSON body only |
 | `backup_type` | no | `full` (default), `db`, or `files`. Anything else becomes `full` |
-| `s3.endpoint` | yes | `https://` is prepended if missing |
-| `s3.bucket` | yes | |
-| `s3.region` | no | Default `fsn1` |
-| `s3.access_key` | yes | |
-| `s3.secret_key` | yes | |
+| `s3.endpoint` | yes | Must resolve to `https://` + an allowed host (see below). `https://` is prepended if no scheme is given; `http://` is **rejected** |
+| `s3.bucket` | yes | Must be exactly `atlas-wp-sites-backups` (case-sensitive) |
+| `s3.region` | no | Default `fsn1`. Used for SigV4 signing only — keep it matching the endpoint host |
+| `s3.access_key` | yes | Trimmed only, never otherwise altered |
+| `s3.secret_key` | yes | Trimmed only, never otherwise altered |
 
 Flat aliases also work: `s3_endpoint`, `s3_bucket`, `s3_region`, `s3_access_key`, `s3_secret_key`. Prefer the nested `s3` object.
 
 S3 fields are read from the **JSON/form body only**. Query-string `s3_*` is ignored.
+
+### S3 destination is pinned
+
+Atlas chooses the endpoint per request, so without a pin anyone holding a site secret (from an Atlas IP) could make the site send requests — including its files, encrypted, and the plaintext `manifest.json` — to any host, including internal ones (Docker network, cloud metadata). The plugin therefore validates the S3 block on **start, chunk, and cancel**, before any work:
+
+| Check | Rule | Failure |
+|---|---|---|
+| Scheme | Endpoint must start with `https://` (after `https://` is prepended to a bare host) | `400` `{ "error": "S3 endpoint is not allowed." }` |
+| Host | Host (lower-cased, from `wp_parse_url`) must be one of `config.php` → `backup.s3_endpoint_hosts`: `fsn1.your-objectstorage.com`, `nbg1.your-objectstorage.com`, `hel1.your-objectstorage.com` | `400` `{ "error": "S3 endpoint is not allowed." }` |
+| Bucket | Must equal `config.php` → `backup.s3_bucket`: `atlas-wp-sites-backups` | `400` `{ "error": "S3 bucket is not allowed." }` |
+| Normalisation | The endpoint is rebuilt as `https://{host}` — any path, port, query, or `user@` part Atlas sends is dropped | — |
+
+Examples:
+
+| `s3.endpoint` sent | Result |
+|---|---|
+| `https://fsn1.your-objectstorage.com` | OK |
+| `fsn1.your-objectstorage.com` | OK (`https://` prepended) |
+| `https://FSN1.your-objectstorage.com/` | OK (host lower-cased, trailing slash dropped) |
+| `https://fsn1.your-objectstorage.com:8443/x` | OK, but sent to `https://fsn1.your-objectstorage.com` |
+| `http://fsn1.your-objectstorage.com` | `400` endpoint not allowed |
+| `https://s3.eu-central-1.amazonaws.com` | `400` endpoint not allowed |
+| `https://fsn1.your-objectstorage.com@evil.example` | `400` (host is `evil.example`) |
+
+Checks run in this order: required fields (`endpoint`, `bucket`, `access_key`, `secret_key` all present → else `400` `S3 credentials are required (endpoint, bucket, access_key, secret_key).`), then endpoint, then bucket.
+
+Changing the bucket or adding a region means editing `config.php` in the plugin and releasing. Atlas should validate the same rules in its Settings vault so a bad value fails there, not on every site.
+
+If the S3 settings in Atlas change **while a job is running** and no longer pass these checks, `chunk` and `cancel` both return `400` and the job stays `running` until its TTL (24h) expires and the daily cron marks it `error`. Validate before saving.
 
 ---
 
@@ -79,12 +110,17 @@ Content-Type: application/json
 Does **not** process a chunk and does **not** need S3 credentials.
 
 ```http
-GET /wp-json/atlas-connect/v1/backup/status/{job_id}?secret={atlas_secret_key}
+POST /wp-json/atlas-connect/v1/backup/status/{job_id}
+Content-Type: application/json
+
+{
+    "secret": "{atlas_secret_key}"
+}
 ```
 
-`job_id` is `[a-zA-Z0-9]+` (12 random chars).
+`job_id` stays in the URL path (`[a-zA-Z0-9]+`, 12 random chars) — it is not a secret. Response is the [job payload](#job-payload-start--chunk--status).
 
-`?secret=` will appear in the site’s access logs. Do not put S3 keys on this URL.
+**Changed 2026-10-23:** this used to be `GET …/backup/status/{job_id}?secret=…`. `GET` now returns `404 rest_no_route`, and a query-string secret is ignored (`401`). The secret no longer appears in access logs.
 
 ---
 
@@ -138,15 +174,20 @@ Never includes S3 keys, the site secret, or the backup data key.
 
 ## HTTP errors
 
-| Status | When |
-|---|---|
-| 401 | Auth failed (SSL, IP, or secret) |
-| 400 | Missing `s3` / missing `job_id` / S3 not configured in the request / job not running (cancel) |
-| 409 | `{ "error": "A backup is already running." }` |
-| 404 | Unknown `job_id` |
-| 500 | Sodium missing or `backup.public_key` invalid on the site |
+| Status | Body | When |
+|---|---|---|
+| 401 | `{ "code": "rest_forbidden", "message": "Sorry, you are not allowed to do that.", "data": { "status": 401 } }` | Auth failed (SSL, IP, or secret — see [`README.md`](README.md#authentication-every-plugin-route)) |
+| 400 | `{ "error": "S3 credentials are required (endpoint, bucket, access_key, secret_key)." }` | Missing S3 field (start / chunk / cancel) |
+| 400 | `{ "error": "S3 endpoint is not allowed." }` | Endpoint not `https://` or host not allowed |
+| 400 | `{ "error": "S3 bucket is not allowed." }` | Bucket is not `atlas-wp-sites-backups` |
+| 400 | `{ "error": "Missing job_id" }` | chunk / cancel without `job_id` |
+| 400 | `{ "error": "Job is not running." }` | cancel on a finished job |
+| 409 | `{ "error": "A backup is already running." }` | start while another job runs |
+| 404 | `{ "error": "Job not found" }` | Unknown or expired `job_id` |
+| 404 | `{ "code": "rest_no_route", … }` | Sent as `GET` (e.g. old status call), or plugin inactive |
+| 500 | `{ "error": "The PHP sodium extension is required for encrypted backups." }` / `{ "error": "Backup public key is missing or invalid." }` | Site misconfigured |
 
-Error body is always `{ "error": "…" }`.
+Route errors are `{ "error": "…" }`. Auth and routing errors are WordPress's `{ "code", "message", "data" }`. Parse with `data.error ?? data.message`.
 
 ---
 
@@ -381,8 +422,28 @@ async function atlasPost(siteUrl: string, path: string, body: object): Promise<a
     signal: AbortSignal.timeout(90_000),
   });
   const data = await res.json().catch(() => ({}));
-  if (!res.ok) throw new Error(data.error ?? `HTTP ${res.status}`);
+  // Route errors use `error`; auth (401) and routing (404 rest_no_route) errors use WP's `message`.
+  if (!res.ok) throw new Error(data.error ?? data.message ?? `HTTP ${res.status}`);
   return data;
+}
+
+// Atlas-side guard: the site rejects anything else with 400.
+const ALLOWED_S3_HOSTS = ['fsn1.your-objectstorage.com', 'nbg1.your-objectstorage.com', 'hel1.your-objectstorage.com'];
+const ALLOWED_S3_BUCKET = 'atlas-wp-sites-backups';
+
+export function assertS3Allowed(s3: S3Creds): void {
+  const url = new URL(/^https?:\/\//i.test(s3.endpoint) ? s3.endpoint : `https://${s3.endpoint}`);
+  if (url.protocol !== 'https:' || !ALLOWED_S3_HOSTS.includes(url.hostname.toLowerCase())) {
+    throw new Error('S3 endpoint must be https:// on Hetzner Object Storage (fsn1/nbg1/hel1).');
+  }
+  if (s3.bucket !== ALLOWED_S3_BUCKET) {
+    throw new Error(`S3 bucket must be ${ALLOWED_S3_BUCKET}.`);
+  }
+}
+
+export async function backupStatus(siteUrl: string, secret: string, jobId: string): Promise<Job> {
+  // POST, secret in the body — GET with ?secret= is gone.
+  return atlasPost(siteUrl, `/backup/status/${encodeURIComponent(jobId)}`, { secret });
 }
 
 export async function runBackup(
@@ -391,6 +452,7 @@ export async function runBackup(
   s3: S3Creds,
   backupType: 'full' | 'db' | 'files' = 'full',
 ): Promise<Job> {
+  assertS3Allowed(s3);
   let job: Job = await atlasPost(siteUrl, '/backup/start', {
     secret,
     backup_type: backupType,
@@ -415,11 +477,22 @@ On `complete`, list/get `{prefix}manifest.json` from the bucket with **Atlas’s
 
 ## Plugin internals (not required to implement Atlas)
 
-`config.php` modules: `autologin`, `backup`, and `security` on; `email` off.
+`config.php` modules: `autologin`, `backup`, and `security` on. The old `email` module was removed.
 
-Job state: option `atlas_backup_job_{job_id}` (not autoloaded). Active id: `atlas_backup_active_job`. TTL default 86400s. Daily cron `atlas_cleanup_cron` drops expired jobs and scratch files under `uploads/atlas-backup-tmp/` (file list, inventory queue, object catalog, pack index, file fingerprints, DB part). Cron cannot abort S3 multipart (it has no credentials).
+Job state: option `atlas_backup_job_{job_id}` (not autoloaded). Active id: `atlas_backup_active_job`. TTL default 86400s. Daily cron `atlas_cleanup_cron` drops expired jobs and scratch files. Cron cannot abort S3 multipart (it has no credentials).
 
-WP admin: Connection (secret, SSL, default autologin user) and Backups (max logs setting + history from `{prefix}atlas_backup_log`, last 100 runs, AJAX refresh via the generic table component).
+**Scratch files** (file list, inventory queue, object catalog, pack index, file fingerprints, and the **unencrypted** gzip DB part before it is encrypted) live in `atlas_scratch_dir( 'atlas-backup-tmp' )`:
+
+1. `config.php` → `scratch_dir` if set, else `sys_get_temp_dir()/atlas-connect-{md5(ABSPATH)[0:12]}/atlas-backup-tmp/`, created `0700`. Outside the web root, so the DB dump cannot be downloaded even when Caddy/nginx serve uploads directly (`.htaccess` does nothing there).
+2. Only if that is not writable (e.g. `open_basedir`): `uploads/atlas-backup-tmp-{24 random chars}/` with a deny-all `.htaccess` + `index.php`. The random suffix (`atlas_scratch_suffix` option) is what protects it on non-Apache servers.
+
+The old fixed `uploads/atlas-backup-tmp/` (and `uploads/atlas-scan-tmp/`) is deleted on upgrade to DB version `1.2`. A backup that was running during the upgrade loses its scratch files and ends as `error` — start a new one. The inventory skips `atlas-backup-tmp*` and `atlas-scan-tmp*` under uploads.
+
+The per-job data key (hex) sits in the job option while the job runs and is wiped on `complete` / `error` / `cancelled`. Someone with database read access during that window could decrypt that one backup. Accepted trade-off of chunked jobs.
+
+S3 pin: `S3UploadService::sanitize_credentials()` with `config.php` → `backup.s3_bucket` + `backup.s3_endpoint_hosts`.
+
+WP admin: Connection (secret — hash only, shown once on Generate; SSL; Auto-login Username) and Backups (max logs setting + history from `{prefix}atlas_backup_log`, last 100 runs, AJAX refresh via the generic table component).
 
 Public key on this site: `config.php` → `backup.public_key`. Must match Atlas’s private key.
 

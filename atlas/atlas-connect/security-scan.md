@@ -98,12 +98,19 @@ On `phase=hash` chunks, persist `inventory_delta` immediately. The final `report
 Does **not** process a chunk.
 
 ```http
-GET /wp-json/atlas-connect/v1/security/scan/status/{job_id}?secret={atlas_secret_key}
+POST /wp-json/atlas-connect/v1/security/scan/status/{job_id}
+Content-Type: application/json
+
+{
+    "secret": "{atlas_secret_key}"
+}
 ```
 
-`job_id` is `[a-zA-Z0-9]+` (12 random chars).
+`job_id` stays in the URL path (`[a-zA-Z0-9]+`, 12 random chars) — it is not a secret.
 
-`?secret=` will appear in the site’s access logs. Prefer POST chunk for the driver. After `complete`, this GET still returns `report` until the job TTL (24h). There is no cancel route.
+After `complete`, status still returns `report` until the job TTL (24h). It never returns `inventory_delta` (only hash chunks do). There is no cancel route.
+
+**Changed 2026-10-23:** this used to be `GET …/security/scan/status/{job_id}?secret=…`. `GET` now returns `404 rest_no_route`, and a query-string secret is ignored (`401`). Build the Atlas driver against `POST` from the start.
 
 ---
 
@@ -150,14 +157,15 @@ Never includes the site secret, the allowlist, or file contents.
 
 ## HTTP errors
 
-| Status | When |
-|---|---|
-| 401 | Auth failed (SSL, IP, or secret) |
-| 400 | Missing `job_id` |
-| 409 | `{ "error": "A scan is already running." }` |
-| 404 | Unknown `job_id` |
+| Status | Body | When |
+|---|---|---|
+| 401 | `{ "code": "rest_forbidden", "message": "Sorry, you are not allowed to do that.", "data": { "status": 401 } }` | Auth failed (SSL, IP, or secret — see [`README.md`](README.md#authentication-every-plugin-route)) |
+| 400 | `{ "error": "Missing job_id" }` | chunk without `job_id` |
+| 409 | `{ "error": "A scan is already running." }` | start while another scan runs |
+| 404 | `{ "error": "Job not found" }` | Unknown or expired `job_id` |
+| 404 | `{ "code": "rest_no_route", … }` | Sent as `GET` (e.g. old status call), or the `security` module / plugin is off |
 
-Error body is always `{ "error": "…" }`.
+Route errors are `{ "error": "…" }`. Auth and routing errors are WordPress's `{ "code", "message", "data" }`. Parse with `data.error ?? data.message`.
 
 If WordPress.org checksums cannot be fetched, the job ends as `error` (do **not** treat the site as clean).
 
@@ -172,7 +180,7 @@ If WordPress.org checksums cannot be fetched, the job ends as `error` (do **not*
 | `analyze` | Fetch `https://api.wordpress.org/core/checksums/1.0/?version={wp}&locale={locale}`, build findings, collect persistence, apply allowlist, wipe scratch + allowlist |
 | `done` | `status=complete` |
 
-Skipped directories: `.git`, `.svn`, `node_modules`, `atlas-backup-tmp`, `atlas-scan-tmp`. Symlinks are not followed. Files over 32 MB are not hashed.
+Skipped directories: `.git`, `.svn`, `node_modules` (exact name), plus any directory whose name **starts with** `atlas-backup-tmp`, `atlas-scan-tmp`, `.atlas-…`, or `.dlc-…` (the plugin's own scratch, including the random-suffix fallback dirs in uploads). Symlinks are not followed. Files over 32 MB are not hashed.
 
 ---
 
@@ -307,8 +315,14 @@ async function atlasPost(siteUrl: string, path: string, body: object): Promise<S
     signal: AbortSignal.timeout(90_000),
   });
   const data = await res.json().catch(() => ({}));
-  if (!res.ok) throw new Error(data.error ?? `HTTP ${res.status}`);
+  // Route errors use `error`; auth (401) and routing (404 rest_no_route) errors use WP's `message`.
+  if (!res.ok) throw new Error(data.error ?? data.message ?? `HTTP ${res.status}`);
   return data as ScanJob;
+}
+
+export async function scanStatus(siteUrl: string, secret: string, jobId: string): Promise<ScanJob> {
+  // POST, secret in the body — GET with ?secret= is gone.
+  return atlasPost(siteUrl, `/security/scan/status/${encodeURIComponent(jobId)}`, { secret });
 }
 
 export async function runScan(
@@ -352,9 +366,9 @@ Daily: same pattern as `wp-sites:drive-backups` — one scheduled command that s
 
 `config.php` → `modules.security` is **on**. Routes register only when that flag is true.
 
-Auth is `atlas_secret_authentication()` (SSL + `ip_whitelist` + `secret`). Same `401` as login/backup.
+Auth is `atlas_secret_authentication()`: SSL → client IP in `ip_whitelist` (`2.31.42.13`, `95.217.144.93`; `X-Forwarded-For` trusted only from `trusted_proxies`) → `secret` from the JSON body, compared as SHA-256. Same `401` as login/backup. Details: [`README.md`](README.md#authentication-every-plugin-route).
 
-Job state: option `atlas_scan_job_{job_id}` (not autoloaded). Active id: `atlas_scan_active_job`. TTL default 86400s. Scratch under `uploads/atlas-scan-tmp/` (file list, inventory queue, hashes). Daily `atlas_cleanup_cron` drops expired jobs and scratch.
+Job state: option `atlas_scan_job_{job_id}` (not autoloaded). Active id: `atlas_scan_active_job`. TTL default 86400s. Scratch (file list, inventory queue, hashes) in `atlas_scratch_dir( 'atlas-scan-tmp' )` — a private `0700` dir under `sys_get_temp_dir()`, or `uploads/atlas-scan-tmp-{random}/` as a fallback (see [`backups.md`](backups.md#plugin-internals-not-required-to-implement-atlas)). The old fixed `uploads/atlas-scan-tmp/` is deleted on upgrade. Daily `atlas_cleanup_cron` drops expired jobs and scratch.
 
 Core compare uses WordPress.org **MD5** checksums. Inventory / allowlist / baseline use **SHA-256**.
 
