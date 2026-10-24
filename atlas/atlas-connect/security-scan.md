@@ -250,7 +250,7 @@ Finding objects are `{ path, sha256, mtime, size }` only. No snippets, no file b
 
 **Global allowlist.** Paths listed in `config.php` → `security.global_allowlist` are never findings: omitted from `core.mismatched`, `core.unexpected`, `php_in_uploads`, `dropins`, `mu_plugins`, and `inventory_delta`. Path-only — no hash. A trailing slash matches that directory and everything under it. `*` is a glob (including slashes). Today's entries include `wp-content/plugins/atlas-connect/` (this plugin), `wp-content/mu-plugins/*ionos*`, `wp-content/mu-plugins/wp-toolkit.php`, `wp-content/plugins/ionos*`, `*htaccess.avada-bak*` / `*htaccess*.bak*` (`.htaccess` backups), `wp-content/uploads/fusion-builder*`, `wp-content/uploads/smush/`, `wp-content/uploads/cache/wpml/twig/`, and `wp-content/uploads/backwpup/`. A hacked replacement at those paths is **not** detected.
 
-**Ignored changes.** Paths listed in `config.php` → `security.ignore_changes` are real PHP that plugins regenerate, so they are left out of `inventory_delta` and their hash changes never alert. Drop-ins among them are still listed under `dropins`, so a newly appearing one is still visible. Today's entry: `wp-content/languages/` (core/plugin/theme `.l10n.php` rewritten on translation updates). Use `global_allowlist` when the file should also disappear from `dropins`.
+**Ignored changes.** Paths listed in `config.php` → `security.ignore_changes` are real PHP that plugins regenerate, so they are left out of `inventory_delta` and their hash changes never alert. Drop-ins among them are still listed under `dropins`, so a newly appearing one is still visible. Today's entries: `wp-content/languages/` (core/plugin/theme `.l10n.php` rewritten on translation updates) and `wp-config.php` (plugins and hosts rewrite defines; the file stays in `special_files` so it is still collected). Use `global_allowlist` when the file should also disappear from `dropins`.
 
 ---
 
@@ -278,7 +278,9 @@ Diff against the last trusted inventory **and** the last persistence snapshot:
 |---|---|
 | New PHP path, or SHA-256 change on a path that used to match official core / yesterday | **infected** |
 | New administrator | **infected** |
-| `special_files` hash change for `wp-config.php` / `.htaccess` / `.user.ini` | **infected** |
+| `special_files` hash change for `.htaccess` / `.user.ini` | **infected** |
+| `special_files` hash change for `wp-config.php` | do **not** score (plugins/hosts rewrite it; still report the file) |
+| `special_files` `wp-config.php` appeared or removed | **infected** |
 | `urls.siteurl` / `home` changed | **infected** |
 | New drop-in or mu-plugin | **suspicious** |
 | New cron hook | **suspicious** |
@@ -388,7 +390,9 @@ Later scans, against the trusted baseline’s inventory and report:
 | `file_added` (PHP-like) / `file_changed` | infected |
 | `file_added` (non-PHP inventory row, e.g. a sub-directory `.htaccess`) | suspicious |
 | `admin_added` (new `id` + `login`) | infected |
-| `special_file_changed` — `wp-config.php`, `.htaccess`, `.user.ini` (changed, appeared, removed) | infected |
+| `special_file_changed` — `.htaccess`, `.user.ini` (changed, appeared, removed) | infected |
+| `special_file_changed` — `wp-config.php` appeared or removed | infected |
+| `special_file_changed` — `wp-config.php` hash change only | **not a finding** (Wordfence, WP Rocket, AIOS, hosts rewrite it). Still store `special_files.wp-config.php` so an operator can inspect. |
 | `special_file_changed` — `web.config` | suspicious |
 | `url_changed` (`home` / `siteurl`, trailing slash ignored) | infected |
 | `dropin_added`, `mu_plugin_added`, `cron_added` | suspicious |
