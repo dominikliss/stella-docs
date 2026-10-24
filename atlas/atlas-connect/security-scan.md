@@ -237,7 +237,7 @@ Skipped directories: `.git`, `.svn`, `node_modules` (exact name), plus any direc
 | `admins` | Administrators: `id`, `login`, `registered`. No emails |
 | `dropins` | Present drop-in filenames in `wp-content/`. Globally allowlisted names omitted |
 | `mu_plugins` | Must-use plugin basenames. Globally allowlisted names omitted |
-| `cron` | Unique WP-Cron hook names + schedule |
+| `cron` | Unique WP-Cron hook names + schedule. WordPress core hooks (`wp_version_check`, `upgrader_scheduled_cleanup`, …) omitted |
 | `urls` | `home_url` and `siteurl` option |
 
 Finding objects are `{ path, sha256, mtime, size }` only. No snippets, no file bodies.
