@@ -115,7 +115,7 @@ Login / refresh / logout skip token middleware (still IP-filtered) and proxy to 
 | Mechanism | Transport | Used for |
 |-----------|-----------|----------|
 | systemd `atlas-queue.service` | `queue:work database --queue=deployments --sleep=3 --timeout=7200 --max-time=3500` | `DeployRunJob`, `ImportTrackingTimeJob`, `PushProjectToTrelloJob` |
-| Laravel scheduler (`dispatchSync`) | In-process during `schedule:run` | `CheckStellaHealth`, `CheckAtlasHealth`, `CheckWpSiteUptime`, `wp-sites:drive-backups`, `wp-sites:drive-scans`. Daily `wp-sites:run-daily-scans` at 04:00 and `wp-sites:run-daily-backups` at 05:00 Vienna |
+| Laravel scheduler (`dispatchSync`) | In-process during `schedule:run` | `CheckStellaHealth`, `CheckAtlasHealth`, `CheckWpSiteUptime`, `wp-sites:drive-backups`, `wp-sites:drive-scans`. `wp-sites:run-daily-scans` at 04:00 and 16:00, daily `wp-sites:run-daily-backups` at 05:00 Vienna |
 | Laravel scheduler (command) | Hourly `projects:sync-tracking-time-open` | Open-task TrackingTime sync; queues Trello push when the project is mapped **and** Atlas content changed since the last successful push |
 | Laravel scheduler (command) | Hourly `notifications:check-week-hours` | Fire weekly hour-budget notifications for watched projects that crossed a threshold |
 | Laravel scheduler (command) | Daily 07:00 `Europe/Vienna` `notifications:check-missing-comments` | Refresh tasks with uncommented time since 2026-10-19 (including done), then notify |

@@ -144,7 +144,7 @@ Both health loops run via `php artisan schedule:run` (cron every minute). They u
 | hourly | `projects:sync-tracking-time-open` | Open-task TrackingTime sync; queues a Trello push for mapped projects only when Atlas content changed |
 | hourly | `notifications:check-week-hours` | Fire weekly hour-budget notifications when a watched project crosses a threshold |
 | daily 07:00 Europe/Vienna | `notifications:check-missing-comments` | Refresh tasks with uncommented time since 2026-10-19 (including done), then notify |
-| daily 04:00 Europe/Vienna | `wp-sites:run-daily-scans` | Start an Atlas Connect infection scan on every site with a secret key; prune old scans ([`atlas-connect/security-scan.md`](atlas-connect/security-scan.md#atlas-implementation)) |
+| 04:00 + 16:00 Europe/Vienna | `wp-sites:run-daily-scans` | Start an Atlas Connect infection scan on every site with a secret key; prune old scans ([`atlas-connect/security-scan.md`](atlas-connect/security-scan.md#atlas-implementation)) |
 | daily 05:00 Europe/Vienna | `wp-sites:run-daily-backups` | Start a full backup on every site with a secret key; prune old backups |
 | every minute | `wp-sites:drive-backups` | Chunk running backups (50 s budget) when no `backups` queue worker picked them up |
 | every minute | `wp-sites:drive-scans` | Chunk running scans (50 s budget) when no `scans` queue worker picked them up |

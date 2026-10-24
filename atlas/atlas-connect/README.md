@@ -238,7 +238,7 @@ Atlas and the site each track a job's status. They can disagree when a chunk cal
 |---|---|---|
 | Login | `POST /api/wp-sites/{id}/login` → plugin `generate-token` | Path is **`atlas-connect/v1`** (not `dl-connect/v1`). Send `user`. Map `401` (auth incl. IP), `403` (not admin), `404` (no such user) |
 | Backup | Implemented: `WpSiteBackupDriver` + `RunWpSiteBackupJob`; Settings vault; WP Sites start / progress / history / explorer | Apply rows 1, 3–5 above. Keep in line with [`backups.md`](backups.md) |
-| Infection scan | Implemented: `WpSiteScanDriver` + `RunWpSiteScanJob` (`scans` queue), daily `wp-sites:run-daily-scans`, inventory + report + verdict + baseline + allowlist in DB, `wp_site.security_scan` alerts. See [`security-scan.md`](security-scan.md#atlas-implementation) | Apply rows 2–4 above. Keep in line with [`security-scan.md`](security-scan.md) |
+| Infection scan | Implemented: `WpSiteScanDriver` + `RunWpSiteScanJob` (`scans` queue), twice-daily `wp-sites:run-daily-scans`, inventory + report + verdict + baseline + allowlist in DB, `wp_site.security_scan` alerts. See [`security-scan.md`](security-scan.md#atlas-implementation) | Apply rows 2–4 above. Keep in line with [`security-scan.md`](security-scan.md) |
 | WP Sites UI | Secret + `wp_user`; backup panel; security scan panel (start, progress, history, report modal with allowlist + trust baseline); scan badge in the site list | Rows 7–9 above |
 
 ---

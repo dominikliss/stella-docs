@@ -369,7 +369,7 @@ Built in Atlas (Laravel) on the same pattern as backups: `WpSiteScanDriver` + `R
 
 ### Flow
 
-1. **Start** — `POST /api/wp-sites/{id}/scans` (WP Sites → expand a site → Security scan → **Scan now**) or the daily `wp-sites:run-daily-scans` (04:00 `Europe/Vienna`, one hour before backups). Sends the site’s full allowlist. Rejects with `409` while an Atlas scan row for the site is `pending` / `running`. A failed start (401, plugin 409, unreachable) is still saved as an `error` row.
+1. **Start** — `POST /api/wp-sites/{id}/scans` (WP Sites → expand a site → Security scan → **Scan now**) or the scheduled `wp-sites:run-daily-scans` (04:00 and 16:00 `Europe/Vienna`; 04:00 is one hour before backups). Sends the site’s full allowlist. Rejects with `409` while an Atlas scan row for the site is `pending` / `running`. A failed start (401, plugin 409, unreachable) is still saved as an `error` row.
 2. **Drive** — `RunWpSiteScanJob` on the **`scans`** queue (`scripts/queue-backups.sh` now runs `--queue=backups,scans`). Fallback: scheduler `wp-sites:drive-scans` every minute (50 s budget). A `Cache::lock` per scan keeps chunks sequential.
 3. **Inventory** — every `inventory_delta` row is inserted into `wp_site_scan_files` as soon as the chunk returns.
 4. **Chunk errors** — `400` / `401` / `404` fail the scan at once. Other failures (timeouts, 5xx) are retried up to **5** consecutive times; the scan is then flagged `inventory_complete = false` because a lost chunk may have dropped delta rows.
@@ -420,7 +420,7 @@ Notification rule type `wp_site.security_scan` ([`../notifications.md`](../notif
 | `wp_site_scan_allowlist` | `path` + `sha256` + note + who added it, per site |
 | `wp_sites` | `scan_baseline_id`, `last_scan_at`, `last_scan_verdict` (`clean` / `suspicious` / `infected` / `failed`; non-clean sets `has_issues`) |
 
-Keep `ATLAS_SCAN_RETAIN` (default 30) finished scans per site; the baseline is never pruned. Inventory rows are kept for the latest `ATLAS_SCAN_INVENTORY_RETAIN` (default 3) complete scans plus the baseline.
+Keep `ATLAS_SCAN_RETAIN` (default 60, about a month at two scans a day) finished scans per site; the baseline is never pruned. Inventory rows are kept for the latest `ATLAS_SCAN_INVENTORY_RETAIN` (default 3) complete scans plus the baseline.
 
 Every lifecycle step is also written to the Laravel log (`WP scan started` / `chunk failed` / `complete` / `failed` / `trusted as baseline` / allowlist added or removed, `Daily WP scans queued`).
 
