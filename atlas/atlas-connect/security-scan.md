@@ -219,6 +219,17 @@ Skipped directories: `.git`, `.svn`, `node_modules` (exact name), plus any direc
     "cron": [
         { "hook": "wp_version_check", "schedule": "twicedaily" }
     ],
+    "shell_files": {
+        "available": true,
+        "reason": "",
+        "files": {
+            ".bashrc": {
+                "sha256": "…", "size": 3771, "mtime": 1622505600, "ctime": 1748000460, "symlink": false,
+                "indicators": [ { "id": "base64_decode", "line": 1 }, { "id": "defunct", "line": 1 } ]
+            },
+            ".zshrc": null
+        }
+    },
     "urls": {
         "home": "https://client.com/",
         "siteurl": "https://client.com"
@@ -238,19 +249,39 @@ Skipped directories: `.git`, `.svn`, `node_modules` (exact name), plus any direc
 | `dropins` | Present drop-in filenames in `wp-content/`. Globally allowlisted names omitted |
 | `mu_plugins` | Must-use plugin basenames. Globally allowlisted names omitted |
 | `cron` | Unique WP-Cron hook names + schedule. WordPress core hooks (`wp_version_check`, `upgrader_scheduled_cleanup`, …) omitted |
+| `shell_files` | Shell startup files in the PHP user's home directory (see below) |
 | `urls` | `home_url` and `siteurl` option |
 
 Finding objects are `{ path, sha256, mtime, size }` only. No snippets, no file bodies.
 
 **Code-free PHP files are never reported.** A PHP-like file is code-free when it is empty, or contains only `<?php` / `?>` tags, comments, and whitespace (e.g. `<?php // Silence is golden`). Such files are left out of `core.mismatched`, `core.unexpected`, `php_in_uploads`, and `inventory_delta`. Anything else counts as code, including `<?=`, short `<?` tags, a lone `;`, and HTML after a `?>`. Files over 64 KB are always treated as code. If code is later added to one of these files, it shows up as a new PHP path and is flagged as usual.
 
+**Known directory guards are never reported.** A PHP-like file up to 1 KB whose only code is a known guard is treated like a code-free file. Comments, whitespace, and line endings are ignored when matching. Today's list in `ScanFileService::GUARD_CODE` has one entry: the WPForms 404 guard, `header( $_SERVER['SERVER_PROTOCOL'] . ' 404 Not Found' ); header( 'Status: 404 Not Found' );`. Any extra or different statement makes the file count as code.
+
 **Google Search Console verification files** (`google<hex>.html`) are not reported in `core.unexpected` when their content is exactly `google-site-verification: <same file name>` (surrounding whitespace allowed). Any other content, a different name in the body, or a different extension is reported as usual.
 
 **Data files.** Paths listed in `config.php` → `security.data_files` may also start with `<?php __halt_compiler();`. PHP stops at that call, so whatever follows is data and never runs. Such a file is treated as code-free (no size limit) only while nothing but tags, comments, and whitespace come before `__halt_compiler();`. The path alone is never trusted. Today's entry: `wp-content/uploads/aios/firewall-rules/settings.php` (All In One Security firewall settings).
 
-**Global allowlist.** Paths listed in `config.php` → `security.global_allowlist` are never findings: omitted from `core.mismatched`, `core.unexpected`, `php_in_uploads`, `dropins`, `mu_plugins`, and `inventory_delta`. Path-only — no hash. A trailing slash matches that directory and everything under it. `*` is a glob (including slashes). Today's entries include `wp-content/plugins/atlas-connect/` (this plugin), `wp-content/mu-plugins/*ionos*`, `wp-content/mu-plugins/wp-toolkit.php`, `wp-content/plugins/ionos*`, `*htaccess.avada-bak*` / `*htaccess*.bak*` (`.htaccess` backups), `wp-content/uploads/fusion-builder*`, `wp-content/uploads/smush/`, `wp-content/uploads/cache/wpml/twig/`, and `wp-content/uploads/backwpup/`. A hacked replacement at those paths is **not** detected.
+**Global allowlist.** Paths listed in `config.php` → `security.global_allowlist` are never findings: omitted from `core.mismatched`, `core.unexpected`, `php_in_uploads`, `dropins`, `mu_plugins`, and `inventory_delta`. Path-only — no hash. A trailing slash matches that directory and everything under it. `*` is a glob (including slashes). Today's entries include `wp-content/plugins/atlas-connect/` (this plugin), `wp-content/mu-plugins/*ionos*`, `wp-content/mu-plugins/wp-toolkit.php`, `wp-content/plugins/ionos*`, `*htaccess.avada-bak*` / `*htaccess*.bak*` (`.htaccess` backups), `wp-content/uploads/fusion-builder*`, `wp-content/uploads/smush/`, `wp-content/uploads/cache/wpml/twig/`, `wp-content/uploads/backwpup/`, and `wp-content/uploads/wpforms/cache/index.php`. A hacked replacement at those paths is **not** detected.
 
 **Ignored changes.** Paths listed in `config.php` → `security.ignore_changes` are real PHP that plugins regenerate, so they are left out of `inventory_delta` and their hash changes never alert. Drop-ins among them are still listed under `dropins`, so a newly appearing one is still visible. Today's entries: `wp-content/languages/` (core/plugin/theme `.l10n.php` rewritten on translation updates) and `wp-config.php` (plugins and hosts rewrite defines; the file stays in `special_files` so it is still collected). Use `global_allowlist` when the file should also disappear from `dropins`.
+
+### `shell_files`
+
+On shared hosting (e.g. Hetzner Webhosting) PHP runs as the same user as SSH, so a webshell can plant a backdoor in the account's home directory, outside the docroot. A gsocket backdoor, for example, adds a base64 line with a disguising comment to `.bashrc` / `.profile` and resets the mtime to an old date.
+
+The plugin reads the home directory from `posix_getpwuid( posix_geteuid() )`, falling back to `$HOME`. Atlas sends nothing extra. Checked files: `.bashrc`, `.profile`, `.bash_profile`, `.bash_login`, `.bash_logout`, `.bash_aliases`, `.zshrc`, `.zprofile`.
+
+| Field | Meaning |
+|---|---|
+| `available` | `false` when the home directory is unknown or not readable (usually `open_basedir`). Then `files` is empty: **not checked**, not clean |
+| `reason` | `home_not_found` \| `home_not_readable` \| `""` |
+| `files.{name}` | `null` when absent or unreadable. Otherwise `sha256`, `size`, `mtime`, `ctime`, `symlink`, `indicators` |
+| `indicators` | `{ id, line }` per matching line (first 256 KB, max 50 hits). Never the line itself |
+
+Indicator ids: `base64_decode` (`base64 -d` / `--decode`), `eval_decode` (`eval` with `base64` / `xxd` / `openssl` / `gunzip` / `zcat` / `rev`), `download_pipe_sh` (`curl` / `wget` / `fetch` piped into a shell), `exec_rename` (`exec -a`), `gsocket` (`GS_ARGS`, `GS_SECRET`, `GSOCKET*`, `gs-netcat`, `gsocket`), `defunct`, `do_not_remove` (`DO NOT REMOVE THIS LINE`), `dev_random_write` (redirect into `/dev/random` / `/dev/urandom`), `dev_tcp` (`/dev/tcp/…`, `/dev/udp/…`). Comment lines are checked too. The stock Debian `dircolors` / `lesspipe` eval lines match none of them.
+
+mtime can be faked, ctime cannot (without root). A file whose `ctime` is much later than its `mtime` was rewritten and backdated.
 
 ---
 
@@ -266,7 +297,11 @@ Do this in Atlas. The plugin does not return a verdict.
 | `core.unexpected` PHP (or any unexpected file you do not recognize) | **infected** |
 | `core.mismatched` | **infected** (or allowlist a known host patch) |
 | New-looking drop-in / mu-plugin you did not install | **suspicious** |
+| `shell_files.files.*.indicators` non-empty | **infected** |
+| `shell_files` file with `ctime - mtime` > 30 days | **suspicious** (**infected** together with an indicator) |
 | Otherwise | **clean** (no evidence — not a guarantee) |
+
+`shell_files.available = false` is not a finding. Show it in the report as “home directory not checked”.
 
 Store this run’s `inventory_delta` (all hash chunks concatenated) as the trusted baseline **after** a human has reviewed an `infected` / `suspicious` first run, or automatically if the first run is `clean`.
 
@@ -284,7 +319,11 @@ Diff against the last trusted inventory **and** the last persistence snapshot:
 | `urls.siteurl` / `home` changed | **infected** |
 | New drop-in or mu-plugin | **suspicious** |
 | New cron hook | **suspicious** |
+| `shell_files` indicator (always, not only new ones) | **infected** |
+| `shell_files` hash changed, file appeared or removed | **suspicious** (users edit their `.bashrc` legitimately) |
 | Inventory + persistence unchanged, core still matches | **clean** |
+
+Allowlist shell files like other findings, with path `~/.bashrc` + `sha256`. Not yet implemented in `ScanEvaluator`.
 
 Alert only on **new** high-confidence findings, not on the same allowlisted file every day.
 
