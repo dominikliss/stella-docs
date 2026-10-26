@@ -1,6 +1,6 @@
 # Dev SSH Access — Per-App SSH Containers for Cursor Remote-SSH
 
-**Status:** Implemented 2026-09-01 for `osgar-datahub` (port 2201) and `advoapp.finditoo` (port 2202). Port 2204 (`dominikliss.foxcraft.digital`, WP staging) added later. Port 2203 (`advoapp-redesign-ssh`) removed 2026-10-10 (project finished). Port **2205** is Atlas dev (`atlas.dev.foxcraft.digital`) — [`../atlas/dev-instance.md`](../atlas/dev-instance.md). Closes the open-gaps TODO "User-based SSH access on Stella."
+**Status:** Implemented 2026-09-01 for `osgar-datahub` (port 2201) and `advoapp.finditoo` (port 2202). Port 2204 (`dominikliss.foxcraft.digital`, WP staging) added later. Port 2203 (`advoapp-redesign-ssh`) removed 2026-10-10 (project finished). Port **2205** is Atlas dev (`atlas.dev.foxcraft.digital`) — [`../atlas/dev-instance.md`](../atlas/dev-instance.md). Port **2206** is `hypershape.foxcraft.digital-ssh`. Port **2207** is Edison dev (`edison.dev.foxcraft.digital`, 2026-10-26) — [`../edison/dev-instance.md`](../edison/dev-instance.md). Closes the open-gaps TODO "User-based SSH access on Stella."
 
 **Purpose:** give individual devs (Dominik, Pawel) Cursor Remote-SSH access scoped to a single app's source, without exposing the host or other apps/services. Root SSH remains Dominik-only, unchanged.
 
@@ -164,8 +164,10 @@ iptables -A DOCKER-USER -i $WAN_IF -p tcp --dport 22XX -j DROP
 | 2203 | free | `advoapp-redesign-ssh` removed 2026-10-10 (project finished), firewall rules removed |
 | 2204 | dominikliss.foxcraft.digital (WP staging) | `dominikliss.foxcraft.digital-ssh` |
 | 2205 | atlas.dev.foxcraft.digital (Atlas Laravel) | `ssh` service in `/opt/apps/laravel/atlas.dev.foxcraft.digital/` |
+| 2206 | hypershape.foxcraft.digital | `hypershape.foxcraft.digital-ssh` (not documented further; see [`../open-gaps.md`](../open-gaps.md)) |
+| 2207 | edison.dev.foxcraft.digital (Edison Laravel) | `ssh` service in `/opt/apps/laravel/edison.dev.foxcraft.digital/` — [`../edison/dev-instance.md`](../edison/dev-instance.md) |
 
-Next free port: **2206**. Update the table above when adding one.
+Next free port: **2208**. Update the table above when adding one, and check `docker ps` first — this line has drifted before.
 
 **Verified active** via `iptables -L DOCKER-USER -n -v --line-numbers` — both ACCEPT rules for the two whitelisted IPs, DROP for everyone else, correct order (ACCEPT before DROP, per the three-iteration lesson already documented in [`infrastructure.md`](infrastructure.md)).
 
@@ -191,7 +193,15 @@ Host dominikliss.foxcraft.digital
     Port 2204
     User dominik
     IdentityFile ~/.ssh/id_ed25519
+
+Host edison.dev.foxcraft.digital
+    HostName 95.217.144.93
+    Port 2207
+    User dominik
+    ForwardAgent yes
 ```
+
+`ForwardAgent yes` (Atlas dev and Edison dev) lets `git` in the container use GitHub keys from the Mac; the keys are never stored in the container. Set it per host, never under `Host *`.
 
 Pawel: same file, `User pawel`, his own `IdentityFile`. Windows devs need `ssh-keygen -t ed25519` first if no key exists yet (PowerShell), then their public key added to the relevant apps' `authorized_keys` files (rebuild the `-ssh` container after).
 
@@ -224,6 +234,12 @@ Do not write the supervisorctl password into any doc. **TODO (Dominik):** `Docke
 ## WordPress staging variant
 
 WordPress sites do **not** use the .NET `Dockerfile.ssh` above. Base image is `php:8.5-cli`; users are in group `www-data` (GID 33) instead of GID 1000, because WordPress files are owned by `www-data`. Full compose, Dockerfile, permissions, and first-start ACL gotcha: [`wordpress-staging.md`](wordpress-staging.md).
+
+### Edison dev (`edison.dev.foxcraft.digital`, port 2207)
+
+Added 2026-10-26. `Dockerfile.ssh` copied unchanged from atlas.dev (`php:8.5-cli`, OpenSSH, Node 22, Composer, MySQL client). Users `dominik`, `pawel`, `edison`, all with `./src` mounted. `git safe.directory` is baked in for all three users. No editor in the image. `authorized_keys` copied from atlas.dev and shared by all three users. **TODO (Dominik):** whether to split it (same as osgar and dominikliss). No home volume: hand-made git identity, `known_hosts`, and clones are lost on rebuild. **TODO (Dominik):** decide on a home volume. Details: [`../edison/dev-instance.md`](../edison/dev-instance.md).
+
+### WordPress staging `edison` user
 
 A second per-app SSH container with an `edison` user now exists on port **2204** (`dominikliss.foxcraft.digital`). That image currently copies one shared `authorized_keys` to all three users (same as osgar today). **TODO (Dominik):** whether to split `edison` onto its own key file, as this page requires.
 

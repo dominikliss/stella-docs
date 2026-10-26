@@ -131,7 +131,7 @@ Git/GitHub in the **`-ssh` container** works through SSH agent forwarding. That 
 
 If the Cursor terminal has no `SSH_AUTH_SOCK`, run **Remote-SSH: Kill VS Code Server on Host** and reconnect.
 
-Stella `DOCKER-USER` ACCEPTs port **2205** from Dominik’s IP, the managed host, and Edison. Next free SSH container port: **2206**. See [`../stella-server/infrastructure.md`](../stella-server/infrastructure.md).
+Stella `DOCKER-USER` ACCEPTs port **2205** from Dominik’s IP, the managed host, and Edison. Next free SSH container port: **2208** (2206 hypershape, 2207 Edison dev). See [`../stella-server/infrastructure.md`](../stella-server/infrastructure.md).
 
 ### GitHub clone gotchas (2026-10-11)
 

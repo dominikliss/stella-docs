@@ -1,6 +1,6 @@
 # Edison — Coding-Agent Server
 
-**Status:** Rebuilt 2026-10-09 on a **CX33** (old CPX32 renamed `edison-old`, then deleted). Host + `cursor-agent` container live. Web UI for headless runs is not built yet.
+**Status:** Rebuilt 2026-10-09 on a **CX33** (old CPX32 renamed `edison-old`, then deleted). Host + `cursor-agent` container live. Edison web app (Laravel) started 2026-10-26: foundation only, dev instance on Stella, no link to the agent yet — see [Edison app](#edison-app).
 
 **Edison** is a dedicated Hetzner Cloud box for coding agents (Cursor CLI today; OpenCode later as a second backend). It is **not** part of Stella. Same Cloud project as Atlas — Atlas reads power/backup status via the Cloud API (`/monitoring/edison`). Agents run here so Stella’s LLM / RAG load and the agent sandbox do not starve each other.
 
@@ -64,12 +64,23 @@ Stay with Cursor CLI for now (rules, skills, MCP and login already work). Build 
 
 ---
 
+## Edison app
+
+Own Laravel app (`foxcraftdigital/edison`), separate from Atlas, with the same ddashboard token login. Dev instance at `https://edison.dev.foxcraft.digital` on **Stella** (SSH port 2207). Prod (`edison.foxcraft.digital`) and the headless API (`api.edison.foxcraft.digital`) are planned, not built. The agent backend is stubbed.
+
+- App, repo, env, build: [app.md](app.md)
+- Dev instance on Stella: [dev-instance.md](dev-instance.md)
+
+---
+
 ## Documents in this folder
 
 | Document | Contents |
 |----------|----------|
 | [infrastructure.md](infrastructure.md) | Server specs, Hetzner firewall, SSH onto Edison, Docker host + `edison-net` |
 | [cursor-agent.md](cursor-agent.md) | Image, `run.sh`, systemd, sshfs, headless usage, shared-tree warning |
+| [app.md](app.md) | Edison Laravel app: repo, origin, included parts, design, env, build checks, plans |
+| [dev-instance.md](dev-instance.md) | `edison.dev.foxcraft.digital` on Stella: DNS, Caddy, compose, SSH 2207, `.env` |
 
 **Related Stella-side docs** (the remote the agent mounts):
 
@@ -83,7 +94,7 @@ Stay with Cursor CLI for now (rules, skills, MCP and login already work). Build 
 
 Tracked in [`../open-gaps.md`](../open-gaps.md) (Edison section). Short list:
 
-1. Web app with an adapter layer (start / stream / abort / resume) over `edison-net`
+1. Web app with an adapter layer (start / stream / abort / resume) over `edison-net` — Laravel foundation exists ([app.md](app.md)); agent link not started
 2. **TODO (Dominik):** design a separate git worktree or clone — the agent must not `checkout` / `switch` / `stash` / `reset` / `commit` on the live osgar staging tree
 3. **TODO (Dominik):** API key for unattended runs (`CURSOR_API_KEY`) — not set up yet
 4. **TODO (Dominik):** default model — check `cursor-agent models` / `--help`, set `--model` explicitly

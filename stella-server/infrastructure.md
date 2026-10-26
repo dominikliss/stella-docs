@@ -48,6 +48,7 @@ Core Docker-managed services live at `/opt/services/docker-compose.yml`. Dev/sta
 | `dominikliss.foxcraft.digital-db` | Docker (MariaDB 11) | — (internal only) | Never on `edge` |
 | `dominikliss.foxcraft.digital-ssh` | Docker (sshd in `php:8.5-cli`) | 2204 | WP staging SSH — [`wordpress-staging.md`](wordpress-staging.md). **Must not** join `edge` |
 | `atlas.dev.foxcraft.digital` | Docker (`php:8.5-apache` + MySQL 8.4 + queue/scheduler + ssh) | 2205 (ssh) | Atlas **dev** instance — [`../atlas/dev-instance.md`](../atlas/dev-instance.md). SSH must **not** join `edge` |
+| `edison.dev.foxcraft.digital` | Docker (`php:8.5-apache` + MySQL 8.4 + queue/scheduler + ssh) | 2207 (ssh) | Edison app **dev** instance (added 2026-10-26) — [`../edison/dev-instance.md`](../edison/dev-instance.md). SSH must **not** join `edge` |
 
 **PHP updates** (inventory + per-stack procedure): [`php-updates.md`](php-updates.md).
 
@@ -235,6 +236,19 @@ atlas.dev.foxcraft.digital {
     respond @blocked 403
     reverse_proxy atlas.dev.foxcraft.digital:80
 }
+
+edison.dev.foxcraft.digital {
+    tls {
+        issuer acme {
+            email projects@foxcraft.digital
+            dir https://acme-v02.api.letsencrypt.org/directory
+            dns hetzner {env.HETZNER_API_TOKEN}
+        }
+    }
+    @blocked not remote_ip 194.126.177.181
+    respond @blocked 403
+    reverse_proxy edison.dev.foxcraft.digital:80
+}
 ```
 
 > **Per-site IP scoping (2026-09-03):** `@blocked` matchers were added to all site blocks. Blocks other than `osgar.datahub` deny the client IPs outright; `osgar.datahub` uses an allow-list. This is the second layer of a two-layer approach — the first layer (DOCKER-USER) lets client IPs reach port 443 at all; Caddy's matchers then restrict which subdomain they can actually use. See [`client-ip-access.md`](client-ip-access.md) for the full rationale, the list of current client IPs, and removal instructions.
@@ -269,7 +283,7 @@ For a **stubborn new subdomain** whose first DNS-01 attempt hits NXDOMAIN (Hetzn
 
 The `dir` line is decisive — without it, Caddy can still fall back internally to `acme-staging-v02.api.letsencrypt.org` even with `issuer acme` set. A global `acme_dns hetzner {env.HETZNER_API_TOKEN}` alone also does **not** lock the issuer.
 
-**Already pinned with `dir`:** `stella.foxcraft.digital`, `advoapp.finditoo.foxcraft.digital`, `stella-deployment-api.foxcraft.digital`, `stella-health-api.foxcraft.digital`, `stella-media-api.foxcraft.digital`, `osgar.datahub.foxcraft.digital`, `dominikliss.foxcraft.digital`, `atlas.dev.foxcraft.digital`. `stella-media-api` also has `propagation_delay 45s` + `propagation_timeout 3m`.
+**Already pinned with `dir`:** `stella.foxcraft.digital`, `advoapp.finditoo.foxcraft.digital`, `stella-deployment-api.foxcraft.digital`, `stella-health-api.foxcraft.digital`, `stella-media-api.foxcraft.digital`, `osgar.datahub.foxcraft.digital`, `dominikliss.foxcraft.digital`, `atlas.dev.foxcraft.digital`, `edison.dev.foxcraft.digital` (2026-10-26; cert in about 27 s on the first attempt, no `propagation_delay`). `stella-media-api` also has `propagation_delay 45s` + `propagation_timeout 3m`.
 
 Each new subdomain gets its own block at the bottom, reverse-proxying to a container name on the `edge` network — Caddy handles TLS automatically via DNS-01, no manual cert management needed.
 
@@ -389,6 +403,14 @@ This is the same inode class of bug as “never `rm` + recreate a bind-mounted f
 - Debian bookworm package names: `libraw23` does not exist (omit it; `libraw-bin` pulls the library). `libheif-plugin-libde265` is replaced by `libde265-0`. Hit while building media-api — [`media-api.md`](media-api.md).
 - Caddy’s image is BusyBox: `ls --time-style` is unsupported; use `ls -l --full-time`.
 
+#### Session gotchas (2026-10-26, edison.dev setup)
+
+- Docker host paths such as `/opt/apps/...` do not exist inside the `-ssh` containers. Always name the shell (Stella host vs container) in commands. A `cd` or file creation on the wrong shell silently creates files in `/root`.
+- `mkdir` the app folder before writing files into it.
+- The "next free SSH port" in these docs can drift (it said 2206 while hypershape already used it). Check `docker ps` for `220X` ports before choosing one.
+- Recreating `/usr/local/bin/docker-user-firewall.sh` with `rm` + nano drops the executable bit. Run `chmod 755 /usr/local/bin/docker-user-firewall.sh` afterwards (the original was `-rwxr-xr-x root:root`), then run the script.
+- The live `stella-media-api` Caddy block has its `propagation_delay` and `propagation_timeout` lines duplicated. It works, but should be cleaned up. **TODO (Dominik).**
+
 ---
 
 ## App deployment pattern — `edge` network
@@ -415,7 +437,8 @@ Folders are named by subdomain, for easy visual mapping:
   │           ├── authorized_keys
   │           └── docker-compose.dev.yml
   ├── laravel/
-  │     └── atlas.dev.foxcraft.digital/  ← Atlas dev — [`../atlas/dev-instance.md`](../atlas/dev-instance.md)
+  │     ├── atlas.dev.foxcraft.digital/  ← Atlas dev — [`../atlas/dev-instance.md`](../atlas/dev-instance.md)
+  │     └── edison.dev.foxcraft.digital/ ← Edison dev — [`../edison/dev-instance.md`](../edison/dev-instance.md)
   └── wordpress/
         ├── uploads.ini                  ← shared PHP limits (see [`wordpress-staging.md`](wordpress-staging.md#php-limits))
         └── <subdomain>/                 ← first site: dominikliss.foxcraft.digital
@@ -460,7 +483,7 @@ networks:
 9. `docker compose build && docker compose up -d` (or `docker-compose.dev.yml` for .NET hot-reload — see [`dotnet-app-deployment.md`](dotnet-app-deployment.md)). For WordPress staging, use `/opt/apps/wordpress/<subdomain>/` and the checklist in [`wordpress-staging.md`](wordpress-staging.md) (Caddy upstream port **80**, not 8080; SSH port + `DOCKER-USER` rules required).
 10. Default: the new containers are discovered by health-api and included in the restic backup. Opt out on the compose service with `health.enable=false` and/or `backup.exclude=true`. Optional: `health.http=<url>` adds an HTTP probe (only works for containers on `edge`); `health.name` sets the display name. See [`health-api.md`](health-api.md) and [`backup.md`](backup.md).
 
-No UFW or `DOCKER-USER` changes needed for Caddy-routed HTTP apps — that's the entire point of routing everything through Caddy on the `edge` network. **Exception:** per-app `-ssh` containers publish a host port (`22XX:22`) and **must** get matching `DOCKER-USER` rules. They must **not** join `edge`. See [`dev-ssh-access.md`](dev-ssh-access.md). Next free SSH port: **2206**. Port **2205** is Atlas dev (`atlas.dev.foxcraft.digital`). Port 2203 is free (`advoapp-redesign-ssh` removed 2026-10-10); nothing of that app remains on Stella.
+No UFW or `DOCKER-USER` changes needed for Caddy-routed HTTP apps — that's the entire point of routing everything through Caddy on the `edge` network. **Exception:** per-app `-ssh` containers publish a host port (`22XX:22`) and **must** get matching `DOCKER-USER` rules. They must **not** join `edge`. See [`dev-ssh-access.md`](dev-ssh-access.md). Next free SSH port: **2208** (check `docker ps` before choosing). Port **2205** is Atlas dev (`atlas.dev.foxcraft.digital`), **2206** is `hypershape.foxcraft.digital-ssh`, **2207** is Edison dev (`edison.dev.foxcraft.digital`). Port 2203 is free (`advoapp-redesign-ssh` removed 2026-10-10); nothing of that app remains on Stella.
 
 ### Removing an app (example: `advoapp-redesign`, 2026-10-10)
 
@@ -473,7 +496,7 @@ No UFW or `DOCKER-USER` changes needed for Caddy-routed HTTP apps — that's the
 - DNS A record `advoapp-redesign.finditoo` deleted in Hetzner zone 567656 (verified: no longer listed, no answer from `8.8.8.8`).
 - Cursor SSH config entry removed on Dominik's machine.
 
-Port 2203 is free (may be reused later). Port **2205** is now Atlas dev; next new allocation is **2206**. Port 5082 (the former localhost binding) is free again. Nothing of `advoapp-redesign` remains on Stella. The port-443 ACCEPT rules were not changed — they are port-wide and not tied to any single app.
+Port 2203 is free (may be reused later). Port **2205** is now Atlas dev, **2206** hypershape, **2207** Edison dev; next new allocation is **2208**. Port 5082 (the former localhost binding) is free again. Nothing of `advoapp-redesign` remains on Stella. The port-443 ACCEPT rules were not changed — they are port-wide and not tied to any single app.
 
 ### Gateway IP depends on which Docker network the caller is on
 
@@ -575,7 +598,7 @@ Fully decommissioned. See git history / prior doc versions if a vector search fe
 
 - **UFW** — active, default-deny incoming. Ports 22, 443 restricted to `194.126.177.181` and `23.88.90.12`. Port 8001 additionally allows `172.18.0.0/16` (`services_default` bridge subnet) for Caddy's internal proxy calls, **and `172.20.0.0/16` (`edge` bridge subnet, added 2026-08-10)** for `health-api`'s stella-api check. Port 11434's direct-access rules removed 2026-08-10 once Ollama moved fully behind the `edge` network / Caddy — no longer needs a host-level UFW allowance for the old static-IP whitelist. Host SSH (port 22) remains Dominik-only; per-app Cursor SSH uses Docker-published `22XX` ports — [`dev-ssh-access.md`](dev-ssh-access.md).
 - **fail2ban** — running
-- **Docker-published ports (443, 2201, 2202, 2204, 2205, and 8081)** — protected via a custom `DOCKER-USER` iptables chain (details below). Per-app SSH containers add a new `22XX` as they are created. Next free SSH port: **2206**. Port 2203 is free (`advoapp-redesign-ssh` removed 2026-10-10). Port 2205 is Atlas dev (ACCEPT: Dominik’s IP, managed host, Edison). Port 2201 (and 2204) also ACCEPT `178.105.203.54` — Edison **`edison-ip`**, confirmed 2026-10-09 (IPv4 moved with the server; no Stella firewall change). See [`../edison/infrastructure.md`](../edison/infrastructure.md). Port **443** also ACCEPT `2.31.42.13` — Atlas Cloud host (added 2026-10-10; Atlas calls deploy-api and health-api). Port **8081** has team-IP ACCEPT + DROP; **TODO (Dominik):** what 8081 is.
+- **Docker-published ports (443, 2201, 2202, 2204, 2205, 2206, 2207, and 8081)** — protected via a custom `DOCKER-USER` iptables chain (details below). Per-app SSH containers add a new `22XX` as they are created. Next free SSH port: **2208**. Port 2203 is free (`advoapp-redesign-ssh` removed 2026-10-10). Port 2205 is Atlas dev (ACCEPT: Dominik’s IP, managed host, Edison). Port 2206 is `hypershape.foxcraft.digital-ssh`. Port 2207 is Edison dev (ACCEPT: Dominik’s IP, managed host, Edison; verified live 2026-10-26). Port 2201 (and 2204) also ACCEPT `178.105.203.54` — Edison **`edison-ip`**, confirmed 2026-10-09 (IPv4 moved with the server; no Stella firewall change). See [`../edison/infrastructure.md`](../edison/infrastructure.md). Port **443** also ACCEPT `2.31.42.13` — Atlas Cloud host (added 2026-10-10; Atlas calls deploy-api and health-api). Port **8081** has team-IP ACCEPT + DROP; **TODO (Dominik):** what 8081 is.
 - **Per-site Caddy `remote_ip` scoping (added 2026-09-03)** — client IPs granted access to `osgar.datahub.foxcraft.digital` only; most other Caddy site blocks explicitly deny those IPs via `@blocked remote_ip` matchers. `49.13.27.117` is ACCEPTed on port 443 and denied on some blocks but **not** on the `advoapp.finditoo` block — see the Caddyfile reality check above and [`client-ip-access.md`](client-ip-access.md).
 
 **Note (2026-09-01):** `imap-sync` no longer publishes `3001`, and `caddy` no longer publishes `8080`. The `DOCKER-USER` rules for those two ports are now dead (the packets never arrive) and can be removed in a future cleanup; they are kept for now, harmless. The `:8080` Caddyfile block was already removed on 2026-08-07.
@@ -617,9 +640,10 @@ iptables -A DOCKER-USER -i $WAN_IF -s 89.67.29.69 -p tcp --dport 443 -j ACCEPT  
 iptables -A DOCKER-USER -i $WAN_IF -s 49.13.27.117 -p tcp --dport 443 -j ACCEPT    # TODO (Dominik): owner / expiry
 iptables -A DOCKER-USER -i $WAN_IF -p tcp --dport 443 -j DROP
 
-# Per-app SSH containers (see dev-ssh-access.md). Next free port: 2206.
+# Per-app SSH containers (see dev-ssh-access.md). Next free port: 2208.
 # Port 2203 is free — advoapp-redesign-ssh removed 2026-10-10; firewall rules removed.
 # Port 2205 is Atlas dev (your IP, managed host, Edison).
+# Port 2206 is hypershape.foxcraft.digital-ssh. Port 2207 is Edison dev (your IP, managed host, Edison).
 iptables -A DOCKER-USER -i $WAN_IF -s 194.126.177.181 -p tcp --dport 2201 -j ACCEPT
 iptables -A DOCKER-USER -i $WAN_IF -s 23.88.90.12 -p tcp --dport 2201 -j ACCEPT
 iptables -A DOCKER-USER -i $WAN_IF -s 178.105.203.54 -p tcp --dport 2201 -j ACCEPT  # Edison edison-ip (confirmed 2026-10-09)
@@ -639,6 +663,14 @@ iptables -A DOCKER-USER -i $WAN_IF -s 23.88.90.12 -p tcp --dport 2205 -j ACCEPT
 iptables -A DOCKER-USER -i $WAN_IF -s 178.105.203.54 -p tcp --dport 2205 -j ACCEPT  # Edison
 iptables -A DOCKER-USER -i $WAN_IF -p tcp --dport 2205 -j DROP
 
+# 2206 (hypershape) — rules are live, source IPs not documented here.
+# TODO (Dominik): copy the 2206 lines from the live script.
+
+iptables -A DOCKER-USER -i $WAN_IF -s 194.126.177.181 -p tcp --dport 2207 -j ACCEPT
+iptables -A DOCKER-USER -i $WAN_IF -s 23.88.90.12 -p tcp --dport 2207 -j ACCEPT
+iptables -A DOCKER-USER -i $WAN_IF -s 178.105.203.54 -p tcp --dport 2207 -j ACCEPT  # Edison
+iptables -A DOCKER-USER -i $WAN_IF -p tcp --dport 2207 -j DROP
+
 # Port 8081 — ACCEPT for the two team IPs, then DROP. Not documented anywhere else.
 # TODO (Dominik): say what 8081 is, or mark it as unknown.
 iptables -A DOCKER-USER -i $WAN_IF -s 194.126.177.181 -p tcp --dport 8081 -j ACCEPT
@@ -648,7 +680,9 @@ iptables -A DOCKER-USER -i $WAN_IF -p tcp --dport 8081 -j DROP
 
 `2204` rules verified live via `iptables -L` (ACCEPT before DROP). `178.105.203.54` is Edison **`edison-ip`** (confirmed 2026-10-09; same ACCEPT already on 2201). See [`../edison/infrastructure.md`](../edison/infrastructure.md).
 
-`2.31.42.13` on 443 is **atlas** (Hetzner Cloud CX33). Atlas calls `stella-deployment-api` and `stella-health-api` over 443. After recreating `/usr/local/bin/docker-user-firewall.sh` (`rm` + nano) it must be `chmod 755`, otherwise the script and the boot service fail with Permission denied.
+`2.31.42.13` on 443 is **atlas** (Hetzner Cloud CX33). Atlas calls `stella-deployment-api` and `stella-health-api` over 443. After recreating `/usr/local/bin/docker-user-firewall.sh` (`rm` + nano) it must be `chmod 755`, otherwise the script and the boot service fail with Permission denied. Then run the script.
+
+`2206` + `2207` rules verified live via `iptables` on 2026-10-26 (8 rules).
 
 Port 3001 / 8080 rules above are leftovers from retired publishes (`imap-sync` and Caddy `:8080`, removed 2026-09-01). Harmless; delete in a future cleanup. **Do not** delete 443 or any `22XX` rule that still has a live `-ssh` container.
 
