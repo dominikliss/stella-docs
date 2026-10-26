@@ -39,7 +39,7 @@ Title / body come from optional rule templates (`{project}`, `{customer}`, `{cus
 | Channel | When | What |
 |---------|------|------|
 | In-app | Rule `notify_in_app` | One `notification_deliveries` row per Atlas `users` row. Header unread count. Mark read / mark all read. Click opens `event.url` (`/projects?project={id}`). |
-| Slack | Enabled Slack channels on the rule | Incoming webhook `POST` with `text` (title + body). Includes the project URL when set; omits `/notifications`. Project binding `slack_destination_id` **replaces** the rule’s Slack list for that project. |
+| Slack | Enabled Slack channels on the rule | Incoming webhook `POST` with `text` (title + body). Never includes a project link: `/projects…` and `/notifications` URLs are omitted (in-app only). Project binding `slack_destination_id` **replaces** the rule’s Slack list for that project. |
 | Email | Enabled email channel on the rule | Brevo, same as WP-down alerts. Recipient is the channel’s `email_to`, else Settings → Email alert recipient. Skipped if neither is set or Brevo is unconfigured. Same URL rule as Slack. |
 
 Webhook URLs must be `https://hooks.slack.com/…`. Stored encrypted on `slack_destinations`; list/update APIs return `has_webhook`, never the URL (`••••••••` = keep current). Delete is **409** while a rule channel still points at it.
