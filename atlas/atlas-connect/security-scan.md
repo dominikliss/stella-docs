@@ -308,7 +308,7 @@ Do this in Atlas. The plugin does not return a verdict.
 | `core.mismatched` | **infected** (or allowlist a known host patch) |
 | New-looking drop-in / mu-plugin you did not install | **suspicious** |
 | `shell_files.files.*.indicators` non-empty | **infected** |
-| `shell_files` file with `ctime - mtime` > 30 days | **suspicious** (**infected** together with an indicator) |
+| `shell_files` file with `ctime - mtime` > 30 days | not a finding on its own (distro skel files and normal edits look the same); added as context to an indicator finding |
 | Otherwise | **clean** (no evidence — not a guarantee) |
 
 `shell_files.available = false` is not a finding. Show it in the report as “home directory not checked”.
@@ -331,10 +331,10 @@ Diff against the last trusted inventory **and** the last persistence snapshot:
 | New drop-in or mu-plugin | **suspicious** |
 | New cron hook | **suspicious** |
 | `shell_files` indicator (always, not only new ones) | **infected** |
-| `shell_files` hash changed, file appeared or removed | **suspicious** (users edit their `.bashrc` legitimately) |
+| `shell_files` hash changed, file appeared or removed, no indicator | do **not** score (the plugin content-scans these files; users edit their `.bashrc` legitimately) |
 | Inventory + persistence unchanged, core still matches | **clean** |
 
-Allowlist shell files like other findings, with path `~/.bashrc` + `sha256`. Not yet implemented in `ScanEvaluator`.
+Allowlist shell files like other findings, with path `~/.bashrc` + `sha256`.
 
 Alert only on **new** high-confidence findings, not on the same allowlisted file every day.
 
