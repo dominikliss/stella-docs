@@ -215,6 +215,13 @@ Skipped directories: `.git`, `.svn`, `node_modules` (exact name), plus any direc
         { "id": 1, "login": "dominik", "registered": "2024-01-02 10:00:00" }
     ],
     "dropins": ["object-cache.php"],
+    "plugins": [
+        { "slug": "enable-media-replace", "file": "enable-media-replace/enable-media-replace.php", "version": "4.1.7", "path": "wp-content/plugins/enable-media-replace", "active": true },
+        { "slug": "hello", "file": "hello.php", "version": "1.7.2", "path": "wp-content/plugins/hello.php", "active": false }
+    ],
+    "themes": [
+        { "slug": "twentytwentyfive", "version": "1.3", "path": "wp-content/themes/twentytwentyfive", "parent": null }
+    ],
     "mu_plugins": ["host-mu.php"],
     "cron": [
         { "hook": "wp_version_check", "schedule": "twicedaily" }
@@ -247,6 +254,9 @@ Skipped directories: `.git`, `.svn`, `node_modules` (exact name), plus any direc
 | `special_files` | SHA-256 of those four names, or `null` if absent |
 | `admins` | Administrators: `id`, `login`, `registered`. No emails |
 | `dropins` | Present drop-in filenames in `wp-content/`. Globally allowlisted names omitted |
+| `plugins` | Every plugin from `get_plugins()`: `file` (plugin key), `slug` (folder before `/`, or file name without `.php` for single-file plugins), `version` (header), `path`, `active`. Must-use plugins are not included. Atlas verifies plugin checksums itself |
+| `themes` | Every theme from `wp_get_themes()`: `slug` (stylesheet), `version` (header), `path`, `parent` (Template, or `null` when the theme is not a child). Atlas verifies theme checksums itself |
+| `plugins[].path` / `themes[].path` | Built from `WP_PLUGIN_DIR` / `get_theme_root()` and mapped to the same relative root as `inventory_delta` paths, so a relocated `WP_CONTENT_DIR` still reads `wp-content/…` |
 | `mu_plugins` | Must-use plugin basenames. Globally allowlisted names omitted |
 | `cron` | Unique WP-Cron hook names + schedule. WordPress core hooks (`wp_version_check`, `upgrader_scheduled_cleanup`, …) omitted |
 | `shell_files` | Shell startup files in the PHP user's home directory (see below) |
