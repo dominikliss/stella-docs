@@ -313,7 +313,7 @@ Do this in Atlas. The plugin does not return a verdict.
 
 `shell_files.available = false` is not a finding. Show it in the report as “home directory not checked”.
 
-Store this run’s `inventory_delta` (all hash chunks concatenated) as the trusted baseline **after** a human has reviewed an `infected` / `suspicious` first run, or automatically if the first run is `clean`.
+Store this run’s `inventory_delta` (all hash chunks concatenated) as the trusted baseline **after** a human has reviewed an `infected` first run, or automatically if the first run is `clean` / `suspicious`.
 
 ### Every later scan
 
@@ -322,6 +322,7 @@ Diff against the last trusted inventory **and** the last persistence snapshot:
 | Change Atlas did not make | Verdict |
 |---|---|
 | New PHP path, or SHA-256 change on a path that used to match official core / yesterday | **infected** |
+| New or changed path that is in the official core file list of the installed version and not in `core.mismatched` (a core update) | do **not** score |
 | New administrator | **infected** |
 | `special_files` hash change for `.htaccess` / `.user.ini` | **infected** |
 | `special_files` hash change for `wp-config.php` | do **not** score (plugins/hosts rewrite it; still report the file) |
@@ -446,14 +447,16 @@ Later scans, against the trusted baseline’s inventory and report:
 | `url_changed` (`home` / `siteurl`, trailing slash ignored) | infected |
 | `dropin_added`, `mu_plugin_added`, `cron_added` | suspicious |
 
+**Core updates.** `WordPressCoreFiles` fetches the file list of `core.version` from `api.wordpress.org/core/checksums/1.0/` (report locale, then `en_US`) and caches it forever per version; `wp-content/` paths are dropped from it. When `core.checked > 0`, an added or changed inventory path on that list that no absolute finding flagged (so not in `core.mismatched`) is not a finding: the plugin already verified it against WordPress.org. It is still counted in `files_added` / `files_changed` and in `summary.files_core_verified`. If WordPress.org has no list for the version, the run log says so and core paths are diffed like any other file.
+
 Root `wp-config.php` / `.htaccess` / `.user.ini` / `web.config` (and `../wp-config.php`) are skipped in the inventory diff; `special_files` covers them. A path already flagged by an absolute finding is not repeated as `file_added`. Removed files are counted in `summary.files_removed` only. `core.missing` is counted, not scored.
 
 Each finding has a `key` (`code:path-or-subject:sha256`) and `new` (= key not in the previous complete scan). Atlas also drops any finding whose `path + sha256` is on the allowlist (in addition to the plugin’s own filter).
 
 ### Baseline
 
-- A **clean** scan with a complete inventory becomes the baseline automatically (`trusted_by = auto`).
-- Infected / suspicious scans never do. The operator reviews the report and clicks **Trust as baseline** (`POST …/scans/{scan}/trust`, `rescan: true` starts a fresh scan right away so the site verdict reflects the new baseline).
+- A scan with **no infected** findings (clean or suspicious) and a complete inventory becomes the baseline automatically (`trusted_by = auto`). Suspicious findings alert once and then drop out of later diffs; otherwise one leftover suspicious item would pin the baseline and every later update would pile onto the same diff.
+- Infected scans never do. The operator reviews the report and clicks **Trust as baseline** (`POST …/scans/{scan}/trust`, `rescan: true` starts a fresh scan right away so the site verdict reflects the new baseline).
 - A scan with `inventory_complete = false` or a pruned inventory cannot be trusted.
 
 ### Allowlist
