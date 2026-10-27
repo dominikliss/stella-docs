@@ -12,7 +12,7 @@ Uptime pings do **not** use the plugin (`HEAD https://{domain}`). See [`../monit
 
 | | |
 |---|---|
-| Plugin REST | `https://{site_url}/wp-json/atlas-connect/v1` |
+| Plugin REST | `https://{site_url}/wp-json/atlas-connect/v1` — or `/{rest_prefix}/…` when the site renames its REST API (`rest_url_prefix` filter); set per site in Atlas (Edit site → Atlas Connect → REST API Prefix, column `wp_sites.rest_prefix`, blank = `wp-json`) |
 | Plugin admin | Settings → Atlas Connect |
 | Plugin repo | `git@github.com:foxcraftdigital/atlas-connect.git` |
 
