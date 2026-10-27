@@ -449,6 +449,17 @@ Later scans, against the trusted baseline’s inventory and report:
 
 **Core updates.** `WordPressCoreFiles` fetches the file list of `core.version` from `api.wordpress.org/core/checksums/1.0/` (report locale, then `en_US`) and caches it forever per version; `wp-content/` paths are dropped from it. When `core.checked > 0`, an added or changed inventory path on that list that no absolute finding flagged (so not in `core.mismatched`) is not a finding: the plugin already verified it against WordPress.org. It is still counted in `files_added` / `files_changed` and in `summary.files_core_verified`. If WordPress.org has no list for the version, the run log says so and core paths are diffed like any other file.
 
+**Plugin and theme updates.** On scans with a baseline, `WordPressPluginChecksums` fetches `downloads.wordpress.org/plugin-checksums/{slug}/{version}.json` for every entry in `report.plugins` (cached forever per slug + version; a `404` is cached for a day). Each added or changed inventory path is matched to the plugin or theme whose `path` contains it (longest path wins; a single-file plugin matches its own path only):
+
+| Owner | Result |
+|---|---|
+| Plugin hosted on WordPress.org, SHA-256 matches the release file | not a finding; counted in `summary.files_release_verified` |
+| Plugin hosted on WordPress.org, hash does not match or file not in the release | `file_changed` / `file_added` as before (**infected** for PHP) |
+| Not hosted (premium / custom plugin, every theme), version differs from the baseline report, or the component is new, or the baseline predates `plugins` / `themes` | grouped into one `component_updated` finding per component (**suspicious**, no `path`, `subject` = `plugin:{file}@{version}` / `theme:{slug}@{version}`, with `files_changed` / `files_added` counts) |
+| Not hosted, same version as the baseline | `file_changed` / `file_added` as before — a changed file without an update is what an injected backdoor looks like |
+
+Reports without `plugins` / `themes` (older Atlas Connect) are scored exactly as before.
+
 Root `wp-config.php` / `.htaccess` / `.user.ini` / `web.config` (and `../wp-config.php`) are skipped in the inventory diff; `special_files` covers them. A path already flagged by an absolute finding is not repeated as `file_added`. Removed files are counted in `summary.files_removed` only. `core.missing` is counted, not scored.
 
 Each finding has a `key` (`code:path-or-subject:sha256`) and `new` (= key not in the previous complete scan). Atlas also drops any finding whose `path + sha256` is on the allowlist (in addition to the plugin’s own filter).
@@ -504,6 +515,6 @@ Job state: option `atlas_scan_job_{job_id}` (not autoloaded). Active id: `atlas_
 
 Core compare uses WordPress.org **MD5** checksums. Inventory / allowlist / baseline use **SHA-256**.
 
-v1 does **not** checksum WP.org plugins/themes. Premium / custom plugins are inventory rows only; first-scan they are not “infected”. Atlas catches them on the next diff if they change.
+The plugin does **not** checksum WP.org plugins/themes; it reports `plugins` / `themes` with versions and Atlas checks them (see [Atlas implementation](#scoring-scanevaluator)). Premium / custom plugins are inventory rows only; first-scan they are not “infected”.
 
 No local `{prefix}atlas_scan_log` table. WP admin has no Security tab; scans are started and viewed from Atlas only.
