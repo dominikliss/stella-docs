@@ -252,6 +252,7 @@ Skipped directories: `.git`, `.svn`, `node_modules` (exact name), plus any direc
 | `core.missing` | Core file shipped by **every** fetched locale but not on disk (broken install more often than malware) |
 | `php_in_uploads` | PHP-like file under uploads (`.php`, `.phtml`, `.php5`, `.phar`, …). Allowlisted and code-free files omitted |
 | `special_files` | SHA-256 of those four names, or `null` if absent |
+| `special_files.*.indicators` | **To add in Atlas Connect** (`.htaccess` at least). Same shape as `shell_files.files.*.indicators`: `[{ "id": "…", "line": 3 }]`, empty list when clean. Suggested ids: `auto_prepend_file` (`php_value`/`php_flag` `auto_prepend_file` / `auto_append_file`), `php_handler_non_php` (`AddHandler` / `SetHandler` / `AddType` mapping PHP onto `.jpg`, `.png`, `.gif`, `.ico`, `.txt`, `.log`, …), `cloaked_redirect` (`RewriteCond` on `HTTP_USER_AGENT` / `HTTP_REFERER` for search engines or mobile combined with a `RewriteRule` to an external host), `external_error_document` (`ErrorDocument` to an external URL), `base64_blob` (long base64 string). Atlas scores any hit as **infected**; without this field `.htaccess` is not checked at all |
 | `admins` | Administrators: `id`, `login`, `registered`. No emails |
 | `dropins` | Present drop-in filenames in `wp-content/`. Globally allowlisted names omitted |
 | `plugins` | Every plugin from `get_plugins()`: `file` (plugin key), `slug` (folder before `/`, or file name without `.php` for single-file plugins), `version` (header), `path`, `active`. Must-use plugins are not included. Atlas verifies plugin checksums itself |
@@ -324,7 +325,8 @@ Diff against the last trusted inventory **and** the last persistence snapshot:
 | New PHP path, or SHA-256 change on a path that used to match official core / yesterday | **infected** |
 | New or changed path that is in the official core file list of the installed version and not in `core.mismatched` (a core update) | do **not** score |
 | New administrator | **infected** |
-| `special_files` hash change for `.htaccess` / `.user.ini` | **infected** |
+| `special_files` hash change for `.user.ini` | **infected** |
+| `special_files` hash change for `.htaccess` | do **not** score (caching, security and SEO plugins rewrite it constantly); only `indicators` count |
 | `special_files` hash change for `wp-config.php` | do **not** score (plugins/hosts rewrite it; still report the file) |
 | `special_files` `wp-config.php` appeared or removed | **infected** |
 | `urls.siteurl` / `home` changed | **infected** |
@@ -440,7 +442,8 @@ Later scans, against the trusted baseline’s inventory and report:
 | `file_added` (PHP-like) / `file_changed` | infected |
 | `file_added` (non-PHP inventory row, e.g. a sub-directory `.htaccess`) | suspicious |
 | `admin_added` (new `id` + `login`) | infected |
-| `special_file_changed` — `.htaccess`, `.user.ini` (changed, appeared, removed) | infected |
+| `special_file_changed` — `.user.ini` (changed, appeared, removed) | infected |
+| `special_file_changed` — `.htaccess` | **not a finding** (changed, appeared or removed). Instead, on every scan, `special_file_indicator` (**infected**) for any special file whose `indicators` list is non-empty |
 | `special_file_changed` — `wp-config.php` appeared or removed | infected |
 | `special_file_changed` — `wp-config.php` hash change only | **not a finding** (Wordfence, WP Rocket, AIOS, hosts rewrite it). Still store `special_files.wp-config.php` so an operator can inspect. |
 | `special_file_changed` — `web.config` | suspicious |
@@ -449,13 +452,14 @@ Later scans, against the trusted baseline’s inventory and report:
 
 **Core updates.** `WordPressCoreFiles` fetches the file list of `core.version` from `api.wordpress.org/core/checksums/1.0/` (report locale, then `en_US`) and caches it forever per version; `wp-content/` paths are dropped from it. When `core.checked > 0`, an added or changed inventory path on that list that no absolute finding flagged (so not in `core.mismatched`) is not a finding: the plugin already verified it against WordPress.org. It is still counted in `files_added` / `files_changed` and in `summary.files_core_verified`. If WordPress.org has no list for the version, the run log says so and core paths are diffed like any other file.
 
-**Plugin and theme updates.** On scans with a baseline, `WordPressPluginChecksums` fetches `downloads.wordpress.org/plugin-checksums/{slug}/{version}.json` for every entry in `report.plugins` (cached forever per slug + version; a `404` is cached for a day). Each added or changed inventory path is matched to the plugin or theme whose `path` contains it (longest path wins; a single-file plugin matches its own path only):
+**Plugin and theme updates.** On scans with a baseline, `WordPressPluginChecksums` fetches `downloads.wordpress.org/plugin-checksums/{slug}/{version}.json` for every entry in `report.plugins` (cached forever per slug + version; a `404` is cached for a day). Requests (and the core file list request) send a `{APP_NAME}/1.0 (+{APP_URL})` User-Agent: downloads.wordpress.org answers Guzzle's default one with `403`. Each added or changed inventory path is matched to the plugin or theme whose `path` contains it (longest path wins; a single-file plugin matches its own path only):
 
 | Owner | Result |
 |---|---|
 | Plugin hosted on WordPress.org, SHA-256 matches the release file | not a finding; counted in `summary.files_release_verified` |
 | Plugin hosted on WordPress.org, hash does not match or file not in the release | `file_changed` / `file_added` as before (**infected** for PHP) |
-| Not hosted (premium / custom plugin, every theme), version differs from the baseline report, or the component is new, or the baseline predates `plugins` / `themes` | grouped into one `component_updated` finding per component (**suspicious**, no `path`, `subject` = `plugin:{file}@{version}` / `theme:{slug}@{version}`, with `files_changed` / `files_added` counts) |
+| Not hosted, baseline report predates `plugins` / `themes` | not a finding; this scan records the versions, and once it becomes the baseline later scans compare them |
+| Not hosted (premium / custom plugin, every theme), version differs from the baseline report, or the component is new | grouped into one `component_updated` finding per component (**suspicious**, no `path`, `subject` = `plugin:{file}@{version}` / `theme:{slug}@{version}`, with `files_changed` / `files_added` counts) |
 | Not hosted, same version as the baseline | `file_changed` / `file_added` as before — a changed file without an update is what an injected backdoor looks like |
 
 Reports without `plugins` / `themes` (older Atlas Connect) are scored exactly as before.
