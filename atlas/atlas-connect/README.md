@@ -2,11 +2,12 @@
 
 **Atlas Connect** is the WordPress plugin on each site Atlas manages. Atlas is always the caller. The site never phones home.
 
-It does three jobs:
+It does four jobs:
 
 1. **One-time WP admin login** — [`login.md`](login.md)
 2. **Encrypted chunked backups** to S3-compatible storage — [`backups.md`](backups.md)
 3. **Infection scan** (file integrity + persistence) — [`security-scan.md`](security-scan.md)
+4. **Version reporting and Atlas-pushed plugin updates** (signed zip in the request) — [`updates.md`](updates.md)
 
 Uptime pings do **not** use the plugin (`HEAD https://{domain}`). See [`../monitoring.md`](../monitoring.md).
 
@@ -36,6 +37,8 @@ Every route is **`POST`** with a **JSON body**. There are no `GET` routes any mo
 | `POST /security/scan/start` | Start an infection scan | `allowlist?` | [`security-scan.md`](security-scan.md) |
 | `POST /security/scan/chunk` | Do the next slice of work | `job_id` | [`security-scan.md`](security-scan.md) |
 | `POST /security/scan/status/{job_id}` | Read progress / report, no work | — | [`security-scan.md`](security-scan.md) |
+| `POST /info` | Plugin / WP / PHP versions, update readiness, running jobs. No work | — | [`updates.md`](updates.md#post-info) |
+| `POST /plugin/update` | Install a signed plugin zip sent by Atlas | `version`, `sha256`, `signature`, `package` | [`updates.md`](updates.md#post-pluginupdate) |
 
 A `GET` on any of these returns WordPress's `404`:
 
@@ -90,7 +93,7 @@ One X25519 pair for the whole fleet is fine.
 
 ## Authentication (every plugin route)
 
-`atlas_secret_authentication()` runs as the `permission_callback` on all 8 routes. It checks, in this order, and stops at the first failure:
+`atlas_secret_authentication()` runs as the `permission_callback` on all 10 routes. It checks, in this order, and stops at the first failure:
 
 | # | Check | Passes when |
 |---|---|---|
@@ -104,7 +107,7 @@ Any failure returns WordPress's standard REST error with HTTP **`401`**:
 { "code": "rest_forbidden", "message": "Sorry, you are not allowed to do that.", "data": { "status": 401 } }
 ```
 
-Note the shape: **`code` / `message`, not `error`**. Route-level errors (after auth passed) use `{ "error": "…" }`. Atlas's error parsing must handle both, e.g. `data.error ?? data.message`.
+Note the shape: **`code` / `message`, not `error`**. Route-level errors (after auth passed) use `{ "error": "…" }`; `/plugin/update` adds a machine-readable `"code"` next to `error`. Atlas's error parsing must handle both, e.g. `data.error ?? data.message`.
 
 The plugin never says which check failed. Atlas cannot tell SSL, IP, and secret apart, so the UI message should name all three: “Atlas Connect rejected the request — check the secret, that the site is on HTTPS, and that the Atlas IP is allowlisted.”
 
@@ -126,7 +129,7 @@ Things that now fail with `401` that used to work:
 
 ### IP allowlist
 
-`config.php` → `ip_whitelist` (code in the plugin repo, not a WP setting — changing it means a plugin release):
+`config.php` → `ip_whitelist` (code in the plugin repo, not a WP setting — changing it means a plugin release). `tests/release-test.php` fails CI if `2.31.42.13` or `95.217.144.93` is missing — a release without them locks Atlas out, and Atlas could not push the fix:
 
 | IP | Who |
 |---|---|
@@ -178,7 +181,7 @@ On the WordPress site
 2. Settings → Atlas Connect → Connection → **Generate**. Copy the key **now** into Atlas.
 3. Pick the **Auto-login Username** (administrators only in the dropdown) and **Save**. Used when Atlas omits `user`.
 4. Make sure Atlas's IP is in `config.php` → `ip_whitelist` (already true for `2.31.42.13` and `95.217.144.93` in the shipped config).
-5. `config.php` → `backup.public_key` holds Atlas's X25519 **public** key hex (shipped in the plugin).
+5. `config.php` → `backup.public_key` holds Atlas's X25519 **public** key hex (shipped in the plugin). `update.public_key` holds the separate Ed25519 key that signs plugin updates ([`updates.md`](updates.md#signing-key)).
 6. PHP `sodium` must be enabled (backup start → `500` otherwise).
 7. REST allowlists must keep `atlas-connect` (some hosts strip unknown namespaces → `404 rest_no_route`).
 8. Plain-HTTP dev site? Set `WP_ENVIRONMENT_TYPE` to `local` or `development`, or untick **Require SSL**.
@@ -247,6 +250,8 @@ Atlas and the site each track a job's status. They can disagree when a chunk cal
 
 Atlas pushes plugin updates over the plugin's own REST API. Sites never fetch anything from GitHub and Atlas needs no SSH access to them.
 
+Plugin-side contract (`/info` fields, `/plugin/update` request, check order, error codes, downgrade policy, first manual install): [`updates.md`](updates.md).
+
 | Step | What happens |
 |---|---|
 | Release | Tag the plugin repo `vX.Y.Z` (or `X.Y.Z`). The main plugin file's `Version:` header must equal the tag number, or the build fails |
@@ -271,7 +276,10 @@ Signing: Ed25519. Atlas holds `ATLAS_CONNECT_UPDATE_SIGNING_KEY` (`php artisan a
 | Secret storage | Options `atlas_secret_hash` (sha256 hex) + `atlas_secret_hint` (last 4 chars). No plaintext option. Old `atlas_secret_key` is migrated and deleted |
 | Scratch files | `atlas_scratch_dir()` in `lib/functions.php`. Private `0700` dir under `sys_get_temp_dir()/atlas-connect-{md5(ABSPATH)[0:12]}/`. Fallback when that is not writable (e.g. `open_basedir`): `uploads/atlas-{backup,scan}-tmp-{24 random chars}/` with a deny-all `.htaccess`. The old fixed `uploads/atlas-backup-tmp/` and `uploads/atlas-scan-tmp/` are deleted on upgrade |
 | Upgrade hook | `plugins_loaded`, when `atlas_db_version` ≠ `1.2`: hash the secret, delete legacy scratch dirs, run `dbDelta` |
-| Direct file access | Every PHP file starts with `defined( 'ABSPATH' ) \|\| exit;` |
+| Version | `ATLAS_CONNECT_VERSION` in `atlas-connect.php`, equal to the `Version:` header and the release tag |
+| Updates | `modules/update/` → `UpdateService` (`/info`, `/plugin/update`), lock option `atlas_update_lock` |
+| Direct file access | Every PHP file starts with `defined( 'ABSPATH' ) \|\| exit;`. Files under `tests/` exit unless run from the CLI |
+| Tests | `php tests/run.php` (standalone, WordPress stubbed). GitHub Actions runs it on every push and tag |
 
 ---
 
