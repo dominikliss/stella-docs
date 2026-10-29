@@ -243,6 +243,25 @@ Atlas and the site each track a job's status. They can disagree when a chunk cal
 
 ---
 
+## Plugin updates
+
+Atlas pushes plugin updates over the plugin's own REST API. Sites never fetch anything from GitHub and Atlas needs no SSH access to them.
+
+| Step | What happens |
+|---|---|
+| Release | Tag the plugin repo `vX.Y.Z` (or `X.Y.Z`). The main plugin file's `Version:` header must equal the tag number, or the build fails |
+| Version check | `POST /info` (plugin) → `wp_sites.atlas_connect_version`, `atlas_connect_info` (capabilities), `atlas_connect_error`, `atlas_connect_checked_at`. Daily `wp-sites:check-atlas-connect` and the sync button on the WP Sites tile. A `404 rest_no_route` means the plugin predates `/info`: upload the zip once manually |
+| Queue | WP Sites tile → update button (one site), or toolbar **Update Atlas Connect (N)** (every outdated site whose `/info` says `update.supported`). One row per site in `wp_site_plugin_updates` (`queued` → `running` → `complete` / `error` / `cancelled`) |
+| Run | `AtlasConnectUpdater::drain()` runs one update at a time (cache lock), from the `plugin-updates` queue or the every-minute scheduler fallback. Per site: no backup / scan running → `/info` capability check → build the tag's zip once (`storage/app/atlas-connect-releases/{version}.zip`) → sign → `POST /plugin/update` with base64 zip → `/info` must report the new version |
+| Rollout | Staging sites first (or the chosen canary). The first failure cancels the rest of the batch |
+| Timeout | A push that times out or returns a bare 500 is still `complete` if the follow-up `/info` reports the new version |
+
+Signing: Ed25519. Atlas holds `ATLAS_CONNECT_UPDATE_SIGNING_KEY` (`php artisan atlas-connect:signing-key --generate`); the public half ships in the plugin `config.php` → `update.public_key`. The signed message is `atlas-connect-update\n{version}\n{sha256}` (LF, no trailing newline, sha256 of the zip bytes in lowercase hex). Without the key, Atlas hides the update buttons and the API returns `422`. Changing the key needs a plugin release with the new public key on every site first.
+
+`/plugin/update` error codes Atlas shows as-is (`error (code)`): `update_disabled`, `filesystem_not_writable`, `update_in_progress`, `job_running`, `invalid_version`, `downgrade_refused`, `invalid_request`, `package_too_large`, `hash_mismatch`, `bad_signature`, `invalid_package`, `install_failed`.
+
+---
+
 ## Plugin internals (not required to implement Atlas)
 
 | Thing | Where |

@@ -148,6 +148,8 @@ Both health loops run via `php artisan schedule:run` (cron every minute). They u
 | daily 05:00 Europe/Vienna | `wp-sites:run-daily-backups` | Start a full backup on every site with a secret key; prune old backups |
 | every minute | `wp-sites:drive-backups` | Chunk running backups (50 s budget) when no `backups` queue worker picked them up |
 | every minute | `wp-sites:drive-scans` | Chunk running scans (50 s budget) when no `scans` queue worker picked them up |
+| daily 03:30 Europe/Vienna | `wp-sites:check-atlas-connect` | Refresh the latest Atlas Connect release tag and every site's installed plugin version (`/info`) ([`atlas-connect/README.md`](atlas-connect/README.md#plugin-updates)) |
+| every minute | `wp-sites:drive-plugin-updates` | Run queued Atlas Connect updates (50 s budget) when no `plugin-updates` queue worker picked them up |
 
 ---
 
@@ -235,6 +237,10 @@ The **public** key must be in:
 |--------|------|---------|
 | `GET` | `/api/wp-sites` | List all WP sites with latest uptime status |
 | `GET` | `/api/wp-sites/atlas-connect.zip` | Fresh GitHub clone of Atlas Connect, strip `.git` / `.cursor` / `docs`, stream a WP-installable zip. Never cached |
+| `GET` | `/api/wp-sites/atlas-connect/status` | Latest release tag (cached 1 h, `?refresh=1` asks GitHub) and the update signing public key |
+| `POST` | `/api/wp-sites/atlas-connect/update-outdated` | Queue a rollout to every outdated site that can self-update; optional `canary_site_id`. Details: [`atlas-connect/README.md`](atlas-connect/README.md#plugin-updates) |
+| `POST` | `/api/wp-sites/{id}/atlas-connect/info` | Ask the site's plugin for its version and update capabilities, store them |
+| `POST` | `/api/wp-sites/{id}/atlas-connect/update` | Queue an update of one site to the latest release |
 | `POST` | `/api/wp-sites` | Register a new WP site |
 | `POST` | `/api/wp-sites/test-storage` | Probe the backup bucket with typed or saved S3 keys |
 | `PATCH` | `/api/wp-sites/{id}` | Update a WP site |
