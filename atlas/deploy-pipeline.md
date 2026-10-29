@@ -50,7 +50,7 @@ rsync -az --delete --exclude=.git --exclude=.cursor --exclude=docs \
   {user}@{host}:{destination_path}/
 ```
 
-Those excludes live on `SshDeployService::SOURCE_EXCLUDES`. The WP Sites **Download Atlas Connect** button uses the same list after a fresh clone (`GET /api/wp-sites/atlas-connect.zip`).
+Those excludes live on `SshDeployService::SOURCE_EXCLUDES`. The WP Sites **Atlas Connect ▾ → Download zip** item uses the same list after a fresh clone (`GET /api/wp-sites/atlas-connect.zip`).
 
 Before rsync, Atlas SSHes in to `mkdir -p {destination_path}` if it doesn't exist.  
 After rsync, Atlas SSHes in to set permissions: `find ... -type d -exec chmod 755` / `find ... -type f -exec chmod 644`.

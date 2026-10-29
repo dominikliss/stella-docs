@@ -177,7 +177,7 @@ There is no way to fetch the secret from the site. Atlas is the only place it ex
 
 On the WordPress site
 
-1. Install / activate `atlas-connect`. On **WP Sites**, **Download Atlas Connect** always clones the current `main` of `foxcraftdigital/atlas-connect` (same SSH key and excludes as deployments: `.git`, `.cursor`, `docs`) and saves a zip you can upload in WP Admin → Plugins. Nothing is cached — every click rebuilds.
+1. Install / activate `atlas-connect`. On **WP Sites**, **Atlas Connect ▾ → Download zip** always clones the current `main` of `foxcraftdigital/atlas-connect` (same SSH key and excludes as deployments: `.git`, `.cursor`, `docs`) and saves a zip you can upload in WP Admin → Plugins. Nothing is cached — every click rebuilds.
 2. Settings → Atlas Connect → Connection → **Generate**. Copy the key **now** into Atlas.
 3. Pick the **Auto-login Username** (administrators only in the dropdown) and **Save**. Used when Atlas omits `user`.
 4. Make sure Atlas's IP is in `config.php` → `ip_whitelist` (already true for `2.31.42.13` and `95.217.144.93` in the shipped config).
@@ -255,8 +255,8 @@ Plugin-side contract (`/info` fields, `/plugin/update` request, check order, err
 | Step | What happens |
 |---|---|
 | Release | Tag the plugin repo `vX.Y.Z` (or `X.Y.Z`). The main plugin file's `Version:` header must equal the tag number, or the build fails |
-| Version check | `POST /info` (plugin) → `wp_sites.atlas_connect_version`, `atlas_connect_info` (capabilities), `atlas_connect_error`, `atlas_connect_checked_at`. Daily `wp-sites:check-atlas-connect` and the sync button on the WP Sites tile. A `404 rest_no_route` means the plugin predates `/info`: upload the zip once manually |
-| Queue | WP Sites tile → update button (one site), or toolbar **Update Atlas Connect (N)** (every outdated site whose `/info` says `update.supported`). One row per site in `wp_site_plugin_updates` (`queued` → `running` → `complete` / `error` / `cancelled`) |
+| Version check | `POST /info` (plugin) → `wp_sites.atlas_connect_version`, `atlas_connect_info` (capabilities), `atlas_connect_error`, `atlas_connect_checked_at`. Daily `wp-sites:check-atlas-connect`, the sync button on the site's Atlas Connect tile, or **Atlas Connect ▾ → Sync all** (latest tag without the 1 h cache, then every site with a secret key, 3 at a time). The WP Sites table's **Atlas Connect** column shows each site's version: up to date, outdated, check failed, or updating. A `404 rest_no_route` means the plugin predates `/info`: upload the zip once manually |
+| Queue | WP Sites tile → update button (one site), or **Atlas Connect ▾ → Update all** (every outdated site whose `/info` says `update.supported`). One row per site in `wp_site_plugin_updates` (`queued` → `running` → `complete` / `error` / `cancelled`) |
 | Run | `AtlasConnectUpdater::drain()` runs one update at a time (cache lock), from the `plugin-updates` queue or the every-minute scheduler fallback. Per site: no backup / scan running → `/info` capability check → build the tag's zip once (`storage/app/atlas-connect-releases/{version}.zip`) → sign → `POST /plugin/update` with base64 zip → `/info` must report the new version |
 | Rollout | Staging sites first (or the chosen canary). The first failure cancels the rest of the batch |
 | Timeout | A push that times out or returns a bare 500 is still `complete` if the follow-up `/info` reports the new version |
