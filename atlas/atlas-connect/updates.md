@@ -37,13 +37,13 @@ Both routes follow the plugin conventions: `POST`, JSON body, `secret` in the bo
 
 ```php
 'update' => [
-    'public_key' => '', // Ed25519 public key, 64 hex chars (32 bytes)
+    'public_key' => 'df94b473912f06bb150b0b3edce6f7dbbd7e85e6850668847f8569d9bb96445c', // Ed25519, 64 hex chars (32 bytes)
 ],
 ```
 
 - **Ed25519, for signatures.** It is not `backup.public_key`, which is X25519 and used for backup encryption. Never reuse one for the other.
 - Only Atlas holds the private key (64-byte libsodium secret key). Keep it in the Atlas vault, never in a repo.
-- While `public_key` is empty, `/plugin/update` refuses every request with `409 update_disabled` and `/info` reports `update.public_key_configured: false`. That is the shipped state until Atlas provides the key.
+- The key ships from **1.0.35**. On 1.0.33 / 1.0.34 it is empty: `/plugin/update` refuses every request with `409 update_disabled` and `/info` reports `update.public_key_configured: false`, so those sites need 1.0.35 installed by hand once too.
 - Rotating the key is a plugin release (code in `config.php`), pushed with the old key still in place.
 
 Generate once (PHP with sodium):
@@ -203,7 +203,7 @@ $body = [ 'secret' => $siteSecret, 'version' => $version, 'sha256' => $sha, 'sig
 
 ## First manual install
 
-Sites on versions before these routes existed answer `404 rest_no_route`. They need **this release installed by hand once** — WP Admin → Plugins → Add New → Upload (the zip from **Download Atlas Connect**), or the existing SSH/rsync deployment. After that, Atlas can push.
+Sites before 1.0.33 answer `404 rest_no_route`; sites on 1.0.33 / 1.0.34 answer `409 update_disabled` (no key yet). Both need **1.0.35 or later installed by hand once** — WP Admin → Plugins → Add New → Upload (the zip from **Download Atlas Connect**), or the existing SSH/rsync deployment. After that, Atlas can push.
 
 Sites deployed with rsync may also have a `tests/` folder. Everything in it exits unless run from the PHP CLI (and `tests/.htaccess` denies Apache), so requesting it over HTTP does nothing. The first pushed update replaces the whole plugin folder, so it goes away.
 
