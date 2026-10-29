@@ -276,7 +276,7 @@ Signing: Ed25519. Atlas holds `ATLAS_CONNECT_UPDATE_SIGNING_KEY` (`php artisan a
 | Secret storage | Options `atlas_secret_hash` (sha256 hex) + `atlas_secret_hint` (last 4 chars). No plaintext option. Old `atlas_secret_key` is migrated and deleted |
 | Scratch files | `atlas_scratch_dir()` in `lib/functions.php`. Private `0700` dir under `sys_get_temp_dir()/atlas-connect-{md5(ABSPATH)[0:12]}/`. Fallback when that is not writable (e.g. `open_basedir`): `uploads/atlas-{backup,scan}-tmp-{24 random chars}/` with a deny-all `.htaccess`. The old fixed `uploads/atlas-backup-tmp/` and `uploads/atlas-scan-tmp/` are deleted on upgrade |
 | Upgrade hook | `plugins_loaded`, when `atlas_db_version` ≠ `1.2`: hash the secret, delete legacy scratch dirs, run `dbDelta` |
-| Version | `ATLAS_CONNECT_VERSION` in `atlas-connect.php`, equal to the `Version:` header and the release tag |
+| Version | Only the `Version:` header in `atlas-connect.php` (= release tag). `ATLAS_CONNECT_VERSION` is read from it at load |
 | Updates | `modules/update/` → `UpdateService` (`/info`, `/plugin/update`), lock option `atlas_update_lock` |
 | Direct file access | Every PHP file starts with `defined( 'ABSPATH' ) \|\| exit;`. Files under `tests/` exit unless run from the CLI |
 | Tests | `php tests/run.php` (standalone, WordPress stubbed). GitHub Actions runs it on every push and tag |

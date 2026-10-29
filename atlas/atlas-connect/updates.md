@@ -23,11 +23,11 @@ Both routes follow the plugin conventions: `POST`, JSON body, `secret` in the bo
 
 ## Release rule
 
-**git tag = `Version:` header = `ATLAS_CONNECT_VERSION`.** Atlas reads the tags to decide what "latest" is.
+**git tag = `Version:` header in `atlas-connect.php`.** Atlas reads the tags to decide what "latest" is.
 
-- `atlas-connect.php` holds both the `Version:` header and `define( 'ATLAS_CONNECT_VERSION', 'X.Y.Z' );`. Bump them together.
+- The header is the only place the version is written. `ATLAS_CONNECT_VERSION` is read from it once when the plugin loads (`get_file_data( __FILE__ )`).
 - This repo's tags have no `v` prefix (`1.0.32`). Atlas should strip a leading `v` if one ever appears; the CI check accepts both.
-- `tests/release-test.php` (GitHub Actions, every push and tag) fails when the header and constant differ, when a tagged commit's tag differs from the header, when `ip_whitelist` lacks `2.31.42.13` or `95.217.144.93`, or when `update.public_key` is neither empty nor 64 hex. Don't let Atlas offer a tag whose CI run failed.
+- `tests/release-test.php` (GitHub Actions, every push and tag) fails when the header is not `X.Y.Z`, when a tagged commit's tag differs from the header, when `ip_whitelist` lacks `2.31.42.13` or `95.217.144.93`, or when `update.public_key` is neither empty nor 64 hex. Don't let Atlas offer a tag whose CI run failed.
 
 ---
 
@@ -84,7 +84,7 @@ Body: `{ "secret": "…" }`. It does no work and changes nothing.
 
 | Field | Source |
 |---|---|
-| `plugin_version` | `ATLAS_CONNECT_VERSION` — the code running in this request |
+| `plugin_version` | `ATLAS_CONNECT_VERSION` — the `Version:` header, read when the running code loaded |
 | `db_version` | option `atlas_db_version` (`""` if unset) |
 | `wp_version` | `get_bloginfo( 'version' )` |
 | `php_version` | `PHP_VERSION` |
@@ -167,7 +167,7 @@ Success `200`:
 { "updated": true, "previous_version": "1.0.32", "version": "1.0.33", "installed_version": "1.0.33" }
 ```
 
-`installed_version` is read with `get_plugin_data()` from the file now on disk. `ATLAS_CONNECT_VERSION` still holds the old version in this request, because the old code is what is running. `/info` afterwards reports the new one.
+`installed_version` is read with `get_plugin_data()` from the file now on disk. `ATLAS_CONNECT_VERSION` was read from the header when this request started, so it still holds the old version — the old code is what is running. `/info` afterwards reports the new one.
 
 The site never logs `package`, `secret`, or `signature`.
 
