@@ -1,10 +1,11 @@
 # Atlas Monitoring
 
-Atlas monitors three things on a 5-minute cron loop:
+Atlas monitors four things on a 5-minute cron loop:
 
 1. **Stella server health** — signed requests to Stella's health-api; dynamic container list, Caddyfile certs, disk/CPU/RAM/Ollama, backup
 2. **Atlas host health** — signed requests to the Atlas host API (`https://api.atlas.foxcraft.digital`); systemd units, certs, disk/CPU/RAM, optional backup
-3. **WP site uptime** — plain HTTPS HEAD ping to each registered WordPress site
+3. **Edison host health** — signed requests to the Edison host API (`https://api.edison.foxcraft.digital`); Docker daemon, containers, Cursor agent, mounts, certs, disk/CPU/RAM
+4. **WP site uptime** — plain HTTPS HEAD ping to each registered WordPress site
 
 ---
 
@@ -187,6 +188,53 @@ ATLAS_SELF_DEPLOY_ENABLED=false
 
 ---
 
+## Edison host monitoring
+
+`CheckEdisonHealth` runs every 5 minutes. It signs `system-health:{timestamp}` and POSTs to `EDISON_HOST_API_URL` (`https://api.edison.foxcraft.digital/system/health` by default). Timeout 60s. Same deploy SSH key and `StellaSshSigner` (namespace `deploy`) as Atlas. No public-probe fallback — a failed call is stored as `source=host-api-error`.
+
+### Data model
+
+```
+EdisonHealthCheck
+  id, status (ok|degraded|down), source, response_ms, payload (JSON), error, checked_at
+
+EdisonServiceUptimeLog
+  id, edison_health_check_id (FK cascade), service_id, service_label, category,
+  status, response_ms, message, meta (JSON), checked_at
+```
+
+**Retention:** `EDISON_HEALTH_RETENTION_DAYS` (default 30).
+
+### Service categories (from host-api)
+
+| Category | Services |
+|---|---|
+| `system` | `system:docker_daemon`, `system:cpu_ram`, `system:disk` |
+| `container` | One row per container in `containers` |
+| `agent` | `agent:cursor` |
+| `mount` | One row per path in `mounts` |
+| `cert` | One row per domain in `certs` |
+
+Aggregate status and CPU/RAM/disk thresholds match Atlas host monitoring. CPU% is `load_1m / cpu_threads` from the payload (not a config default).
+
+The UI is the **Server: edison** card on the dashboard and `/monitoring/edison` (host health plus the existing Hetzner Cloud power/backup section). This is the signed `POST /system/health` snapshot, not the agent-run adapter in [`../edison/host-api.md`](../edison/host-api.md).
+
+### API endpoints
+
+| Method | Path | Purpose |
+|---|---|---|
+| `GET` | `/api/monitoring/edison/host` | Latest `EdisonHealthCheck` with service logs |
+| `POST` | `/api/monitoring/edison/host/check` | On-demand check |
+| `GET` | `/api/monitoring/edison/host/metrics` | Recent check history for charts |
+
+```
+EDISON_HOST_API_URL=https://api.edison.foxcraft.digital
+EDISON_HOST_API_TIMEOUT=60
+EDISON_HEALTH_RETENTION_DAYS=30
+```
+
+---
+
 ## Hetzner Cloud (Atlas + Edison)
 
 Atlas and Edison are CX33s in the **same** Hetzner Cloud project. Atlas reads that project through `api.hetzner.cloud` (read-only token) and shows server facts plus automatic Cloud backups.
@@ -221,7 +269,7 @@ HETZNER_CLOUD_EDISON_NAME=edison
 HETZNER_CLOUD_EDISON_IPV4=178.105.203.54
 ```
 
-UI: Settings → Hetzner Cloud (save + test); Atlas detail page **Hetzner Cloud** section; dashboard **Server: edison** card + `/monitoring/edison`. Edison has no host API yet — Cloud is the only live signal.
+UI: Settings → Hetzner Cloud (save + test); Atlas and Edison detail pages **Hetzner Cloud** section; dashboard **Server: atlas** / **Server: edison** cards + `/monitoring/atlas` / `/monitoring/edison`. Cloud is a different layer from host-api health.
 
 ---
 
