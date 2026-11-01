@@ -1,6 +1,6 @@
 # Atlas architecture
 
-Companion to [`README.md`](README.md). This page is the **code and hosting** map. For how Atlas talks to ddashboard, Stella, GitHub, and WP sites see [`../integration/system-overview.md`](../integration/system-overview.md).
+Companion to [`README.md`](README.md). This page is the **code and hosting** map. For how Atlas talks to ddashboard, Stella, GitHub, and WP sites see [`../integration/system-overview.md`](../integration/system-overview.md). SPA chrome follows [`../design-language/SPEC.md`](../design-language/SPEC.md).
 
 ---
 

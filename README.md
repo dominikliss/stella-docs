@@ -28,6 +28,7 @@ Servers use One Piece Vegapunk-satellite names. Firewalls, IPs, and networks use
 | [stella-server/README.md](stella-server/README.md) | Stella host and services |
 | [stella-dashboard/README.md](stella-dashboard/README.md) | ddashboard theme (folder name is historical) |
 | [edison/README.md](edison/README.md) | Edison coding-agent host |
+| [design-language/README.md](design-language/README.md) | Shared UI language for Atlas-like internal tools |
 | [open-gaps.md](open-gaps.md) | Known gaps and backlog |
 
 Topic pages live in each system README. Shared contracts stay as two files (Atlas half + Stella half) — update both in the same commit.
@@ -43,6 +44,7 @@ Topic pages live in each system README. Shared contracts stay as two files (Atla
 | [**stella-server/**](stella-server/) | Stella host: infra, APIs, per-app SSH; app runbooks under [`apps/`](stella-server/apps/) |
 | [**stella-dashboard/**](stella-dashboard/) | ddashboard product docs, OpenAPI, Cursor rule exports |
 | [**edison/**](edison/) | Edison host, `edison-net`, Cursor CLI / sshfs |
+| [**design-language/**](design-language/) | Technical Precision: spec + tokens for new internal tools (not ddashboard) |
 
 ---
 

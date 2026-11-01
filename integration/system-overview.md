@@ -15,6 +15,7 @@ This is the **cross-system map** for foxcraft.digital: who owns what, which host
 - Stella host: [`../stella-server/README.md`](../stella-server/README.md)
 - Stella media-api: [`../stella-server/media-api.md`](../stella-server/media-api.md)
 - Edison (coding-agent host): [`../edison/README.md`](../edison/README.md)
+- Internal-tools UI language: [`../design-language/README.md`](../design-language/README.md)
 
 ---
 

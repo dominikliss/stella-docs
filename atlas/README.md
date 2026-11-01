@@ -4,7 +4,8 @@
 
 It is **not** the business dashboard. Clients, invoices, and mail live in **ddashboard**. Atlas took over the old ddashboard **Werkzeuge** screens (removed 2026-09-02). TrackingTime project import, open-task sync, and a Projects UI (optional Trello push) live in Atlas; ddashboard keeps CRM and `tracking_time_pro_id`. Client stub: [`../stella-dashboard/atlas-client-lookup.md`](../stella-dashboard/atlas-client-lookup.md).
 
-**How Atlas sits in the company stack:** [`../integration/system-overview.md`](../integration/system-overview.md)
+**How Atlas sits in the company stack:** [`../integration/system-overview.md`](../integration/system-overview.md)  
+**UI language:** [`../design-language/README.md`](../design-language/README.md) (Technical Precision — shared with future internal tools; not the ddashboard theme)
 
 **Live at:** `https://atlas.foxcraft.digital` (replaces `https://dev.atlas.foxcraft.digital` on the managed host)  
 **Host:** Hetzner Cloud CX33 `atlas` (`2.31.42.13`) — same Cloud project as Edison, not the managed `foxcrr` host. Runbook: [`server.md`](server.md)  
@@ -57,6 +58,7 @@ It is **not** the business dashboard. Clients, invoices, and mail live in **ddas
 | [projects.md](projects.md) | Projects UI; one-way Trello push (mapping, skip tasks, hours field, reset ids) |
 | [notifications.md](notifications.md) | Inbox, Slack/email channels, weekly hour-budget rules |
 | [dotnet-azure.md](dotnet-azure.md) | .NET / Azure via `stella_deploy_api` |
+| [../design-language/](../design-language/) | Shared UI language Atlas implements (spec + tokens) |
 
 ---
 
