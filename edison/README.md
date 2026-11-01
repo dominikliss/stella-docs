@@ -70,6 +70,7 @@ Own Laravel app (`foxcraftdigital/edison`), separate from Atlas, with the same d
 
 - App, repo, env, build: [app.md](app.md)
 - Dev instance on Stella: [dev-instance.md](dev-instance.md)
+- Host API the web app calls: [host-api.md](host-api.md)
 
 ---
 
@@ -80,6 +81,7 @@ Own Laravel app (`foxcraftdigital/edison`), separate from Atlas, with the same d
 | [infrastructure.md](infrastructure.md) | Server specs, Hetzner firewall, SSH onto Edison, Docker host + `edison-net` |
 | [cursor-agent.md](cursor-agent.md) | Image, `run.sh`, systemd, sshfs, headless usage, shared-tree warning |
 | [app.md](app.md) | Edison Laravel app: repo, origin, included parts, design, env, build checks, plans |
+| [host-api.md](host-api.md) | Agent-agnostic host API: `/v1/runs`, abort, SSE contract, Cursor now / Claude later |
 | [dev-instance.md](dev-instance.md) | `edison.dev.foxcraft.digital` on Stella: DNS, Caddy, compose, SSH 2207, `.env` |
 
 **Related Stella-side docs** (the remote the agent mounts):
