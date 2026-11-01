@@ -5,7 +5,7 @@ Web app for Edison. It is its own Laravel app, separate from Atlas; an Atlas fea
 **Dev instance:** [`dev-instance.md`](dev-instance.md)  
 **Edison host (coding-agent server):** [`README.md`](README.md)
 
-Status 2026-10-26: foundation only (auth, roles, shell, design system, empty Dashboard, generic Settings). The agent backend is stubbed: there is no link to the real `cursor-agent` on Edison yet.
+Status 2026-11-01: foundation (auth, roles, shell, design system) plus host-API client. When `EDISON_HOST_API_URL` is set, the agent backend calls `POST /v1/runs` on the live host API — not stubbed. **UNVERIFIED:** end-to-end chat in the `edison.dev` UI (including resume).
 
 ---
 
@@ -89,6 +89,10 @@ Edison-specific variables use the `EDISON_` prefix (`config/edison.php`). All ar
 | `EDISON_DDASHBOARD_URL` | `config('edison.ddashboard_url')`, empty by default. **Must be set.** |
 | `EDISON_ALLOWED_IPS` | App-level IP allowlist; empty disables it. `/api/health` is always reachable. |
 | `EDISON_DEMO_MODE` | `true` swaps in a fake auth driver (no ddashboard calls). |
+| `EDISON_HOST_API_URL` | Host API. Set on `edison.dev` to `https://api.edison.foxcraft.digital`. Empty = demo driver. |
+| `EDISON_HOST_API_TOKEN` | Bearer for `/v1/*`. Value not recorded. |
+| `EDISON_AGENT` | `cursor` on `edison.dev`. |
+| `EDISON_AGENT_TIMEOUT` | Read timeout for `/v1/runs`. **900** on `edison.dev` (was 180; matches the host deadline). |
 
 ### Incident 2026-10-26 — empty `EDISON_DDASHBOARD_URL`
 
@@ -117,5 +121,5 @@ With the variable empty, the login call failed with `Illuminate\Http\Client\Conn
 ## Planned (not built)
 
 - **Prod:** `edison.foxcraft.digital` on the Edison server.
-- **Headless API `/v1`:** agent endpoints (`/v1/runs`, abort, SSE) in the same `host-api` service. Health (`GET /health`, signed `POST /system/health`) is live at `api.edison.foxcraft.digital` as of 2026-11-01. See [`host-api.md`](host-api.md).
+- **UI finish on `edison.dev`:** Stop button (abort; host cannot abort a first turn yet), ignore SSE `: ping` comments, map host error statuses, mark unmounted workspaces unavailable, agent health dot. Host API is live — do not change it. See [`host-api.md`](host-api.md).
 - **Atlas-side client:** `CheckEdisonHealth` / `EdisonHealthRecorder`. Not built. See [`../atlas/monitoring.md`](../atlas/monitoring.md).

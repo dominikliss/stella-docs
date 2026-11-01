@@ -36,7 +36,7 @@ Inbound, public NIC only. Attached to the new server.
 
 **Verified 2026-10-09** from Stella (`95.217.144.93`): port 22 on `178.105.203.54` was blocked. That check predates the Stella 22/ICMP rule now present in the live firewall.
 
-This firewall does **not** see Docker-internal traffic. Containers on `edison-net` (`caddy` → `host-api`, later web app → `cursor-agent`) talk to each other by container name and never hit these rules.
+This firewall does **not** see Docker-internal traffic. Containers on `edison-net` (`caddy` → `host-api`; `host-api` `docker exec`s into `cursor-agent`) talk to each other by container name and never hit these rules. The web app lives on Stella and reaches Caddy on 443.
 
 ---
 
@@ -84,8 +84,10 @@ Control plane (same `/opt/services` pattern as Stella), added 2026-11-01:
 /opt/services/
 ├── docker-compose.yml    # caddy + host-api, network edison-net (external)
 ├── caddy/                # publishes 443 only
-└── host-api/             # no published port; Docker socket mounted
+└── host-api/             # no published port; Docker socket + allowed_signers
 ```
+
+Named volume `host-api-state` → `/var/lib/host-api` (`sessions.json` only: agent, workspace, timestamps — no prompts).
 
 `ss` on the host shows **22** and **443**. The agent container publishes no ports. `ufw` is inactive — the Hetzner Cloud firewall is the only filter. See [host-api.md](host-api.md).
 

@@ -1,6 +1,6 @@
 # Edison dev instance (`edison.dev.foxcraft.digital`)
 
-Laravel Edison app running on **Stella**, not on the Edison server. Same pattern as [`../atlas/dev-instance.md`](../atlas/dev-instance.md). Separate database, separate `APP_KEY`. The agent backend is stubbed: there is no link to the real `cursor-agent` on Edison yet.
+Laravel Edison app running on **Stella**, not on the Edison server. Same pattern as [`../atlas/dev-instance.md`](../atlas/dev-instance.md). Separate database, separate `APP_KEY`. When `EDISON_HOST_API_URL` is set, the app calls the live host API at `https://api.edison.foxcraft.digital`. **UNVERIFIED:** end-to-end chat in the UI.
 
 **App / repo:** [`app.md`](app.md)  
 **Edison host:** [`README.md`](README.md)
@@ -112,6 +112,10 @@ Do not write secret values here. This instance has its **own** `APP_KEY` and a f
 | `EDISON_ALLOWED_IPS` | empty — Caddy does the IP filtering |
 | `EDISON_DDASHBOARD_URL` | set (required, see [Incident](#incident-2026-10-26--empty-edison_ddashboard_url)) |
 | `EDISON_DEMO_MODE` | `false` |
+| `EDISON_HOST_API_URL` | `https://api.edison.foxcraft.digital` (added 2026-11-01) |
+| `EDISON_HOST_API_TOKEN` | piped from Edison over ssh; sha256 compared. Value not recorded. |
+| `EDISON_AGENT` | `cursor` |
+| `EDISON_AGENT_TIMEOUT` | `900` (raised from 180 to match the host deadline) |
 
 ---
 
@@ -154,9 +158,11 @@ Stella `DOCKER-USER` ACCEPTs port **2207** from Dominik's IP (`194.126.177.181`)
 - All five containers up
 - SSH on 2207 and GitHub via the forwarded agent
 - 0 pending migrations; roles seeded
+- From the `edison.dev` app container: `GET https://api.edison.foxcraft.digital/v1/health` ok (firewall + Caddy path, 2026-11-01). `php artisan config:clear` run after the new keys.
 
 **UNVERIFIED:**
 
 - End-to-end login through the real ddashboard. The auth endpoints were only exercised against a local mock ddashboard during setup.
 - Whether ddashboard's IP allowlist accepts Stella (`95.217.144.93`) for `/dls/v1/auth/*`. Stella previously got 403 from the managed host's Apache (see [`../open-gaps.md`](../open-gaps.md)). The allowlist is probably an `.htaccess` under `public_html` on the ddashboard host.
 - health-api / backup discovery of the five containers.
+- End-to-end chat in the `edison.dev` UI (including resume via the app).

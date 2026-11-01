@@ -6,7 +6,7 @@ Atlas monitors three things on a 5-minute cron loop:
 2. **Atlas host health** — signed requests to the Atlas host API (`https://api.atlas.foxcraft.digital`); systemd units, certs, disk/CPU/RAM, optional backup
 3. **WP site uptime** — plain HTTPS HEAD ping to each registered WordPress site
 
-Edison host health (signed requests to `https://api.edison.foxcraft.digital`) is **planned, not built**. The Edison host API health endpoints are live; Atlas does not poll them yet. Hetzner Cloud power/backup for Edison is already on `/monitoring/edison`.
+Edison host health (signed requests to `https://api.edison.foxcraft.digital`) is **planned, not built**. The Edison host API is live (health + `/v1`); Atlas does not poll `/system/health` yet. Hetzner Cloud power/backup for Edison is already on `/monitoring/edison`.
 
 ---
 
@@ -191,20 +191,80 @@ ATLAS_SELF_DEPLOY_ENABLED=false
 
 ## Edison host monitoring (planned, not built)
 
-Mirrors Atlas host monitoring. **Not built.**
+Mirrors Atlas host monitoring (`CheckAtlasHealth` / `AtlasHealthRecorder` / `AtlasHealthCheck` / `AtlasServiceUptimeLog`). **Not built.**
 
-The Edison host API health endpoints are live (2026-11-01) at `https://api.edison.foxcraft.digital`. See [`../edison/host-api.md`](../edison/host-api.md). Atlas does not poll them yet.
+The Edison host API is live (2026-11-01) at `https://api.edison.foxcraft.digital`. See [`../edison/host-api.md`](../edison/host-api.md). Atlas does not poll it yet. Do not change the Edison host API. Do not touch Stella or Atlas host monitoring code beyond shared helpers.
 
-Planned Atlas-side shape:
+### Planned call
 
-- `CheckEdisonHealth` / `EdisonHealthRecorder` — same pattern as `CheckAtlasHealth` / `AtlasHealthRecorder`
-- Sign `system-health:{timestamp}` and POST to `EDISON_HOST_API_URL` (`https://api.edison.foxcraft.digital` by default)
-- Same deploy SSH key and namespace `deploy`. Timeout 60s
-- No public-probe fallback
-- Extends the existing `/monitoring/edison` page. Hetzner Cloud power/backup data stays.
+`CheckEdisonHealth` / artisan `edison:check-health`, scheduled every 5 minutes next to `stella:check-health`. Signs `system-health:{unix_ts}` with the same deploy SSH key and signer class used for `CheckAtlasHealth` (namespace `deploy`). POSTs to `{EDISON_HOST_API_URL}/system/health` with JSON `{payload, signature}`. Timeout 60s.
+
+No probe fallback. A failed call is stored with `source=host-api-error`.
+
+### Planned data model
+
+```
+EdisonHealthCheck
+  id, status (ok|degraded|down), source, response_ms, payload (JSON), error, checked_at
+
+EdisonServiceUptimeLog
+  id, edison_health_check_id (FK cascade), service_id, service_label, category,
+  status, response_ms, message, meta (JSON), checked_at
+```
+
+Same columns as the Atlas equivalents. **Retention:** `EDISON_HEALTH_RETENTION_DAYS` (default 30), pruned after each check.
+
+### Planned host response
+
+```json
+{
+  "host": "edison",
+  "timestamp": "…",
+  "docker_daemon": {"status": "…", "version": "…"},
+  "containers": {"<name>": {"status": "…", "started_at": "…", "restart_count": 0}},
+  "agent": {"status": "…", "version": "…"},
+  "mounts": {"<path>": {"status": "…", "message": "…"}},
+  "certs": {"<domain>": {"expires": "…", "days_left": 0, "status": "…"}},
+  "disk": {"total_gb": 0, "free_gb": 0, "used_pct": 0},
+  "cpu_ram": {
+    "cpu_threads": 0,
+    "load_1m": 0,
+    "load_5m": 0,
+    "load_15m": 0,
+    "ram_total_gb": 0,
+    "ram_available_gb": 0,
+    "ram_used_pct": 0
+  }
+}
+```
+
+### Planned service rows
+
+| Category | Services |
+|---|---|
+| `system` | `system:docker_daemon`, `system:cpu_ram`, `system:disk` |
+| `container` | one per container (`caddy`, `host-api`, `cursor-agent`, …) |
+| `agent` | `agent:cursor` |
+| `mount` | one per mount path |
+| `cert` | one per domain |
+
+Aggregate status and CPU/RAM/disk thresholds exactly like Atlas host monitoring. CPU% = `load_1m / cpu_threads` from the payload (not a separate env thread count).
+
+### Planned API
+
+| Method | Path | Purpose |
+|---|---|---|
+| `GET` | `/api/monitoring/edison/host` | Latest `EdisonHealthCheck` with service logs |
+| `POST` | `/api/monitoring/edison/host/check` | On-demand check |
+| `GET` | `/api/monitoring/edison/host/metrics` | Recent check history for charts |
+
+### Planned UI
+
+Extend the existing `/monitoring/edison` page (keep the Hetzner Cloud power/backup data) with the host health sections. Add a **Server: edison** card on the dashboard in the same style as the Atlas server card.
 
 ```
 EDISON_HOST_API_URL=https://api.edison.foxcraft.digital
+EDISON_HEALTH_RETENTION_DAYS=30
 ```
 
 ---
@@ -318,5 +378,5 @@ If `brevo_api_key` is not set, alerts are silently skipped — no exception, jus
 - Atlas Connect login, backups, and infection scan (not part of the uptime loop): [`atlas-connect/`](atlas-connect/)
 - Stella-side health-api: [`../stella-server/health-api.md`](../stella-server/health-api.md)
 - Stella backup + restore: [`../stella-server/backup.md`](../stella-server/backup.md), [`../stella-server/restore.md`](../stella-server/restore.md)
-- Edison host API (health live; `/v1` not built): [`../edison/host-api.md`](../edison/host-api.md)
+- Edison host API (health + `/v1` live; Atlas poller not built): [`../edison/host-api.md`](../edison/host-api.md)
 - System map: [`../integration/system-overview.md`](../integration/system-overview.md)

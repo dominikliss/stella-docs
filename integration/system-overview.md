@@ -29,7 +29,7 @@ Servers use One Piece Vegapunk-satellite names. Firewalls, IPs, and networks use
 | **ddashboard** | Internal business app (CRM, accounting, mail, PM, AI chat) | Hetzner managed WordPress (`foxcrr`) | Relational business data, WP sessions, `dls/v1` auth tokens |
 | **Atlas** | Internal ops platform (deploys, Stella health, WP uptime, IMAP migration, TrackingTime import, Trello push) | Hetzner Cloud CX33 `atlas` (`2.31.42.13`) — `https://atlas.foxcraft.digital` | Deploy history, health history, WP-site registry, IMAP job history, imported PM, Trello card ids |
 | **Stella** | Dedicated AI / services machine | Hetzner dedicated | Ollama, stella-api, deploy-api, health-api, media-api, imap-sync, Caddy, .NET dev apps |
-| **Edison** | Coding-agent sandbox | Hetzner Cloud (same project as Atlas) | Cursor CLI container, sshfs mounts, `host-api` behind `api.edison.foxcraft.digital`. **Must not** run on Stella. Atlas reads Cloud API status/backups. Host-api health is live; Atlas-side poller is not built. |
+| **Edison** | Coding-agent sandbox | Hetzner Cloud (same project as Atlas) | Cursor CLI container, sshfs mounts, `host-api` behind `api.edison.foxcraft.digital` (Caddy → host-api). **Must not** run on Stella. Atlas prod + Atlas dev may poll `/system/health` (poller not built). `edison.dev` calls `/v1/*`. Atlas also reads Cloud API status/backups. |
 
 Neither Atlas nor ddashboard replaces the other:
 
@@ -137,7 +137,15 @@ Laravel `CheckAtlasHealth` stores `atlas_health_checks` / `atlas_service_uptime_
 |--------|-----|------|----------|
 | Atlas prod + Atlas dev (planned poller) | `https://api.edison.foxcraft.digital` | SSH signature, `system-health:{ts}` | [`../edison/host-api.md`](../edison/host-api.md) |
 
-Caddy + Hetzner firewall allow Atlas prod (`2.31.42.13`) and Stella (`95.217.144.93`). Health endpoints are live (2026-11-01). Atlas-side `CheckEdisonHealth` is **not built**. See [`../atlas/monitoring.md`](../atlas/monitoring.md).
+Caddy + Hetzner firewall allow Atlas prod (`2.31.42.13`) and Stella (`95.217.144.93`) on `/system/*`. Health is live (2026-11-01). Atlas-side `CheckEdisonHealth` is **not built**. See [`../atlas/monitoring.md`](../atlas/monitoring.md).
+
+### edison.dev → Edison host API
+
+| Caller | URL | Auth | Contract |
+|--------|-----|------|----------|
+| `edison.dev` on Stella | `https://api.edison.foxcraft.digital` | Bearer `EDISON_HOST_API_TOKEN` | [`../edison/host-api.md`](../edison/host-api.md) |
+
+Caddy restricts `/v1/*` to Stella (`95.217.144.93`) and the MacBook (`194.126.177.181`). The app calls `POST /v1/runs` (SSE). `/v1/health` from the app container is verified. **UNVERIFIED:** end-to-end chat in the UI.
 
 ### ddashboard → Stella (AI)
 
@@ -266,6 +274,7 @@ Hetzner Cloud  (same project)
 └── Edison              coding-agent host — CX33, edison-ip 178.105.203.54
     │     api.edison.foxcraft.digital → caddy → host-api (edison-net)
     │     GET /health (no auth); POST /system/health (signed; Atlas prod + Stella)
+    │     GET/POST /v1/* (bearer; Stella + MacBook) — called by edison.dev
     │     Atlas prod + Atlas dev may poll; Atlas-side CheckEdisonHealth not built
     │     Atlas also reads Cloud backups/status via the Hetzner Cloud API
     └── cursor-agent + sshfs mounts
@@ -289,5 +298,5 @@ Hetzner Cloud  (same project)
 | **atlas-api / Atlas host API** | FastAPI on the Atlas host (`https://api.atlas.foxcraft.digital` → `127.0.0.1:8090`). Signed `system-health` snapshot of the Atlas box. See [`../atlas/host-api.md`](../atlas/host-api.md) |
 | **imap-sync** | Express + `imapsync` mailbox copy |
 | **Edison** | Separate coding-agent host |
-| **Edison host API** | FastAPI in Docker on Edison (`https://api.edison.foxcraft.digital` → `host-api:8080`). Live health (`GET /health`, signed `POST /system/health`). `/v1` agent endpoints not built. See [`../edison/host-api.md`](../edison/host-api.md) |
+| **Edison host API** | FastAPI in Docker on Edison (`https://api.edison.foxcraft.digital` → caddy → `host-api:8080`). Live health (`GET /health`, signed `POST /system/health`) and `/v1` agent endpoints (bearer). Polled by Atlas prod + dev (poller not built); called by `edison.dev`. See [`../edison/host-api.md`](../edison/host-api.md) |
 | **`ddashboard` principal** | Name in Stella `allowed_signers` for Atlas’s SSH key (same keypair as the old managed-host Atlas; comment `atlas-prod`) |
