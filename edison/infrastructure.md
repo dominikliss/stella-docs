@@ -1,8 +1,8 @@
 # Edison — Infrastructure
 
-**Status:** Rebuilt 2026-10-09 (old CPX32 renamed `edison-old`, then deleted). HTTP/HTTPS not opened yet.
+**Status:** Rebuilt 2026-10-09 (old CPX32 renamed `edison-old`, then deleted). TCP/443 opened 2026-11-01 for `api.edison.foxcraft.digital` (IP-restricted). Port 80 stays closed.
 
-**Related:** [README.md](README.md) (role + naming), [cursor-agent.md](cursor-agent.md) (agent container)
+**Related:** [README.md](README.md) (role + naming), [cursor-agent.md](cursor-agent.md) (agent container), [host-api.md](host-api.md) (Caddy + host-api)
 
 ---
 
@@ -30,13 +30,13 @@ Inbound, public NIC only. Attached to the new server.
 
 | Rule | Source | Notes |
 |------|--------|--------|
-| TCP/22 (SSH) | Trusted IP `194.126.177.181` | Same laptop/VPN IP used on Stella |
-| ICMP | Same trusted IP — **not** Any | Ping restricted the same way as SSH |
-| TCP/80, TCP/443 | none | Open only when a web app is exposed; keep IP-restricted |
+| TCP/22 (SSH) | `194.126.177.181`, `95.217.144.93` | Live firewall allows Stella as well as the laptop/VPN IP. Docs previously listed only `194.126.177.181`. **TODO (Dominik):** confirm Stella on 22/ICMP is intentional. |
+| ICMP | Same two IPs — **not** Any | Ping restricted the same way as SSH |
+| TCP/443 | `194.126.177.181`, `95.217.144.93` (Stella: Atlas dev, edison.dev), `2.31.42.13` (Atlas prod) | Opened 2026-11-01 for `api.edison.foxcraft.digital`. IP-restricted. Port 80 not opened. |
 
-**Verified 2026-10-09** from Stella (`95.217.144.93`): port 22 on `178.105.203.54` is blocked.
+**Verified 2026-10-09** from Stella (`95.217.144.93`): port 22 on `178.105.203.54` was blocked. That check predates the Stella 22/ICMP rule now present in the live firewall.
 
-This firewall does **not** see Docker-internal traffic. Containers on `edison-net` (web app → `cursor-agent`, etc.) talk to each other by container name and never hit these rules.
+This firewall does **not** see Docker-internal traffic. Containers on `edison-net` (`caddy` → `host-api`, later web app → `cursor-agent`) talk to each other by container name and never hit these rules.
 
 ---
 
@@ -64,13 +64,13 @@ Then: `ssh edison`.
 
 ## Docker on the host
 
-Docker **29.9.0**, installed with the official script (not distro packages):
+Docker **29.9.0**, Docker Compose **v5.6.0**, installed with the official script (not distro packages):
 
 ```bash
 curl -fsSL https://get.docker.com | sh
 ```
 
-User-defined bridge so every agent (and the future web app) share Docker DNS:
+User-defined bridge so every agent and the control plane share Docker DNS:
 
 ```bash
 docker network create edison-net
@@ -78,7 +78,18 @@ docker network create edison-net
 
 All agent and control-plane containers join `--network edison-net`. Edison appears in the **network** name only. Container and host-folder names follow the **tool**: `cursor-agent`, `~/cursor-agent/`, later `opencode-agent` / `~/opencode-agent/`.
 
-Only port 22 is listening publicly; the agent container publishes no ports.
+Control plane (same `/opt/services` pattern as Stella), added 2026-11-01:
+
+```
+/opt/services/
+├── docker-compose.yml    # caddy + host-api, network edison-net (external)
+├── caddy/                # publishes 443 only
+└── host-api/             # no published port; Docker socket mounted
+```
+
+`ss` on the host shows **22** and **443**. The agent container publishes no ports. `ufw` is inactive — the Hetzner Cloud firewall is the only filter. See [host-api.md](host-api.md).
+
+**Pre-checks 2026-11-01** (before this setup): no API, no Caddy, nothing listening except sshd (22) and systemd-resolved (`127.0.0.53`/`54`). 75 GB disk / 7.6 GB RAM, no swap. `~/cursor-agent` unchanged.
 
 ---
 

@@ -1,6 +1,6 @@
 # Open Gaps & Next Steps
 
-Last updated: 2026-10-26
+Last updated: 2026-11-01
 
 **Cross-system overview:** [integration/system-overview.md](integration/system-overview.md) (Atlas + ddashboard + Stella + Edison). AI-chat path only: [integration/ddashboard-and-stella-server.md](integration/ddashboard-and-stella-server.md).
 
@@ -41,9 +41,12 @@ Host rebuilt 2026-10-09 onto CX33 (`edison-ip` = `178.105.203.54`). See [`edison
 - [ ] **Default Cursor model** — UNKNOWN. **TODO (Dominik):** `cursor-agent models` / `--help`, set `--model` for reproducible runs.
 - [ ] **`CURSOR_API_KEY` for unattended runs** — not set up yet. Third-party sources say unattended runs should use an API key.
 - [ ] **`dominikliss` sshfs mount** — SSH config entry exists (port 2204); no mount yet.
-- [ ] **Web app to drive the agent** — adapter layer (start / stream / abort / resume) on `edison-net`, so OpenCode (`opencode serve`) can be a second backend later. Audit trail once runs are unattended.
+- [ ] **Web app to drive the agent** — `/v1` endpoints in `host-api` (start / stream / abort / resume) on `edison-net`, so OpenCode (`opencode serve`) can be a second backend later. Audit trail once runs are unattended. Next step: verify Cursor `stream-json` field names with a test run. See [`edison/host-api.md`](edison/host-api.md).
 - [ ] **Further agent images** — OpenCode as a second backend via that adapter; own Dockerfile, tool-named container, same `edison-net` and `/mnt/<full-hostname>` scheme.
-- [ ] **Edison firewall for HTTP/HTTPS** — open only when the web app is exposed; keep IP-restricted. Internal container traffic does not need these rules.
+- [x] **Edison firewall for HTTP/HTTPS** — closed 2026-11-01. TCP/443 opened, IP-restricted (`194.126.177.181`, `95.217.144.93`, `2.31.42.13`). Port 80 stays closed. See [`edison/infrastructure.md`](edison/infrastructure.md).
+- [ ] **Atlas-side `CheckEdisonHealth` / `EdisonHealthRecorder`** — not built. Edison host API health is live; Atlas does not poll it yet. See [`atlas/monitoring.md`](atlas/monitoring.md).
+- [ ] **Confirm Stella on Edison TCP/22 and ICMP** — live firewall allows `95.217.144.93` on 22 and ICMP, not only `194.126.177.181`. **TODO (Dominik):** confirm that is intentional.
+- [ ] **Signed health call from Atlas prod** — **UNVERIFIED.** Stella + atlas-dev key works. Call from `2.31.42.13` with the atlas-prod key has not been run.
 
 ### Edison app (Laravel) — 2026-10-26
 
@@ -53,8 +56,8 @@ Repo `foxcraftdigital/edison`, dev instance `https://edison.dev.foxcraft.digital
 - [ ] **Bump the stella-docs submodule pointer** in the Edison repo after this docs update.
 - [ ] **End-to-end ddashboard login on `edison.dev`** — **UNVERIFIED.** Includes whether ddashboard's IP allowlist accepts Stella (`95.217.144.93`); prod would also need `178.105.203.54`. Allowlist probably an `.htaccess` under `public_html` (same TODO as the Atlas 401/403 item above).
 - [ ] **Clear error when `EDISON_DDASHBOARD_URL` is missing** — **TODO (Dominik):** make the driver throw "EDISON_DDASHBOARD_URL is not set" instead of `ConnectionException` "URI must include a scheme and host".
-- [ ] **Real agent link** — the agent backend is stubbed. Needs Stella's IP on Edison's Hetzner firewall, a dev API on Edison, and the worktree design (the live-tree item above stays open).
-- [ ] **Edison prod app** at `edison.foxcraft.digital` and the **headless API** at `api.edison.foxcraft.digital` (see "Edison host API" under Infrastructure); Atlas-side client flag-gated, like self-deploy.
+- [ ] **Real agent link** — the agent backend is stubbed. Stella can already reach `api.edison.foxcraft.digital` (443 opened 2026-11-01). Still needs `/v1` on host-api and the worktree design (the live-tree item above stays open).
+- [ ] **Edison prod app** at `edison.foxcraft.digital`. Headless API **health** is live at `api.edison.foxcraft.digital` (2026-11-01); `/v1` agent endpoints are not built. Atlas-side `CheckEdisonHealth` is not built.
 - [ ] **`edison.dev` ssh container** — **TODO (Dominik):** decide on a home volume (git identity, `known_hosts`, clones are lost on rebuild); whether to split `authorized_keys` for `edison`; whether to add an editor (`nano`) to `Dockerfile.ssh`.
 - [ ] **`edison.dev` in health-api and backup** — **UNVERIFIED** that the five containers are discovered.
 - [ ] **Delete `~/atlas-ref`** in the `edison.dev` ssh container (read-only Atlas clone used during setup). **TODO (Dominik).**
@@ -130,12 +133,17 @@ Service live at `https://stella-media-api.foxcraft.digital`. Contract: [`stella-
 - [x] **Atlas host-api.md** — runbook at [`atlas/host-api.md`](atlas/host-api.md) (health + deploy, 2026-10-10).
 - [ ] **Atlas prod via the public API URL** — test `https://api.atlas.foxcraft.digital` from Atlas itself (hairpin risk), otherwise use `127.0.0.1:8090` locally.
 - [x] **Hetzner Cloud API in Atlas** — read-only `HETZNER_CLOUD_TOKEN` lists atlas + edison, Cloud backups, snapshots, volumes. Dashboard Edison card + `/monitoring/edison`. See [`atlas/monitoring.md`](atlas/monitoring.md).
-- [ ] **Edison host API** — same pattern as Atlas (hostname `api.edison.foxcraft.digital` planned), not started. Cloud API covers power/backup status until then. This is also the planned headless API for the Edison app — see [`edison/app.md`](edison/app.md#planned-not-built) and the Edison app section above.
+- [x] **Edison host API (health)** — live 2026-11-01 at `https://api.edison.foxcraft.digital` (`GET /health`, signed `POST /system/health`). Docker Caddy + host-api on `edison-net`. See [`edison/host-api.md`](edison/host-api.md). `/v1` endpoints still open (Edison section above). Cloud API still covers power/backup until `CheckEdisonHealth` exists.
 - [ ] **Patch `/usr/local/bin/atlas-deploy`:** `queue:restart` instead of `systemctl restart atlas-queue`; reject refs starting with `-`
 - [ ] **First real deploy through the host API** (new commits) and record the result in [`atlas/host-api.md`](atlas/host-api.md)
 - [x] **Atlas dev app: deploy client + UI behind a flag, off on prod** — `ATLAS_SELF_DEPLOY_ENABLED` (404 when off). Button on the Server: atlas card; toasts on terminal status. See [`atlas/monitoring.md`](atlas/monitoring.md).
 
 ---
+
+## Closed 2026-11-01
+
+- **Edison host API health** — `api.edison` DNS A record, Hetzner firewall TCP/443 (IP-restricted), Caddy (Let's Encrypt production, first attempt), `host-api` in `/opt/services`. `GET /health` and signed `POST /system/health` verified from Stella with the atlas-dev key. `/v1` and Atlas-side poller remain open. See [`edison/host-api.md`](edison/host-api.md).
+- **Edison firewall TCP/443** — opened for `194.126.177.181`, `95.217.144.93`, `2.31.42.13`. Port 80 not opened.
 
 ## Closed 2026-10-10
 

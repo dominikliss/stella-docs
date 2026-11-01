@@ -117,5 +117,5 @@ With the variable empty, the login call failed with `Illuminate\Http\Client\Conn
 ## Planned (not built)
 
 - **Prod:** `edison.foxcraft.digital` on the Edison server.
-- **Headless API:** `api.edison.foxcraft.digital`, same pattern as the Atlas host API ([`../atlas/host-api.md`](../atlas/host-api.md)), so Atlas can use Edison. Not started.
-- **Atlas-side client:** flag-gated, like self-deploy.
+- **Headless API `/v1`:** agent endpoints (`/v1/runs`, abort, SSE) in the same `host-api` service. Health (`GET /health`, signed `POST /system/health`) is live at `api.edison.foxcraft.digital` as of 2026-11-01. See [`host-api.md`](host-api.md).
+- **Atlas-side client:** `CheckEdisonHealth` / `EdisonHealthRecorder`. Not built. See [`../atlas/monitoring.md`](../atlas/monitoring.md).

@@ -15,6 +15,7 @@ This is the **cross-system map** for foxcraft.digital: who owns what, which host
 - Stella host: [`../stella-server/README.md`](../stella-server/README.md)
 - Stella media-api: [`../stella-server/media-api.md`](../stella-server/media-api.md)
 - Edison (coding-agent host): [`../edison/README.md`](../edison/README.md)
+- Edison host API: [`../edison/host-api.md`](../edison/host-api.md)
 - Internal-tools UI language: [`../design-language/README.md`](../design-language/README.md)
 
 ---
@@ -28,7 +29,7 @@ Servers use One Piece Vegapunk-satellite names. Firewalls, IPs, and networks use
 | **ddashboard** | Internal business app (CRM, accounting, mail, PM, AI chat) | Hetzner managed WordPress (`foxcrr`) | Relational business data, WP sessions, `dls/v1` auth tokens |
 | **Atlas** | Internal ops platform (deploys, Stella health, WP uptime, IMAP migration, TrackingTime import, Trello push) | Hetzner Cloud CX33 `atlas` (`2.31.42.13`) — `https://atlas.foxcraft.digital` | Deploy history, health history, WP-site registry, IMAP job history, imported PM, Trello card ids |
 | **Stella** | Dedicated AI / services machine | Hetzner dedicated | Ollama, stella-api, deploy-api, health-api, media-api, imap-sync, Caddy, .NET dev apps |
-| **Edison** | Coding-agent sandbox | Hetzner Cloud (same project as Atlas) | Cursor CLI container, sshfs mounts. **Must not** run on Stella. Atlas reads Cloud API status/backups; no agent control. |
+| **Edison** | Coding-agent sandbox | Hetzner Cloud (same project as Atlas) | Cursor CLI container, sshfs mounts, `host-api` behind `api.edison.foxcraft.digital`. **Must not** run on Stella. Atlas reads Cloud API status/backups. Host-api health is live; Atlas-side poller is not built. |
 
 Neither Atlas nor ddashboard replaces the other:
 
@@ -130,6 +131,14 @@ Atlas **does not** call `stella-api` `/chat/*`. That path is ddashboard’s.
 
 Laravel `CheckAtlasHealth` stores `atlas_health_checks` / `atlas_service_uptime_logs` and renders the dashboard card + `/monitoring/atlas`. On atlas.dev only, `ATLAS_SELF_DEPLOY_ENABLED` exposes `POST /api/monitoring/atlas/deploy` and `GET /api/monitoring/atlas/deploy/status` (404 when off). See [`../atlas/monitoring.md`](../atlas/monitoring.md).
 
+### Atlas → Edison host API
+
+| Caller | URL | Auth | Contract |
+|--------|-----|------|----------|
+| Atlas prod + Atlas dev (planned poller) | `https://api.edison.foxcraft.digital` | SSH signature, `system-health:{ts}` | [`../edison/host-api.md`](../edison/host-api.md) |
+
+Caddy + Hetzner firewall allow Atlas prod (`2.31.42.13`) and Stella (`95.217.144.93`). Health endpoints are live (2026-11-01). Atlas-side `CheckEdisonHealth` is **not built**. See [`../atlas/monitoring.md`](../atlas/monitoring.md).
+
 ### ddashboard → Stella (AI)
 
 | Feature | Stella service | Auth |
@@ -188,9 +197,9 @@ Atlas uses **one SSH private key** (Settings → GitHub, `app_settings.deploy_ss
 
 1. **GitHub** — clone private repos (`ssh_rsync`)
 2. **Destination servers** — rsync
-3. **Stella** — `ssh-keygen -Y sign -n deploy` for deploy-api and health-api
+3. **Stella** (and now Edison host-api) — `ssh-keygen -Y sign -n deploy` for deploy-api, health-api, and Edison `POST /system/health`
 
-Stella’s `deploy-api/allowed_signers` lists this public key as principal **`ddashboard`**. health-api has its **own** file (`/opt/services/health-api/allowed_signers`) with two `ddashboard` lines (`atlas-prod` and `atlas-dev`). The same `atlas-prod` and `atlas-dev` keys are also in `/opt/atlas-api/allowed_signers` (principal `ddashboard`, namespace `deploy`). `allowed_signers_deploy` contains only the atlas-dev key. The principal name is historical; health-api hardcodes `ddashboard` / namespace `deploy`. Production Atlas reuses the old managed-host key (`/home/atlas/.ssh/id_ed25519`, comment `atlas-prod`) so the 28 deploy servers did not need new `authorized_keys`. The managed host still holds the same key and can still deploy/sign. Rotation was considered and deferred. Dev instance: [`../atlas/dev-instance.md`](../atlas/dev-instance.md).
+Stella’s `deploy-api/allowed_signers` lists this public key as principal **`ddashboard`**. health-api has its **own** file (`/opt/services/health-api/allowed_signers`) with two `ddashboard` lines (`atlas-prod` and `atlas-dev`). The same two keys are in `/opt/atlas-api/allowed_signers` and, as of 2026-11-01, in Edison `/opt/services/host-api/allowed_signers` (principal `ddashboard`, namespace `deploy`). `allowed_signers_deploy` contains only the atlas-dev key. The principal name is historical; health-api hardcodes `ddashboard` / namespace `deploy`. Production Atlas reuses the old managed-host key (`/home/atlas/.ssh/id_ed25519`, comment `atlas-prod`) so the 28 deploy servers did not need new `authorized_keys`. The managed host still holds the same key and can still deploy/sign. Rotation was considered and deferred. Dev instance: [`../atlas/dev-instance.md`](../atlas/dev-instance.md).
 
 The private key never crosses the network. Only a short-lived signed payload (`action:unix_timestamp`, 60 s replay window on Stella) is posted.
 
@@ -254,7 +263,12 @@ Hetzner Cloud  (same project as Edison)
     └── HTTPS ──► registered WP sites (uptime + Atlas Connect)
 
 Hetzner Cloud  (same project)
-└── Edison              coding-agent host — Atlas reads Cloud backups/status only
+└── Edison              coding-agent host — CX33, edison-ip 178.105.203.54
+    │     api.edison.foxcraft.digital → caddy → host-api (edison-net)
+    │     GET /health (no auth); POST /system/health (signed; Atlas prod + Stella)
+    │     Atlas prod + Atlas dev may poll; Atlas-side CheckEdisonHealth not built
+    │     Atlas also reads Cloud backups/status via the Hetzner Cloud API
+    └── cursor-agent + sshfs mounts
 ```
 
 ---
@@ -275,4 +289,5 @@ Hetzner Cloud  (same project)
 | **atlas-api / Atlas host API** | FastAPI on the Atlas host (`https://api.atlas.foxcraft.digital` → `127.0.0.1:8090`). Signed `system-health` snapshot of the Atlas box. See [`../atlas/host-api.md`](../atlas/host-api.md) |
 | **imap-sync** | Express + `imapsync` mailbox copy |
 | **Edison** | Separate coding-agent host |
+| **Edison host API** | FastAPI in Docker on Edison (`https://api.edison.foxcraft.digital` → `host-api:8080`). Live health (`GET /health`, signed `POST /system/health`). `/v1` agent endpoints not built. See [`../edison/host-api.md`](../edison/host-api.md) |
 | **`ddashboard` principal** | Name in Stella `allowed_signers` for Atlas’s SSH key (same keypair as the old managed-host Atlas; comment `atlas-prod`) |

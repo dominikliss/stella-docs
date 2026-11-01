@@ -2,9 +2,135 @@
 
 Headless adapter on the **Edison box**. The Laravel web app never runs Cursor or Claude. It only calls this API. The host picks a CLI from `agent` and works in an sshfs workspace.
 
-**Status:** specified. Not built. Planned public name: `api.edison.foxcraft.digital`. Until then the app uses `EDISON_HOST_API_URL` (empty = demo driver).
+**Status:** health part live at `https://api.edison.foxcraft.digital` (2026-11-01). `/v1` endpoints still not built. Until then the Edison app uses `EDISON_HOST_API_URL` (empty = demo driver).
 
-**Related:** [README.md](README.md) (role), [cursor-agent.md](cursor-agent.md) (container, mounts, `cursor-agent-run`), [app.md](app.md) (Laravel client).
+**Related:** [README.md](README.md) (role), [infrastructure.md](infrastructure.md) (firewall, `/opt/services`), [cursor-agent.md](cursor-agent.md) (container, mounts, `cursor-agent-run`), [app.md](app.md) (Laravel client), Atlas polling (planned): [`../atlas/monitoring.md`](../atlas/monitoring.md).
+
+---
+
+## Decision (2026-11-01)
+
+Health and the `/v1` web-app endpoints live in **one** service (`host-api`) on one subdomain, same as the Atlas host API. Separate auth: SSH signature for `/system/*`, bearer token for `/v1/*`.
+
+Edison uses Docker for Caddy and host-api (Stella pattern), not native systemd like the Atlas server, because Edison is already a Docker host and the API must exec into `cursor-agent`.
+
+---
+
+## Live now (2026-11-01)
+
+`GET /health` and `POST /system/health` are live. `/v1` is specified below and not built. The `/v1` Caddy restriction (Stella + `194.126.177.181`) and bearer token are **planned, not live**.
+
+### DNS
+
+A record `api.edison` → `178.105.203.54` created via Hetzner Cloud API from Stella (zone `567656`, TTL 300). Token from `/opt/services/caddy/.env` on Stella. Verified with `dig @8.8.8.8`. Do not write the token into docs.
+
+### Layout
+
+```
+/opt/services/
+├── docker-compose.yml    # caddy + host-api, network edison-net (external)
+├── caddy/
+│   ├── Dockerfile        # identical to Stella: xcaddy + caddy-dns/hetzner/v2
+│   ├── Caddyfile
+│   └── .env              # HETZNER_API_TOKEN, copied from Stella via scp -3, chmod 600
+└── host-api/
+    ├── Dockerfile        # python:3.13-slim + openssh-client + docker CLI (from docker:29-cli)
+    ├── requirements.txt  # fastapi 0.120.*, uvicorn[standard] 0.38.*
+    ├── allowed_signers   # copied from Stella /opt/services/health-api/allowed_signers
+    └── app/
+        ├── __init__.py
+        ├── auth.py       # ssh-keygen -Y verify, namespace deploy, principal ddashboard, 60s replay window
+        ├── health.py     # snapshot checks
+        └── main.py       # GET /health, POST /system/health
+```
+
+| Container | `container_name` | Ports | Notes |
+|-----------|------------------|-------|-------|
+| `caddy` | set | publishes **443 only** | Port 80 is not published. `:80 HTTP/2 skipped` log lines are harmless. |
+| `host-api` | set | none | Docker socket mounted to inspect containers and `docker exec` into `cursor-agent`. |
+
+Both join `edison-net`.
+
+### Endpoints
+
+| Method | Path | Auth | Purpose |
+|---|---|---|---|
+| GET | `/health` | none | Liveness `{"status":"ok"}` |
+| POST | `/system/health` | signed `system-health`, `allowed_signers` | Host snapshot for Atlas |
+
+Same SSH-signature scheme as Stella health-api and the Atlas host API (`ssh-keygen -Y sign` / `-Y verify`, namespace `deploy`, principal `ddashboard`, 60 s replay window). See [`../stella-server/health-api.md`](../stella-server/health-api.md) and [`../atlas/host-api.md`](../atlas/host-api.md).
+
+### Snapshot fields
+
+| Key | Contents |
+|---|---|
+| `host` | `edison` |
+| `timestamp` | ISO timestamp |
+| `docker_daemon` | `{status, version}` |
+| `containers` | `{name: {status, started_at, restart_count}}`. Core list: `caddy`, `host-api`, `cursor-agent`. Missing → `"missing"`. |
+| `agent` | `{status, version}` via `cursor-agent --version` inside the container |
+| `mounts` | `{path: {status}}`. `EDISON_EXPECTED_MOUNTS`, default `/mnt/osgar.datahub.foxcraft.digital`. Checks mountpoint + `ls` with 8 s timeout. |
+| `certs` | `{domain: {expires, days_left, status}}` via TLS to `caddy:443` with SNI |
+| `disk` | `{total_gb, free_gb, used_pct}` (container root = host disk) |
+| `cpu_ram` | `{cpu_threads, load_*, ram_*}` from `/proc` |
+
+### Caddyfile
+
+Certificate for `api.edison.foxcraft.digital` obtained from Let's Encrypt production on the first attempt (DNS-01, ~100 s, `propagation_delay 90s` + `propagation_timeout 5m`, `dir` pinned). New ACME account registered for `projects@foxcraft.digital`.
+
+```caddyfile
+api.edison.foxcraft.digital {
+    tls {
+        issuer acme {
+            email projects@foxcraft.digital
+            dir https://acme-v02.api.letsencrypt.org/directory
+            dns hetzner {env.HETZNER_API_TOKEN}
+            propagation_delay 90s
+            propagation_timeout 5m
+        }
+    }
+    @blocked {
+        not remote_ip 2.31.42.13 95.217.144.93 194.126.177.181
+    }
+    respond @blocked 403
+    @system_blocked {
+        path /system/*
+        not remote_ip 2.31.42.13 95.217.144.93
+    }
+    respond @system_blocked 403
+    reverse_proxy host-api:8080
+}
+```
+
+`@blocked` = not Atlas prod / Stella / MacBook → 403. `@system_blocked` = path `/system/*` and not Atlas prod / Stella → 403. Then `reverse_proxy host-api:8080`.
+
+Planned, not live: further restrict `/v1/*` to Stella (`95.217.144.93`) + `194.126.177.181`, and require `Authorization: Bearer <EDISON_HOST_API_TOKEN>`.
+
+### allowed_signers
+
+Two `ddashboard` lines. Same keys as Stella health-api.
+
+| Comment | Who |
+|---------|-----|
+| `foxcraft-digital@dedi6724` | atlas-prod |
+| (none) | atlas-dev |
+
+### Tests (2026-11-01)
+
+| From | Call | Result |
+|------|------|--------|
+| MacBook | `GET /health` | `{"status":"ok"}` |
+| MacBook | `POST /system/health` | **403** (IP not allowed). Correct. |
+| Stella, atlas-dev key (`/opt/apps/laravel/atlas.dev.foxcraft.digital/deploy-key/id_ed25519`) | signed `POST /system/health` | Full snapshot. |
+
+Snapshot values at **2026-11-01 02:56 UTC:** Docker 29.9.0, all 3 containers up, cursor-agent `2026.10.01-e373342`, osgar mount up, cert valid until Jan 30 2027 (89 days), disk 9.9 %, load 0.52, RAM 10.1 %.
+
+**UNVERIFIED:** signed call from Atlas prod (`2.31.42.13`) with the atlas-prod key.
+
+### Gotchas
+
+- After `rm` + `nano` of the Caddyfile use `docker compose up -d --force-recreate caddy` (new inode; `restart` keeps the old file). Same class as Stella Issue 4.
+- First build of the Caddy image took several minutes (`go build` prints nothing while compiling on the CX33).
 
 ---
 
@@ -36,9 +162,13 @@ The app **does not** call abort or health yet. Build them anyway so the host is 
 
 Connect timeout: 5 s. Read timeout: `EDISON_AGENT_TIMEOUT` (default **180 s**). If `EDISON_HOST_API_TOKEN` is set, the app sends `Authorization: Bearer <token>`.
 
+**Not built.** Next step before implementing `/v1/runs`: verify Cursor `stream-json` field names with a test run.
+
 ---
 
 ## Required endpoints
+
+`/v1` below is the contract for the Edison app. **Not built.** Live liveness is `GET /health` (above), not `GET /v1/health`.
 
 ### `GET /v1/health`
 
@@ -188,6 +318,7 @@ Always JSON `{ "message": "…" }` except on an open SSE stream (then send a las
 |---|---|
 | 400 | Missing/invalid field, unknown `agent`, workspace not in the allowlist |
 | 401 | Missing or bad bearer token |
+| 403 | Caddy IP allowlist (`@blocked` / `@system_blocked`) |
 | 404 | Workspace not mounted, unknown `session_id` on abort |
 | 409 | Session already running (same `resume` still in flight) |
 | 502 | CLI crashed or produced no usable output |
@@ -213,9 +344,16 @@ The current Laravel parser treats unknown SSE names with a `text` field as delta
 
 ## Auth and network
 
-- Bind on `edison-net` first (Laravel on Stella will reach it through a published port or Caddy).
+Live today (`/health`, `/system/*`):
+
+- Bind on `edison-net`. Caddy is the only published ingress (443).
+- `/system/*` is SSH-signed (`system-health`) plus Caddy IP allowlist (Atlas prod + Stella).
+- Do not expose the API to the public internet.
+
+Planned for `/v1/*` (not live):
+
 - Require a bearer token (`EDISON_HOST_API_TOKEN` on the app, same secret on the host).
-- IP-restrict the published port the same way as other Edison services. Do not expose the API to the public internet.
+- Caddy-restrict to Stella (`95.217.144.93`) + `194.126.177.181`.
 - This token is **not** a ddashboard user token. Users never call the host API.
 
 ---
@@ -325,16 +463,18 @@ Follow-up from the same chat sends `"resume": "cursor_01JK…"`.
 
 ## Implementation sketch
 
-One long-lived process on Edison (FastAPI, or similar) on `edison-net`:
+One Docker service (`host-api`) on `edison-net`. Health is live. `/v1` is not built.
+
+When `/v1` lands in the same process:
 
 1. Validate token, body, workspace, agent.
 2. If `resume` is set, attach to that process/session; else start one.
-3. Exec the CLI in `workspace` with stdout piped.
+3. Exec the CLI in `workspace` with stdout piped (`docker exec` into `cursor-agent`).
 4. Translate vendor events → SSE `delta` / `done`.
 5. On client disconnect or `POST /v1/runs/abort`, kill the process group.
 6. Never persist user prompts beyond what the CLI needs for `--resume`.
 
-Disable proxy buffering (Caddy `flush_interval -1` on this path).
+Disable proxy buffering (Caddy `flush_interval -1` on the `/v1` path).
 
 ---
 
