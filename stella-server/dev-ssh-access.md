@@ -216,10 +216,10 @@ Cursor: `Cmd/Ctrl+Shift+P` → "Remote-SSH: Connect to Host" → pick the host a
 | | |
 |---|---|
 | User | `edison` |
-| Port | 2201 (same container); also 2204 on `dominikliss.foxcraft.digital-ssh` |
-| Key | New `~/.ssh/edison_agent` (ed25519, comment `edison-agent`) generated on the new Edison host 2026-10-09; old key retired. Pubkey replaced the old `edison-agent` line in the shared `authorized_keys` files (osgar + dominikliss); both `-ssh` containers rebuilt. `authorized_keys.bak` left in both folders. |
-| Working copy | `/home/edison/app` → same host `./src` (osgar) / `./html` (WP) bind-mount as the other users |
-| Client | `cursor-agent` container on Edison, via `sshfs` — [`../edison/cursor-agent.md`](../edison/cursor-agent.md) |
+| Port | 2201 (osgar); also 2204 (dominikliss), 2205 (atlas.dev), 2206 (hypershape), 2207 (edison.dev) |
+| Key | New `~/.ssh/edison_agent` (ed25519, comment `edison-agent`) generated on the new Edison host 2026-10-09; old key retired. Pubkey replaced the old `edison-agent` line in the shared `authorized_keys` files (osgar + dominikliss); both `-ssh` containers rebuilt. `authorized_keys.bak` left in both folders. Login verified 2026-11-02 from `cursor-agent` on **2201, 2204, 2205, 2206, 2207**. Rejected on **2202** (advoapp): `Permission denied (publickey,password)`. |
+| Working copy | `/home/edison/app` → same host `./src` (osgar / Laravel) / `./html` (WP) bind-mount as the other users |
+| Client | `cursor-agent` container on Edison, via host-api `ensure` + `sshfs` — [`../edison/cursor-agent.md`](../edison/cursor-agent.md) |
 
 Both `Dockerfile.ssh` files still `COPY authorized_keys` to all three users (`dominik`, `pawel`, `edison`). Keys are shared across users in each container. **TODO (Dominik):** give `edison` its own key file (still open).
 
@@ -227,7 +227,9 @@ Both `Dockerfile.ssh` files still `COPY authorized_keys` to all three users (`do
 
 Do not write the supervisorctl password into any doc. **TODO (Dominik):** `Dockerfile.ssh` for osgar contains it in plain text; move it to an env/secret and rotate.
 
-**Firewall:** Stella `DOCKER-USER` ACCEPTs Edison’s public IP **`edison-ip` `178.105.203.54`** on 2201 and 2204 (confirmed 2026-10-09 when the address was moved to the new CX33; no Stella firewall change). See [`../edison/infrastructure.md`](../edison/infrastructure.md).
+**Firewall:** Stella `DOCKER-USER` ACCEPTs Edison’s public IP **`edison-ip` `178.105.203.54`** on 2201 and 2204 (confirmed 2026-10-09 when the address was moved to the new CX33; no Stella firewall change). From Edison, the same IP also reaches **2202, 2205, 2206, and 2207** (verified 2026-11-02). Previously only 2201/2204 were recorded. **TODO (Dominik):** confirm the exact `DOCKER-USER` lines for 2202 and 2206 in `/usr/local/bin/docker-user-firewall.sh`. See [`../edison/infrastructure.md`](../edison/infrastructure.md).
+
+**hypershape (2206):** `edison` user works and `~/app` is the WordPress root (undocumented before 2026-11-02).
 
 ---
 

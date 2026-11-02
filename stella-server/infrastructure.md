@@ -598,7 +598,7 @@ Fully decommissioned. See git history / prior doc versions if a vector search fe
 
 - **UFW** — active, default-deny incoming. Ports 22, 443 restricted to `194.126.177.181` and `23.88.90.12`. Port 8001 additionally allows `172.18.0.0/16` (`services_default` bridge subnet) for Caddy's internal proxy calls, **and `172.20.0.0/16` (`edge` bridge subnet, added 2026-08-10)** for `health-api`'s stella-api check. Port 11434's direct-access rules removed 2026-08-10 once Ollama moved fully behind the `edge` network / Caddy — no longer needs a host-level UFW allowance for the old static-IP whitelist. Host SSH (port 22) remains Dominik-only; per-app Cursor SSH uses Docker-published `22XX` ports — [`dev-ssh-access.md`](dev-ssh-access.md).
 - **fail2ban** — running
-- **Docker-published ports (443, 2201, 2202, 2204, 2205, 2206, 2207, and 8081)** — protected via a custom `DOCKER-USER` iptables chain (details below). Per-app SSH containers add a new `22XX` as they are created. Next free SSH port: **2208**. Port 2203 is free (`advoapp-redesign-ssh` removed 2026-10-10). Port 2205 is Atlas dev (ACCEPT: Dominik’s IP, managed host, Edison). Port 2206 is `hypershape.foxcraft.digital-ssh`. Port 2207 is Edison dev (ACCEPT: Dominik’s IP, managed host, Edison; verified live 2026-10-26). Port 2201 (and 2204) also ACCEPT `178.105.203.54` — Edison **`edison-ip`**, confirmed 2026-10-09 (IPv4 moved with the server; no Stella firewall change). See [`../edison/infrastructure.md`](../edison/infrastructure.md). Port **443** also ACCEPT `2.31.42.13` — Atlas Cloud host (added 2026-10-10; Atlas calls deploy-api and health-api). Port **8081** has team-IP ACCEPT + DROP; **TODO (Dominik):** what 8081 is.
+- **Docker-published ports (443, 2201, 2202, 2204, 2205, 2206, 2207, and 8081)** — protected via a custom `DOCKER-USER` iptables chain (details below). Per-app SSH containers add a new `22XX` as they are created. Next free SSH port: **2208**. Port 2203 is free (`advoapp-redesign-ssh` removed 2026-10-10). Port 2205 is Atlas dev (ACCEPT: Dominik’s IP, managed host, Edison). Port 2206 is `hypershape.foxcraft.digital-ssh`. Port 2207 is Edison dev (ACCEPT: Dominik’s IP, managed host, Edison; verified live 2026-10-26). Port 2201 (and 2204) also ACCEPT `178.105.203.54` — Edison **`edison-ip`**, confirmed 2026-10-09 (IPv4 moved with the server; no Stella firewall change). From Edison, `edison-ip` also reaches **2202, 2205, 2206, and 2207** (verified 2026-11-02). **TODO (Dominik):** confirm the exact `DOCKER-USER` lines for 2202 and 2206 in `/usr/local/bin/docker-user-firewall.sh`. See [`../edison/infrastructure.md`](../edison/infrastructure.md). Port **443** also ACCEPT `2.31.42.13` — Atlas Cloud host (added 2026-10-10; Atlas calls deploy-api and health-api). Port **8081** has team-IP ACCEPT + DROP; **TODO (Dominik):** what 8081 is.
 - **Per-site Caddy `remote_ip` scoping (added 2026-09-03)** — client IPs granted access to `osgar.datahub.foxcraft.digital` only; most other Caddy site blocks explicitly deny those IPs via `@blocked remote_ip` matchers. `49.13.27.117` is ACCEPTed on port 443 and denied on some blocks but **not** on the `advoapp.finditoo` block — see the Caddyfile reality check above and [`client-ip-access.md`](client-ip-access.md).
 
 **Note (2026-09-01):** `imap-sync` no longer publishes `3001`, and `caddy` no longer publishes `8080`. The `DOCKER-USER` rules for those two ports are now dead (the packets never arrive) and can be removed in a future cleanup; they are kept for now, harmless. The `:8080` Caddyfile block was already removed on 2026-08-07.
@@ -652,6 +652,8 @@ iptables -A DOCKER-USER -i $WAN_IF -p tcp --dport 2201 -j DROP
 iptables -A DOCKER-USER -i $WAN_IF -s 194.126.177.181 -p tcp --dport 2202 -j ACCEPT
 iptables -A DOCKER-USER -i $WAN_IF -s 23.88.90.12 -p tcp --dport 2202 -j ACCEPT
 iptables -A DOCKER-USER -i $WAN_IF -p tcp --dport 2202 -j DROP
+# Edison reaches 2202 (verified 2026-11-02 from cursor-agent). The excerpt above
+# does not list edison-ip. TODO (Dominik): confirm the live script lines.
 
 iptables -A DOCKER-USER -i $WAN_IF -s 194.126.177.181 -p tcp --dport 2204 -j ACCEPT
 iptables -A DOCKER-USER -i $WAN_IF -s 23.88.90.12 -p tcp --dport 2204 -j ACCEPT
@@ -664,7 +666,7 @@ iptables -A DOCKER-USER -i $WAN_IF -s 178.105.203.54 -p tcp --dport 2205 -j ACCE
 iptables -A DOCKER-USER -i $WAN_IF -p tcp --dport 2205 -j DROP
 
 # 2206 (hypershape) — rules are live, source IPs not documented here.
-# TODO (Dominik): copy the 2206 lines from the live script.
+# Edison reaches 2206 (verified 2026-11-02). TODO (Dominik): copy the 2206 lines from the live script.
 
 iptables -A DOCKER-USER -i $WAN_IF -s 194.126.177.181 -p tcp --dport 2207 -j ACCEPT
 iptables -A DOCKER-USER -i $WAN_IF -s 23.88.90.12 -p tcp --dport 2207 -j ACCEPT

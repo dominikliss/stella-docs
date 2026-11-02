@@ -36,19 +36,27 @@ Host rebuilt 2026-10-09 onto CX33 (`edison-ip` = `178.105.203.54`). See [`edison
 - [x] **Persist Cursor-agent SSH config / login state** — closed 2026-10-09. Host bind-mounts for `ssh-config`, `known_hosts`, `~/.cursor`, `~/.config/cursor`; systemd remounts sshfs at boot. See [`edison/cursor-agent.md`](edison/cursor-agent.md).
 - [ ] **Split `authorized_keys` for `edison`** — both `Dockerfile.ssh` files (osgar and dominikliss) still `COPY` one shared file to `dominik`, `pawel`, and `edison`. **TODO (Dominik):** whether to split. See [`stella-server/dev-ssh-access.md`](stella-server/dev-ssh-access.md).
 - [ ] **Shared live tree / worktree** — agent sshfs-mounts the live osgar `src/`. Runs use `--force` on that tree. Guard text forbids `checkout` / `switch` / `stash` / `reset` / `commit`. **TODO (Dominik):** design a separate git worktree or clone.
-- [ ] **`git safe.directory` for `edison`** — applied manually in `osgar-datahub-ssh`; lost on rebuild. **TODO (Dominik):** bake into `Dockerfile.ssh`.
+- [ ] **`git safe.directory` for `edison` in `osgar-datahub-ssh`** — applied manually in that container; lost on rebuild. **TODO (Dominik):** bake into `Dockerfile.ssh`. The **agent-side** fix is closed: `cursor-agent` image sets `safe.directory '*'` (2026-11-02). See [`edison/cursor-agent.md`](edison/cursor-agent.md).
 - [ ] **osgar `Dockerfile.ssh` supervisorctl password** — in plain text. **TODO (Dominik):** move to an env/secret and rotate. Do not write the value into docs.
 - [x] **Default Cursor model** — closed 2026-11-02. Default is `auto`. Catalog is served by `GET /v1/capabilities` (~270 models). Ops pin via `EDISON_CURSOR_MODEL` when the client sends Auto. See [`edison/host-api.md`](edison/host-api.md).
 - [ ] **`CURSOR_API_KEY` for unattended runs** — not set up yet. Third-party sources say unattended runs should use an API key.
-- [ ] **`dominikliss` sshfs mount** — SSH config entry exists (port 2204); no mount yet.
-- [x] **Web app to drive the agent (host side)** — closed 2026-11-01; run options 2026-11-02. `/v1` endpoints live in `host-api` (start / stream / abort / resume / capabilities). `POST /v1/runs` accepts `mode`, `model`, `settings`. Cursor `stream-json` mapped. Session prefix is `cursor_`. Abort of unknown/finished session returns 404. See [`edison/host-api.md`](edison/host-api.md). Laravel Phase 2 + UI Phase 3 implemented in the Edison repo (2026-11-02): `RunOptions`, `GET /api/repos` capabilities, message fields, `chats.mode/model/settings`, searchable model picker. **UNVERIFIED** on `edison.dev`. Live-tree item stays open.
+- [x] **`dominikliss` sshfs mount** — closed 2026-11-02 via host-api `POST /v1/workspaces/ensure`. See [`edison/host-api.md`](edison/host-api.md).
+- [x] **Web app to drive the agent (host side)** — closed 2026-11-01; run options 2026-11-02; workspaces v1 2026-11-02. `/v1` endpoints live in `host-api` (start / stream / abort / resume / capabilities / catalog / ensure / repos). `POST /v1/runs` accepts `mode`, `model`, `settings`. Workspace = catalog mount or a subdirectory. Cursor `stream-json` mapped. Session prefix is `cursor_`. Abort of unknown/finished session returns 404. See [`edison/host-api.md`](edison/host-api.md). Laravel Phase 2 + UI Phase 3 implemented in the Edison repo (2026-11-02): `RunOptions`, `GET /api/repos` capabilities, message fields, `chats.mode/model/settings`, searchable model picker. Laravel workspaces contract (catalog → ensure → repos → run on a leaf) is **not built yet**. **UNVERIFIED** on `edison.dev`. Live-tree item stays open.
 - [ ] **Further agent images** — OpenCode as a second backend via that adapter; own Dockerfile, tool-named container, same `edison-net` and `/mnt/<full-hostname>` scheme.
 - [x] **Edison firewall for HTTP/HTTPS** — closed 2026-11-01. TCP/443 opened, IP-restricted (`194.126.177.181`, `95.217.144.93`, `2.31.42.13`). Port 80 stays closed. See [`edison/infrastructure.md`](edison/infrastructure.md).
 - [ ] **Atlas-side `CheckEdisonHealth` / `EdisonHealthRecorder`** — not built. Edison host API health is live; Atlas does not poll it yet. Extends existing `/monitoring/edison`. See [`atlas/monitoring.md`](atlas/monitoring.md).
 - [ ] **Confirm Stella on Edison TCP/22 and ICMP** — live firewall allows `95.217.144.93` on 22 and ICMP, not only `194.126.177.181`. **TODO (Dominik):** confirm that is intentional.
 - [ ] **Signed health call from Atlas prod** — **UNVERIFIED.** Stella + atlas-dev key works. Call from `2.31.42.13` with the atlas-prod key has not been run.
 - [ ] **First-turn abort** — the app only learns `session_id` on `done`, so the first turn cannot be aborted. **TODO:** emit an early `session` SSE event. See [`edison/host-api.md`](edison/host-api.md).
-- [ ] **Only osgar mounted** — the other five allowlisted workspaces return **404**. Mount them or drop them from the app picker.
+- [ ] **advoapp.finditoo (2202)** — no `edison` user or key. Decide whether Edison should work there; if yes add user + `edison_agent` pubkey and rebuild `advoapp-ssh`. Until then `ensure` returns 422 (`Connection reset by peer`).
+- [ ] **Full reboot test of the Edison box** — only `systemctl restart cursor-agent` was tested (2026-11-02). Mounts came back from `mounts.json`.
+- [ ] **Atlas Edison card extra mounts** — **UNVERIFIED** whether `/monitoring/edison` renders extra mounts from `mounts.json`. **TODO (Dominik):** check.
+- [ ] **Laravel workspaces contract** — switch to `GET /v1/workspaces` → `ensure` → `repos` → run on the leaf; key chats by `host + slug`; remove static `mounted` in `config/edison.php`; then drop `path` from the host response.
+- [ ] **Drop the `EDISON_WORKSPACES` fallback** in `catalog.py` after one release.
+- [ ] **No unmount API in v1** — removing a host is manual (`mounts.json` + `umount -l`).
+- [ ] **Delete rollout backups** — `/opt/services/host-api/app.bak-2026-11-*` and `/root/cursor-agent/*.bak-2026-11-02` after a stable week.
+- [ ] **Throwaway `*.staging.foxcraft.digital` sites** (wp-staging-api) are not in the catalog and have no SSH container yet. Needs a separate spec: catalog rows per build, stable SSH host keys across rebuilds (otherwise `accept-new` fails with "host identification changed"), Atlas rebuild guard for dirty/unpushed repos.
+- [ ] **sshfs error text** — a rejected key shows `Connection reset by peer` instead of `Permission denied`. Optional: run a `ssh -o BatchMode=yes … true` probe before sshfs to return a clearer 422.
 - [ ] **UI end-to-end chat on `edison.dev`** — **UNVERIFIED.** Includes resume via the app. Browser test still open.
 
 ### Edison app (Laravel) — 2026-10-26
@@ -59,8 +67,8 @@ Repo `foxcraftdigital/edison`, dev instance `https://edison.dev.foxcraft.digital
 - [ ] **Bump the stella-docs submodule pointer** in the Edison and Atlas repos after this docs update.
 - [ ] **End-to-end ddashboard login on `edison.dev`** — **UNVERIFIED.** Includes whether ddashboard's IP allowlist accepts Stella (`95.217.144.93`); prod would also need `178.105.203.54`. Allowlist probably an `.htaccess` under `public_html` (same TODO as the Atlas 401/403 item above).
 - [ ] **Clear error when `EDISON_DDASHBOARD_URL` is missing** — **TODO (Dominik):** make the driver throw "EDISON_DDASHBOARD_URL is not set" instead of `ConnectionException` "URI must include a scheme and host".
-- [x] **Real agent link (host side)** — closed 2026-11-01; run options 2026-11-02. When `EDISON_HOST_API_URL` is set, the app calls `POST /v1/runs`. Host is live including `GET /v1/capabilities`. Laravel Phase 2 + UI Phase 3 are in the Edison repo (see [`edison/run-options.md`](edison/run-options.md)); worktree design (live-tree item above). **UNVERIFIED:** end-to-end chat on `edison.dev`.
-- [ ] **Edison prod app** at `edison.foxcraft.digital`. Headless API (health + `/v1`) is live at `api.edison.foxcraft.digital` (2026-11-01). Atlas-side `CheckEdisonHealth` is not built.
+- [x] **Real agent link (host side)** — closed 2026-11-01; run options 2026-11-02; workspaces v1 2026-11-02. When `EDISON_HOST_API_URL` is set, the app calls `POST /v1/runs`. Host is live including `GET /v1/capabilities` and the workspaces endpoints. Laravel Phase 2 + UI Phase 3 are in the Edison repo (see [`edison/run-options.md`](edison/run-options.md)); Laravel workspaces contract still open above; worktree design (live-tree item above). **UNVERIFIED:** end-to-end chat on `edison.dev`.
+- [ ] **Edison prod app** at `edison.foxcraft.digital`. Headless API (health + `/v1`, workspaces v1) is live at `api.edison.foxcraft.digital` (2026-11-01 / 2026-11-02). Atlas-side `CheckEdisonHealth` is not built.
 - [ ] **`edison.dev` ssh container** — **TODO (Dominik):** decide on a home volume (git identity, `known_hosts`, clones are lost on rebuild); whether to split `authorized_keys` for `edison`; whether to add an editor (`nano`) to `Dockerfile.ssh`.
 - [ ] **`edison.dev` in health-api and backup** — **UNVERIFIED** that the five containers are discovered.
 - [ ] **Delete `~/atlas-ref`** in the `edison.dev` ssh container (read-only Atlas clone used during setup). **TODO (Dominik).**
@@ -123,7 +131,7 @@ Service live at `https://stella-media-api.foxcraft.digital`. Contract: [`stella-
 - [ ] **WP staging: `/root/wp-before-php85.sql`** — 86 MB dump on Stella from the 2026-10-23 PHP 8.5 bump. **TODO (Dominik):** delete once `dominikliss.foxcraft.digital` is confirmed fine. See [`stella-server/wordpress-staging.md`](stella-server/wordpress-staging.md).
 - [ ] **`dominikliss` `wordpress:php8.5-apache` is a moving tag** — patch level only visible via `php -v` inside the container; updates only on `docker compose pull wp`. See [`stella-server/php-updates.md`](stella-server/php-updates.md).
 - [ ] **Managed host `dedi6724` PHP version** — operator says updated after CVE-2026-109618/109619 (ddashboard, Foxx Cloud, `dominikliss.com` live); exact version **UNVERIFIED**. See [`stella-server/php-updates.md`](stella-server/php-updates.md).
-- [ ] **`hypershape.foxcraft.digital`** — WP staging on Stella according to notes, not documented here. SSH container `hypershape.foxcraft.digital-ssh` uses port **2206** (confirmed 2026-10-26); its `DOCKER-USER` source IPs are not documented. PHP version and update status unknown. **UNVERIFIED.**
+- [ ] **`hypershape.foxcraft.digital`** — WP staging on Stella. SSH container `hypershape.foxcraft.digital-ssh` uses port **2206**. `edison` login and `~/app` as WordPress root verified from Edison 2026-11-02. `DOCKER-USER` source IPs still not documented. PHP version and update status unknown. **UNVERIFIED.** **TODO (Dominik):** confirm the 2206 script lines.
 - [ ] **`stella-media-api` Caddy block** — `propagation_delay` / `propagation_timeout` lines are duplicated in the live Caddyfile. Works; **TODO (Dominik):** clean up.
 - [ ] **Hetzner Cloud project name for `foxcraft.digital`** — zone moved; ID still `567656`. **TODO (Dominik):** name of the new project (docs previously said `konsoleH`).
 - [x] **Stella `DOCKER-USER` 443 ACCEPT for Atlas** — `2.31.42.13` added. After any `rm` + nano recreation of `/usr/local/bin/docker-user-firewall.sh` it must be `chmod 755`. Port **2205** added (Dominik’s IP, managed host, Edison). Port **2207** added 2026-10-26 for Edison dev (same three IPs); 2206 is hypershape. Next free SSH port: **2208**.
@@ -136,12 +144,18 @@ Service live at `https://stella-media-api.foxcraft.digital`. Contract: [`stella-
 - [x] **Atlas host-api.md** — runbook at [`atlas/host-api.md`](atlas/host-api.md) (health + deploy, 2026-10-10).
 - [ ] **Atlas prod via the public API URL** — test `https://api.atlas.foxcraft.digital` from Atlas itself (hairpin risk), otherwise use `127.0.0.1:8090` locally.
 - [x] **Hetzner Cloud API in Atlas** — read-only `HETZNER_CLOUD_TOKEN` lists atlas + edison, Cloud backups, snapshots, volumes. Dashboard Edison card + `/monitoring/edison`. See [`atlas/monitoring.md`](atlas/monitoring.md).
-- [x] **Edison host API (health + `/v1`)** — live 2026-11-01 at `https://api.edison.foxcraft.digital`; run options 2026-11-02 (`GET /v1/capabilities`, `mode` / `model` / `settings` on `POST /v1/runs`). Docker Caddy + host-api on `edison-net`. See [`edison/host-api.md`](edison/host-api.md). Atlas-side `CheckEdisonHealth` still open. Cloud API still covers power/backup until that exists.
+- [x] **Edison host API (health + `/v1`)** — live 2026-11-01 at `https://api.edison.foxcraft.digital`; run options 2026-11-02; workspaces v1 2026-11-02 (catalog, `ensure`, repo scan, workspace rule). Docker Caddy + host-api on `edison-net`. See [`edison/host-api.md`](edison/host-api.md). Atlas-side `CheckEdisonHealth` still open. Cloud API still covers power/backup until that exists.
 - [ ] **Patch `/usr/local/bin/atlas-deploy`:** `queue:restart` instead of `systemctl restart atlas-queue`; reject refs starting with `-`
 - [ ] **First real deploy through the host API** (new commits) and record the result in [`atlas/host-api.md`](atlas/host-api.md)
 - [x] **Atlas dev app: deploy client + UI behind a flag, off on prod** — `ATLAS_SELF_DEPLOY_ENABLED` (404 when off). Button on the Server: atlas card; toasts on terminal status. See [`atlas/monitoring.md`](atlas/monitoring.md).
 
 ---
+
+## Closed 2026-11-02
+
+- **Edison workspaces v1** — host-api catalog, `POST /v1/workspaces/ensure`, `GET /v1/workspaces/{host}/repos`, workspace rule for `/v1/runs`. Verified from Stella with the live bearer. See [`edison/host-api.md`](edison/host-api.md).
+- **`dominikliss` sshfs mount** — created by `ensure`; remounted from `mounts.json` after `systemctl restart cursor-agent`.
+- **`git safe.directory` on the agent side** — `cursor-agent` image sets `safe.directory '*'`. The osgar `-ssh` container item for user `edison` stays open.
 
 ## Closed 2026-11-01
 

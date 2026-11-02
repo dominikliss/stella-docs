@@ -1,6 +1,6 @@
 # Edison — Coding-Agent Server
 
-**Status:** Rebuilt 2026-10-09 on a **CX33** (old CPX32 renamed `edison-old`, then deleted). Host + `cursor-agent` container live. Host API live at `https://api.edison.foxcraft.digital` (health + `/v1` in one `host-api` service behind Caddy on `edison-net`; run options live 2026-11-02). `edison.dev` on Stella is pointed at it. **UNVERIFIED:** end-to-end chat in the UI. See [Edison app](#edison-app).
+**Status:** Rebuilt 2026-10-09 on a **CX33** (old CPX32 renamed `edison-old`, then deleted). Host + `cursor-agent` container live. Host API live at `https://api.edison.foxcraft.digital` (health + `/v1` in one `host-api` service behind Caddy on `edison-net`; run options and workspaces v1 live 2026-11-02). Mounts are on demand via host-api; currently mounted: osgar, dominikliss. `edison.dev` on Stella is pointed at it. **UNVERIFIED:** end-to-end chat in the UI. See [Edison app](#edison-app).
 
 **Edison** is a dedicated Hetzner Cloud box for coding agents (Cursor CLI today; OpenCode later as a second backend). It is **not** part of Stella. Same Cloud project as Atlas — Atlas reads power/backup status via the Cloud API (`/monitoring/edison`). Agents run here so Stella’s LLM / RAG load and the agent sandbox do not starve each other.
 
@@ -46,12 +46,14 @@ Edison  — Hetzner Cloud CX33, Falkenstein, edison-ip 178.105.203.54
   │     (later) web-app       (same network, reach agents by container name)
   │     (later) OpenCode as a second backend via an adapter
   │
-  └── sshfs live mount, not a copy:
-        /mnt/osgar.datahub.foxcraft.digital
+  └── sshfs live mounts, on demand via host-api (catalog hosts only):
+        /mnt/osgar.datahub.foxcraft.digital      (mounted)
           → edison@osgar.datahub.foxcraft.digital:/home/edison/app  (port 2201)
+        /mnt/dominikliss.foxcraft.digital        (mounted 2026-11-02)
+          → edison@dominikliss.foxcraft.digital:/home/edison/app  (port 2204)
                 ▼
-Stella  — osgar-datahub-ssh container (per-app SSH, not a host user)
-          also Atlas dev + edison.dev
+Stella  — per-app SSH containers (not a host user)
+          also Atlas dev + edison.dev + hypershape
           signed POST /system/health → host-api
           edison.dev → POST /v1/runs (bearer)
 
@@ -62,7 +64,7 @@ Atlas prod (2.31.42.13) — firewall + Caddy allow signed /system/health
 
 Cursor CLI has **no** native Remote-SSH (the IDE installs a server component on the remote host; the CLI is a single local process). The mount is the workaround that gives the CLI the same “agent sees remote files” result.
 
-`dominikliss.foxcraft.digital` has an SSH config entry (port 2204) but **no sshfs mount yet**.
+host-api owns the catalog and creates mounts with `POST /v1/workspaces/ensure`. See [host-api.md](host-api.md).
 
 ---
 
@@ -74,7 +76,7 @@ Stay with Cursor CLI for now (rules, skills, MCP and login already work). Build 
 
 ## Edison app
 
-Own Laravel app (`foxcraftdigital/edison`), separate from Atlas, with the same ddashboard token login. Dev instance at `https://edison.dev.foxcraft.digital` on **Stella** (SSH port 2207). Prod (`edison.foxcraft.digital`) is planned, not built. The host API is live at `api.edison.foxcraft.digital`. When `EDISON_HOST_API_URL` is set, the app calls `POST /v1/runs` (not stubbed). **UNVERIFIED:** end-to-end chat in the UI (including resume).
+Own Laravel app (`foxcraftdigital/edison`), separate from Atlas, with the same ddashboard token login. Dev instance at `https://edison.dev.foxcraft.digital` on **Stella** (SSH port 2207). Prod (`edison.foxcraft.digital`) is planned, not built. The headless API is live at `api.edison.foxcraft.digital`. When `EDISON_HOST_API_URL` is set, the app calls `POST /v1/runs` (not stubbed). The Laravel workspaces contract (catalog → ensure → repos → run on a leaf) is not built yet. **UNVERIFIED:** end-to-end chat in the UI (including resume).
 
 - App, repo, env, build: [app.md](app.md)
 - Dev instance on Stella: [dev-instance.md](dev-instance.md)
@@ -90,15 +92,15 @@ Own Laravel app (`foxcraftdigital/edison`), separate from Atlas, with the same d
 | [infrastructure.md](infrastructure.md) | Server specs, Hetzner firewall (443 since 2026-11-01), SSH onto Edison, Docker host + `/opt/services` + `edison-net` |
 | [cursor-agent.md](cursor-agent.md) | Image, `run.sh`, systemd, sshfs, headless usage, shared-tree warning |
 | [app.md](app.md) | Edison Laravel app: repo, origin, included parts, design, env, build checks, plans |
-| [host-api.md](host-api.md) | Live host API: health + `/v1/runs` / abort / SSE / capabilities, Cursor now / Claude later |
+| [host-api.md](host-api.md) | Live host API: health, workspaces v1 (catalog / ensure / repos), `/v1/runs` / abort / SSE / capabilities |
 | [run-options.md](run-options.md) | Design: modes, models, settings. Phase 1 host live 2026-11-02; Laravel + UI in the Edison repo, unverified on `edison.dev` |
 | [dev-instance.md](dev-instance.md) | `edison.dev.foxcraft.digital` on Stella: DNS, Caddy, compose, SSH 2207, `.env` |
 
 **Related Stella-side docs** (the remote the agent mounts):
 
-- Per-app SSH containers, ports 2201 / 2204, `edison` user: [`../stella-server/dev-ssh-access.md`](../stella-server/dev-ssh-access.md)
+- Per-app SSH containers, `edison` user (login verified 2026-11-02 on 2201, 2204, 2205, 2206, 2207; rejected on 2202): [`../stella-server/dev-ssh-access.md`](../stella-server/dev-ssh-access.md)
 - osgar-datahub permissions / supervisord: [`../stella-server/apps/osgar-datahub/setup.md`](../stella-server/apps/osgar-datahub/setup.md)
-- Stella host + `DOCKER-USER` (Edison `edison-ip` `178.105.203.54` is ACCEPTed on 2201 and 2204): [`../stella-server/infrastructure.md`](../stella-server/infrastructure.md)
+- Stella host + `DOCKER-USER` (`edison-ip` reaches 2201–2202 and 2204–2207 from Edison, 2026-11-02): [`../stella-server/infrastructure.md`](../stella-server/infrastructure.md)
 
 ---
 
@@ -108,12 +110,13 @@ Tracked in [`../open-gaps.md`](../open-gaps.md) (Edison section). Short list:
 
 1. Atlas-side `CheckEdisonHealth` / `EdisonHealthRecorder` — not built. See [`../atlas/monitoring.md`](../atlas/monitoring.md)
 2. **UNVERIFIED:** end-to-end chat in the `edison.dev` UI (including resume via the app)
-3. First-turn abort — emit an early `session` SSE event so the first turn can be stopped
-4. **TODO (Dominik):** design a separate git worktree or clone — runs use `--force` on the live osgar staging tree
-5. Only osgar is mounted; the other five allowlisted workspaces return **404**
-6. **TODO (Dominik):** confirm Stella on Edison TCP/22 and ICMP is intentional
-7. **UNVERIFIED:** signed `POST /system/health` from Atlas prod (`2.31.42.13`) with the atlas-prod key
-8. **TODO (Dominik):** API key for unattended runs (`CURSOR_API_KEY`) — not set up yet
-9. Deploy Laravel run-options (capabilities, mode/model picker) to `edison.dev` and verify e2e. See [run-options.md](run-options.md)
-10. Bump the `stella-docs` submodule pointer in the Edison and Atlas repos
-11. sshfs mount for `dominikliss.foxcraft.digital` (SSH config exists; no mount yet)
+3. Laravel: switch to `GET /v1/workspaces` → `ensure` → `repos` → run on the leaf; key chats by `host + slug`
+4. advoapp.finditoo (2202): no `edison` user or key — `ensure` returns 422
+5. Full reboot test of the Edison box (only `systemctl restart cursor-agent` was tested)
+6. **UNVERIFIED:** Atlas Edison card extra mounts from `mounts.json`
+7. First-turn abort — emit an early `session` SSE event so the first turn can be stopped
+8. **TODO (Dominik):** design a separate git worktree or clone — runs use `--force` on the live staging tree
+9. **TODO (Dominik):** confirm Stella on Edison TCP/22 and ICMP is intentional
+10. **UNVERIFIED:** signed `POST /system/health` from Atlas prod (`2.31.42.13`) with the atlas-prod key
+11. **TODO (Dominik):** API key for unattended runs (`CURSOR_API_KEY`) — not set up yet
+12. Bump the `stella-docs` submodule pointer in the Edison and Atlas repos

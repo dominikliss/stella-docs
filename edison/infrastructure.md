@@ -1,6 +1,6 @@
 # Edison — Infrastructure
 
-**Status:** Rebuilt 2026-10-09 (old CPX32 renamed `edison-old`, then deleted). TCP/443 opened 2026-11-01 for `api.edison.foxcraft.digital` (IP-restricted). Port 80 stays closed.
+**Status:** Rebuilt 2026-10-09 (old CPX32 renamed `edison-old`, then deleted). TCP/443 opened 2026-11-01 for `api.edison.foxcraft.digital` (IP-restricted; Stella allowed, verified 2026-11-02). Port 80 stays closed. Workspaces v1 mounts: osgar, dominikliss.
 
 **Related:** [README.md](README.md) (role + naming), [cursor-agent.md](cursor-agent.md) (agent container), [host-api.md](host-api.md) (Caddy + host-api)
 
@@ -15,7 +15,7 @@
 | **Type** | **CX33** — 4 vCPU shared x86, 8 GB RAM, 80 GB SSD, ~€8.49/mo |
 | **OS** | Ubuntu 26.04 LTS |
 | **Location** | Falkenstein |
-| **Primary IP** | Hetzner name **`edison-ip`**, address **`178.105.203.54`** (Falkenstein). Moved from the old server to this one. Stella `DOCKER-USER` ACCEPTs this IP on ports 2201 and 2204 — confirmed 2026-10-09; no Stella firewall change was needed. |
+| **Primary IP** | Hetzner name **`edison-ip`**, address **`178.105.203.54`** (Falkenstein). Moved from the old server to this one. From Edison this IP reaches Stella SSH ports 2201, 2202, 2204, 2205, 2206, 2207 (verified 2026-11-02). **TODO (Dominik):** confirm the exact `DOCKER-USER` lines for 2202 and 2206. |
 | **Backups** | Hetzner automatic backups **off** on purpose (sandbox; code lives in git). Take a manual snapshot before risky host changes. |
 
 **Why CX33 (2026-10-09):** cost. Old server was a CPX32 (4 vCPU shared, 8 GB RAM, 160 GB SSD). A rescale from CPX32 was not possible because Hetzner never shrinks disks (160 GB → 80 GB), so a new server was created. CX43/CX53 were shown as unavailable in the console when the choice was made, so the upgrade path from CX33 may require another rebuild. Fallback is a CPX type.
@@ -32,7 +32,7 @@ Inbound, public NIC only. Attached to the new server.
 |------|--------|--------|
 | TCP/22 (SSH) | `194.126.177.181`, `95.217.144.93` | Live firewall allows Stella as well as the laptop/VPN IP. Docs previously listed only `194.126.177.181`. **TODO (Dominik):** confirm Stella on 22/ICMP is intentional. |
 | ICMP | Same two IPs — **not** Any | Ping restricted the same way as SSH |
-| TCP/443 | `194.126.177.181`, `95.217.144.93` (Stella: Atlas dev, edison.dev), `2.31.42.13` (Atlas prod) | Opened 2026-11-01 for `api.edison.foxcraft.digital`. IP-restricted. Port 80 not opened. |
+| TCP/443 | `194.126.177.181`, `95.217.144.93` (Stella: Atlas dev, edison.dev), `2.31.42.13` (Atlas prod) | Opened 2026-11-01 for `api.edison.foxcraft.digital`. Caddy publishes 443 (`docker-compose.yml`: `caddy` with `443:443`). `/v1/*` is IP-allowlisted; Stella is allowed (verified by `GET /v1/capabilities` → 200 from Stella, 2026-11-02). Port 80 not opened. **TODO (Dominik):** record the exact Caddy allowlist and the Hetzner Cloud firewall rule for 443 as they stand today. |
 
 **Verified 2026-10-09** from Stella (`95.217.144.93`): port 22 on `178.105.203.54` was blocked. That check predates the Stella 22/ICMP rule now present in the live firewall.
 
@@ -87,9 +87,9 @@ Control plane (same `/opt/services` pattern as Stella), added 2026-11-01:
 └── host-api/             # no published port; Docker socket + allowed_signers
 ```
 
-Named volume `host-api-state` → `/var/lib/host-api` (`sessions.json` only: agent, workspace, timestamps — no prompts).
+Named volume `host-api-state` → `/var/lib/host-api` (`sessions.json`, `mounts.json`, `locks/`).
 
-`ss` on the host shows **22** and **443**. The agent container publishes no ports. `ufw` is inactive — the Hetzner Cloud firewall is the only filter. See [host-api.md](host-api.md).
+`ss` on the host shows **22** and **443**. Caddy publishes 443 for `api.edison.foxcraft.digital`. The agent container publishes no ports. `ufw` is inactive — the Hetzner Cloud firewall is the only filter. See [host-api.md](host-api.md). **UNVERIFIED:** the exact live Hetzner Cloud firewall rule set for 443. **TODO (Dominik):** record it.
 
 **Pre-checks 2026-11-01** (before this setup): no API, no Caddy, nothing listening except sshd (22) and systemd-resolved (`127.0.0.53`/`54`). 75 GB disk / 7.6 GB RAM, no swap. `~/cursor-agent` unchanged.
 
@@ -97,17 +97,20 @@ Named volume `host-api-state` → `/var/lib/host-api` (`sessions.json` only: age
 
 ## Stella-side access (required for sshfs)
 
-The agent SSHes to Stella’s per-app SSH container, not to Stella’s host SSH:
+The agent SSHes to Stella’s per-app SSH container, not to Stella’s host SSH. Test 2026-11-02: `ssh -o BatchMode=yes -p <port> edison@<host>` from inside `cursor-agent` with the `edison_agent` key.
 
-| | |
-|---|---|
-| Host | `osgar.datahub.foxcraft.digital` (Stella public IP `95.217.144.93` at setup) |
-| Port | **2201** (published by `osgar-datahub-ssh`) |
-| User | `edison` — dedicated user inside that container, for revoke-without-touching-devs |
+| Host | Port | Port reachable from Edison | `edison` key login | `~/app` |
+|---|---|---|---|---|
+| osgar.datahub | 2201 | yes | yes | `/home/edison/app` (.NET tree) |
+| advoapp.finditoo | 2202 | **yes** (docs did not record an Edison ACCEPT) | **no** — `Permission denied (publickey,password)` | — |
+| dominikliss | 2204 | yes | yes | WordPress root |
+| atlas.dev | 2205 | yes | yes | Laravel root |
+| hypershape | 2206 | yes (source IPs were undocumented) | yes | WordPress root |
+| edison.dev | 2207 | yes | yes | Laravel root |
 
-Stella’s `DOCKER-USER` chain ACCEPTs `194.126.177.181`, `23.88.90.12`, and **`178.105.203.54` (`edison-ip`)** on 2201 (and the same three on 2204) and DROPs everything else. Confirmed 2026-10-09 — the IPv4 was moved with the server, so no Stella firewall change was needed.
+The `edison_agent` public key is present on 2205, 2206 and 2207 too, not only on 2201/2204. The first connection to advoapp added its host key to `~/cursor-agent/known_hosts`.
 
-A second per-app SSH container with an `edison` user exists on port **2204** (`dominikliss.foxcraft.digital`). It is reachable because `edison-ip` is in the `DOCKER-USER` ACCEPT for 2204. SSH config for that host exists in the agent container; **no sshfs mount yet**. See [`../stella-server/wordpress-staging.md`](../stella-server/wordpress-staging.md).
+**TODO (Dominik):** confirm the exact `DOCKER-USER` lines for 2202 and 2206 in `/usr/local/bin/docker-user-firewall.sh`.
 
 See [`../stella-server/infrastructure.md`](../stella-server/infrastructure.md) (DOCKER-USER script) and [`../stella-server/dev-ssh-access.md`](../stella-server/dev-ssh-access.md) (`edison` user).
 
@@ -115,8 +118,9 @@ See [`../stella-server/infrastructure.md`](../stella-server/infrastructure.md) (
 
 ## Adding another remote project
 
-Same pattern as the first mount — new folder, new SSH config host, Stella-side user/port as needed:
+1. Add a row to `/opt/services/host-api/catalog.json` (host-owned; re-read on every request).
+2. Stella: `edison` user + `edison_agent` pubkey in that app’s SSH container.
+3. Stella: `DOCKER-USER` ACCEPT for `edison-ip` (`178.105.203.54`) on that SSH port.
+4. `POST /v1/workspaces/ensure` with the catalog FQDN.
 
-1. Dedicated agent key already exists (`edison_agent`); add its pubkey to the new target.
-2. Confirm Stella (or other host) firewall ACCEPTs `edison-ip` (`178.105.203.54`) on that SSH port.
-3. Mount at `/mnt/<full-hostname>` inside the agent container — see [cursor-agent.md](cursor-agent.md).
+No manual mount and no ssh-config entry needed. The API passes every sshfs option on the command line. See [host-api.md](host-api.md) and [cursor-agent.md](cursor-agent.md).

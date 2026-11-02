@@ -1,8 +1,8 @@
 # Edison — Cursor Agent Container
 
-**Status:** Rebuilt 2026-10-09 on the new CX33 host. `sshfs` + headless `cursor-agent` verified against `osgar.datahub.foxcraft.digital`. Persistence (ssh config, known_hosts, Cursor login and CLI state) is on the host. `dominikliss` has an SSH config entry but no mount yet.
+**Status:** Rebuilt 2026-10-09 on the new CX33 host. Mounts are created by host-api `ensure` (catalog hosts only) and remounted from `mounts.json`. Currently mounted: osgar, dominikliss (2026-11-02). Persistence (ssh config, known_hosts, Cursor login and CLI state) is on the host.
 
-**Related:** [README.md](README.md), [infrastructure.md](infrastructure.md), Stella [`dev-ssh-access.md`](../stella-server/dev-ssh-access.md)
+**Related:** [README.md](README.md), [infrastructure.md](infrastructure.md), [host-api.md](host-api.md) (`ensure` / `remount`), Stella [`dev-ssh-access.md`](../stella-server/dev-ssh-access.md)
 
 ---
 
@@ -36,7 +36,11 @@ RUN curl https://cursor.com/install -fsS | bash
 ENV PATH="/root/.local/bin:${PATH}"
 
 WORKDIR /workspace
+
+RUN git config --system --add safe.directory '*'
 ```
+
+`safe.directory '*'` is required because git runs as root in `cursor-agent`, but sshfs shows remote owners (`www-data` for WordPress, `root:ubuntu` for osgar). Without it, `git status` in `/mnt/dominikliss…/wp-content/themes/dominikliss` failed with `fatal: detected dubious ownership` (verified 2026-11-02, fixed after rebuild).
 
 Wrapper `/usr/local/bin/cursor-agent-run` (shell script in the image):
 
@@ -58,12 +62,12 @@ Anything added by hand inside the container is lost at reboot; changes belong in
 
 ## run.sh
 
-Recreates the container and mounts sshfs. Invoked by systemd at every boot.
+Recreates the container, waits for `host-api`, then remounts every host in `mounts.json`. Invoked by systemd at every boot. The old hard-coded `sshfs … osgar` lines are gone.
 
 ```bash
-docker rm -f cursor-agent
-docker run -dit --name cursor-agent --network edison-net \
-  --restart unless-stopped \
+#!/bin/bash
+docker rm -f cursor-agent 2>/dev/null
+docker run -dit --name cursor-agent --network edison-net --restart unless-stopped \
   --cap-add SYS_ADMIN --device /dev/fuse \
   --security-opt apparmor:unconfined \
   --security-opt seccomp:unconfined \
@@ -73,19 +77,16 @@ docker run -dit --name cursor-agent --network edison-net \
   -v ~/cursor-agent/known_hosts:/root/.ssh/known_hosts \
   -v ~/cursor-agent/state/cursor:/root/.cursor \
   -v ~/cursor-agent/state/config-cursor:/root/.config/cursor \
-  cursor-agent-image
+  cursor-agent-image bash
+sleep 2
+for i in $(seq 1 30); do
+  [ "$(docker inspect -f '{{.State.Running}}' host-api 2>/dev/null)" = "true" ] && break
+  sleep 2
+done
+docker exec host-api python -m app.mounts remount
 ```
 
-Then inside the container:
-
-```bash
-mkdir -p /mnt/osgar.datahub.foxcraft.digital
-sshfs -o reconnect,ServerAliveInterval=15,ServerAliveCountMax=3 \
-  edison@osgar.datahub.foxcraft.digital:/home/edison/app \
-  /mnt/osgar.datahub.foxcraft.digital
-```
-
-Only osgar is mounted. `dominikliss.foxcraft.digital` has an SSH config entry but **no mount yet**.
+osgar is remounted because it is in `mounts.json`, not because `run.sh` names it. If `cursor-agent` restarts on its own (Docker restart policy, not via `run.sh`), mounts are lost until something calls `ensure` or `remount`.
 
 ### Why these flags exist
 
@@ -101,6 +102,8 @@ Only osgar is mounted. `dominikliss.foxcraft.digital` has an SSH config entry bu
 ---
 
 ## ssh-config (host file, bind-mounted)
+
+Still mounted. Used only by humans (`ssh osgar.datahub.foxcraft.digital` from inside the container). host-api `ensure` passes every sshfs option on the command line and does not depend on this file.
 
 `~/cursor-agent/ssh-config` → `/root/.ssh/config` (ro):
 
@@ -138,7 +141,7 @@ Persistence gap from the old docs is **closed** (2026-10-09).
 
 ## systemd
 
-`/etc/systemd/system/cursor-agent.service` — enabled. Recreates the container and remounts sshfs at every boot.
+`/etc/systemd/system/cursor-agent.service` — enabled. Recreates the container and calls host-api `remount` at every boot.
 
 - `Type=oneshot`
 - `RemainAfterExit`
@@ -146,7 +149,7 @@ Persistence gap from the old docs is **closed** (2026-10-09).
 - `Requires=docker.service`
 - `ExecStart=/root/cursor-agent/run.sh`
 
-Reboot test passed (2026-10-09): container up, Cursor login kept, mount present.
+Reboot test passed (2026-10-09) under the old hard-coded osgar mount. After workspaces v1, `systemctl restart cursor-agent` remounted osgar and dominikliss from `mounts.json` (2026-11-02). Full box reboot after that change is **UNVERIFIED**.
 
 ---
 
@@ -170,7 +173,7 @@ The agent does **not** clone the repo onto Edison. It works live on the remote t
 
 This is a live mount, not a copy. There is no second tree on Edison. Tools (`ls`, `grep -r`, `cursor-agent`) see a normal directory.
 
-Further remotes: another `/mnt/<full-hostname>`. Same key, same network, new SSH config host. **TODO (Dominik):** add the `dominikliss` mount.
+Mounts are created by host-api `POST /v1/workspaces/ensure` for catalog hosts only. They are remounted from `mounts.json` on `run.sh`. A human ssh-config entry is not required. See [host-api.md](host-api.md).
 
 ---
 
@@ -178,7 +181,9 @@ Further remotes: another `/mnt/<full-hostname>`. Same key, same network, new SSH
 
 The sshfs mount points at the **live** working tree of osgar-datahub (`src/` bind-mounted into `osgar-datahub-ssh` and the `-dev` container). On 2026-10-09 the repo was on `main`, 2 commits ahead of origin, with 14+ modified files (uncommitted work by Dominik/Pawel).
 
-**Rule:** the agent must **not** run `git checkout`, `switch`, `stash`, `reset` or `commit` in this tree. Edits go directly onto the running staging app (`dotnet watch` reloads). For real tasks a separate git worktree or clone is needed. **TODO (Dominik):** design that (not done yet).
+**Rule:** the agent must **not** run `git checkout`, `switch`, `stash`, `reset` or `commit` in this tree. The host `GUARD` text still forbids those. Edits go directly onto the running staging app (`dotnet watch` reloads). For real tasks a separate git worktree or clone is needed. **TODO (Dominik):** design that (not done yet).
+
+Git now works for root inside `cursor-agent` over sshfs because the image sets `safe.directory '*'`. That is the agent-side fix. The Stella `-ssh` container item for user `edison` is separate and still open.
 
 Builds / tests / git should run **on Stella** via `ssh osgar.datahub.foxcraft.digital 'cd app && ...'` as user `edison` inside `osgar-datahub-ssh` (dotnet SDK, Node and supervisorctl are there), not inside the Edison container (no SDK there).
 
