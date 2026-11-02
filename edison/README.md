@@ -1,6 +1,6 @@
 # Edison — Coding-Agent Server
 
-**Status:** Rebuilt 2026-10-09 on a **CX33** (old CPX32 renamed `edison-old`, then deleted). Host + `cursor-agent` container live. Host API live 2026-11-01 at `https://api.edison.foxcraft.digital` (health + `/v1` in one `host-api` service behind Caddy on `edison-net`). `edison.dev` on Stella is pointed at it. **UNVERIFIED:** end-to-end chat in the UI. See [Edison app](#edison-app).
+**Status:** Rebuilt 2026-10-09 on a **CX33** (old CPX32 renamed `edison-old`, then deleted). Host + `cursor-agent` container live. Host API live at `https://api.edison.foxcraft.digital` (health + `/v1` in one `host-api` service behind Caddy on `edison-net`; run options live 2026-11-02). `edison.dev` on Stella is pointed at it. **UNVERIFIED:** end-to-end chat in the UI. See [Edison app](#edison-app).
 
 **Edison** is a dedicated Hetzner Cloud box for coding agents (Cursor CLI today; OpenCode later as a second backend). It is **not** part of Stella. Same Cloud project as Atlas — Atlas reads power/backup status via the Cloud API (`/monitoring/edison`). Agents run here so Stella’s LLM / RAG load and the agent sandbox do not starve each other.
 
@@ -79,6 +79,7 @@ Own Laravel app (`foxcraftdigital/edison`), separate from Atlas, with the same d
 - App, repo, env, build: [app.md](app.md)
 - Dev instance on Stella: [dev-instance.md](dev-instance.md)
 - Host API the web app calls: [host-api.md](host-api.md)
+- Run options design (modes / models): [run-options.md](run-options.md)
 
 ---
 
@@ -89,7 +90,8 @@ Own Laravel app (`foxcraftdigital/edison`), separate from Atlas, with the same d
 | [infrastructure.md](infrastructure.md) | Server specs, Hetzner firewall (443 since 2026-11-01), SSH onto Edison, Docker host + `/opt/services` + `edison-net` |
 | [cursor-agent.md](cursor-agent.md) | Image, `run.sh`, systemd, sshfs, headless usage, shared-tree warning |
 | [app.md](app.md) | Edison Laravel app: repo, origin, included parts, design, env, build checks, plans |
-| [host-api.md](host-api.md) | Live host API: health + `/v1/runs` / abort / SSE, Cursor now / Claude later |
+| [host-api.md](host-api.md) | Live host API: health + `/v1/runs` / abort / SSE / capabilities, Cursor now / Claude later |
+| [run-options.md](run-options.md) | Design: modes, models, settings. Phase 1 host live 2026-11-02; Laravel + UI in the Edison repo, unverified on `edison.dev` |
 | [dev-instance.md](dev-instance.md) | `edison.dev.foxcraft.digital` on Stella: DNS, Caddy, compose, SSH 2207, `.env` |
 
 **Related Stella-side docs** (the remote the agent mounts):
@@ -112,6 +114,6 @@ Tracked in [`../open-gaps.md`](../open-gaps.md) (Edison section). Short list:
 6. **TODO (Dominik):** confirm Stella on Edison TCP/22 and ICMP is intentional
 7. **UNVERIFIED:** signed `POST /system/health` from Atlas prod (`2.31.42.13`) with the atlas-prod key
 8. **TODO (Dominik):** API key for unattended runs (`CURSOR_API_KEY`) — not set up yet
-9. **TODO (Dominik):** default model — Cursor uses `"Auto"`; `EDISON_CURSOR_MODEL` is empty
+9. Deploy Laravel run-options (capabilities, mode/model picker) to `edison.dev` and verify e2e. See [run-options.md](run-options.md)
 10. Bump the `stella-docs` submodule pointer in the Edison and Atlas repos
 11. sshfs mount for `dominikliss.foxcraft.digital` (SSH config exists; no mount yet)

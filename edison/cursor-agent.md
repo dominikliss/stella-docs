@@ -190,7 +190,7 @@ Do not write the supervisorctl password into any doc. **TODO (Dominik):** `Docke
 
 ## Headless usage
 
-Cursor CLI is logged in with Dominik's Cursor account (`cursor-agent login`; do not write the email into the docs).
+Cursor CLI is logged in with Dominik's Cursor account (`cursor-agent login`; do not write the email into the docs). Version on Edison: **`2026.10.22-27dcf5f`**. How the host API invokes the CLI: [`host-api.md`](host-api.md).
 
 ```bash
 docker exec -w /mnt/osgar.datahub.foxcraft.digital cursor-agent \
@@ -200,13 +200,17 @@ docker exec -w /mnt/osgar.datahub.foxcraft.digital cursor-agent \
 - `--trust` is required for a new directory in headless mode (otherwise `Workspace Trust Required`).
 - No output appears until the run finishes (the first run looked like a hang).
 - Timing: a question that scans the whole project over sshfs took ~23 s.
-- `--force` lets print mode write files. A write test created a file on Stella through the mount.
+- `--force` lets print mode write files. A write test created a file on Stella through the mount. The host API passes `--force` in **agent** mode only.
+- `--mode <mode>`: `plan` or `ask` (CLI describes both as read-only). `--plan` is shorthand for `--mode=plan`. There is no `--mode=agent`.
+- `--sandbox <mode>`: `enabled` or `disabled`. Host API adds `--sandbox enabled` on plan/ask (unless `EDISON_SANDBOX_READONLY` is off).
+- `--model <id>`. `cursor-agent models` / `--list-models` lists the catalog for the logged-in account (`<id> - <label>` per line). Default model: `auto` ("Auto (current, default)").
 - File permissions: default umask `022` produced files on Stella as `rw-r--r--` with ACL mask `r--`, so group 1000 (Dominik, Pawel) could **not** edit them. With umask `002` the mask is `rw-` and group members can edit. Use **`cursor-agent-run`** instead of `cursor-agent` for any run that may write files.
-- Default model: **UNKNOWN**. **TODO (Dominik):** check with `cursor-agent models` / `--help`, and set `--model` explicitly for reproducible runs.
 
-Not verified, from third-party sources: plan/ask mode may not be reliably read-only; max 3 simultaneous headless processes; unattended runs should use an API key (`CURSOR_API_KEY`), not set up yet.
+Sandbox test 2026-11-02: Ask + `--sandbox enabled`, prompt asked to create `sandbox-test.txt`. Listed folders, refused to write; file did not exist afterwards. Reads on the sshfs mount work with sandbox enabled. `--mode=plan|ask` is still not a security boundary.
 
-Print / stream flags for the future web app: `-p --output-format stream-json`, `--resume <id>`.
+`CURSOR_API_KEY` is not set up yet. Concurrent host runs are capped at `EDISON_MAX_RUNS` (default 3).
+
+Print / stream flags: `-p --output-format stream-json`, `--resume <id>`.
 
 ---
 

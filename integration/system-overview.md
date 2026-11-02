@@ -145,7 +145,7 @@ Caddy + Hetzner firewall allow Atlas prod (`2.31.42.13`) and Stella (`95.217.144
 |--------|-----|------|----------|
 | `edison.dev` on Stella | `https://api.edison.foxcraft.digital` | Bearer `EDISON_HOST_API_TOKEN` | [`../edison/host-api.md`](../edison/host-api.md) |
 
-Caddy restricts `/v1/*` to Stella (`95.217.144.93`) and the MacBook (`194.126.177.181`). The app calls `POST /v1/runs` (SSE). `/v1/health` from the app container is verified. **UNVERIFIED:** end-to-end chat in the UI.
+Caddy restricts `/v1/*` to Stella (`95.217.144.93`) and the MacBook (`194.126.177.181`). The app calls `POST /v1/runs` (SSE). Host also serves `GET /v1/capabilities` (modes / model catalog; **200** from Stella 2026-11-02). `/v1/health` from the app container is verified. **UNVERIFIED:** end-to-end chat in the UI.
 
 ### ddashboard → Stella (AI)
 

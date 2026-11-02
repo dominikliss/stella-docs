@@ -121,5 +121,5 @@ With the variable empty, the login call failed with `Illuminate\Http\Client\Conn
 ## Planned (not built)
 
 - **Prod:** `edison.foxcraft.digital` on the Edison server.
-- **UI finish on `edison.dev`:** Stop button (abort; host cannot abort a first turn yet), ignore SSE `: ping` comments, map host error statuses, mark unmounted workspaces unavailable, agent health dot. Host API is live — do not change it. See [`host-api.md`](host-api.md).
+- **UI finish on `edison.dev`:** Stop button (abort; host cannot abort a first turn yet), ignore SSE `: ping` comments, map host error statuses, mark unmounted workspaces unavailable, agent health dot. Run-options Phase 2/3 (capabilities, mode/model picker) are in the Edison repo; **UNVERIFIED** on `edison.dev`. See [`host-api.md`](host-api.md) and [`run-options.md`](run-options.md).
 - **Atlas-side client:** `CheckEdisonHealth` / `EdisonHealthRecorder`. Not built. See [`../atlas/monitoring.md`](../atlas/monitoring.md).
