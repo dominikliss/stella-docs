@@ -92,8 +92,9 @@ Own Laravel app (`foxcraftdigital/edison`), separate from Atlas, with the same d
 | [infrastructure.md](infrastructure.md) | Server specs, Hetzner firewall (443 since 2026-11-01), SSH onto Edison, Docker host + `/opt/services` + `edison-net` |
 | [cursor-agent.md](cursor-agent.md) | Image, `run.sh`, systemd, sshfs, headless usage, shared-tree warning |
 | [app.md](app.md) | Edison Laravel app: repo, origin, included parts, design, env, build checks, plans |
-| [host-api.md](host-api.md) | Live host API: health, workspaces v1 (catalog / ensure / repos), `/v1/runs` / abort / SSE / capabilities |
+| [host-api.md](host-api.md) | Live host API: health, workspaces v1, `/v1/runs` / abort / SSE / capabilities, `/v1/skills` (2026-11-03) |
 | [run-options.md](run-options.md) | Design: modes, models, settings. Phase 1 host live 2026-11-02; Laravel + UI in the Edison repo, unverified on `edison.dev` |
+| [skills.md](skills.md) | Global Cursor skills from `foxcraftdigital/dev-docs`. Host sync + `/v1/skills` live 2026-11-03. |
 | [dev-instance.md](dev-instance.md) | `edison.dev.foxcraft.digital` on Stella: DNS, Caddy, compose, SSH 2207, `.env` |
 
 **Related Stella-side docs** (the remote the agent mounts):
@@ -120,3 +121,5 @@ Tracked in [`../open-gaps.md`](../open-gaps.md) (Edison section). Short list:
 10. **UNVERIFIED:** signed `POST /system/health` from Atlas prod (`2.31.42.13`) with the atlas-prod key
 11. **TODO (Dominik):** API key for unattended runs (`CURSOR_API_KEY`) — not set up yet
 12. Bump the `stella-docs` submodule pointer in the Edison and Atlas repos
+13. **TODO (Dominik):** record the `dev-docs` deploy-key fingerprint in [skills.md](skills.md)
+14. **`git-push-with-tag` is global on live staging trees** — decide allowlist vs IDE-only. See [skills.md](skills.md)

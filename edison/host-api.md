@@ -2,9 +2,9 @@
 
 Headless adapter on the **Edison box**. One FastAPI service (`host-api`) serves the Atlas health snapshot and the web-app `/v1` endpoints. The Laravel web app never runs Cursor or Claude. It only calls this API. The host picks a CLI from `agent` and works in an sshfs workspace.
 
-**Status:** live at `https://api.edison.foxcraft.digital` (2026-11-01). Run options live **2026-11-02**. Workspaces v1 (catalog, on-demand sshfs, repo scan, workspace rule) shipped **2026-11-02**. Health and `/v1/*` are in the same process. Caddy runs in Docker next to it. `edison.dev` on Stella is configured to use it. If `EDISON_HOST_API_URL` is empty, the Laravel app uses its demo driver — the host itself is live.
+**Status:** live at `https://api.edison.foxcraft.digital` (2026-11-01). Run options live **2026-11-02**. Workspaces v1 (catalog, on-demand sshfs, repo scan, workspace rule) shipped **2026-11-02**. Global skills (`GET` / `POST /v1/skills`) live **2026-11-03**. Health and `/v1/*` are in the same process. Caddy runs in Docker next to it. `edison.dev` on Stella is configured to use it. If `EDISON_HOST_API_URL` is empty, the Laravel app uses its demo driver — the host itself is live.
 
-**Related:** [README.md](README.md) (role), [infrastructure.md](infrastructure.md) (firewall, `/opt/services`), [cursor-agent.md](cursor-agent.md) (container, mounts, `cursor-agent-run`), [run-options.md](run-options.md) (design: modes / models / settings), [app.md](app.md) (Laravel client), Atlas polling (planned): [`../atlas/monitoring.md`](../atlas/monitoring.md).
+**Related:** [README.md](README.md) (role), [infrastructure.md](infrastructure.md) (firewall, `/opt/services`), [cursor-agent.md](cursor-agent.md) (container, mounts, `cursor-agent-run`), [run-options.md](run-options.md) (design: modes / models / settings), [skills.md](skills.md) (global `dev-docs` skills), [app.md](app.md) (Laravel client), Atlas polling (planned): [`../atlas/monitoring.md`](../atlas/monitoring.md).
 
 ---
 
@@ -45,6 +45,7 @@ A record `api.edison` → `178.105.203.54` created via Hetzner Cloud API from St
     │   ├── repos.py          # repo scan
     │   ├── mounts.py         # ensure, mounts.json, `remount` CLI
     │   ├── runs.py           # /v1 run lifecycle; workspace = catalog mount or a subdir
+    │   ├── skills.py         # GET /v1/skills, POST /v1/skills/sync
     │   └── health.py         # expected mounts = env default ∪ mounts.json
     └── app.bak-2026-11-02*   # rollout backups. TODO (Dominik): delete after a stable week
 ```
@@ -62,7 +63,7 @@ Named volume `host-api-state` → `/var/lib/host-api/`. Do not write token value
 | Container | `container_name` | Ports | Notes |
 |-----------|------------------|-------|-------|
 | `caddy` | `caddy` | publishes **443 only** | `env_file` `caddy/.env`. Volumes: Caddyfile (ro), `caddy-data`, `caddy-config`. Port 80 is not published. `:80 HTTP/2 skipped` log lines are harmless. |
-| `host-api` | `host-api` | none | `env_file` `host-api/.env`. Volumes: `/var/run/docker.sock`, `allowed_signers` (ro), `catalog.json` → `/etc/host-api/catalog.json` (ro), `host-api-state` → `/var/lib/host-api`. |
+| `host-api` | `host-api` | none | `env_file` `host-api/.env`. Volumes: `/var/run/docker.sock`, `allowed_signers` (ro), `catalog.json` → `/etc/host-api/catalog.json` (ro), `host-api-state` → `/var/lib/host-api`, skills copy ro → `/etc/host-api/skills`, `skills-sync/` → `/var/lib/edison-skills-sync`. |
 
 Both join `edison-net`.
 
@@ -79,6 +80,8 @@ All live.
 | GET | `/v1/health` | none | `{"status":"ok","agents":["cursor"]}` (`agents` = `cursor-agent` container running) |
 | GET | `/v1/agents` | bearer | `{"current":"cursor","available":[…]}` |
 | GET | `/v1/capabilities` | bearer | Modes, model catalog, settings schema for an agent |
+| GET | `/v1/skills` | bearer | Global skills from the mounted copy (`name`, `dir`, `description`) plus `sync` from `status.json`. **503** if the skills mount is missing. |
+| POST | `/v1/skills/sync` | bearer | Touch `trigger`, wait for `status.json`. **200** / **502** / **202**. **503** if the sync-dir mount is missing. |
 | GET | `/v1/workspaces` | bearer | Catalog with live `mounted` / `ssh_ready` flags. Does not mount or scan. |
 | POST | `/v1/workspaces/ensure` | bearer | Idempotent sshfs mount for a catalog host |
 | GET | `/v1/workspaces/{host}/repos` | bearer | Git repos inside a live mount. Caller must `ensure` first. |
@@ -248,6 +251,54 @@ Bearer required. Query `agent` (optional, default `cursor`). `claude` → **400*
 Cache: 60 s in process memory. On failure: keep the last good catalog for 15 s more; if there never was one, return only `auto`. Never 502.
 
 The catalog is large (~270). The Laravel UI needs search or grouping, not a plain dropdown. See [run-options.md](run-options.md).
+
+---
+
+## `GET /v1/skills`
+
+Bearer required. Live **2026-11-03**. Reads the mounted copy (`EDISON_SKILLS_DIR`, default `/etc/host-api/skills` → host `~/cursor-agent/state/cursor/skills`), not the git clone. See [skills.md](skills.md). `POST /v1/runs` is unchanged: invoke with `/skill-name` in `prompt`.
+
+`app/skills.py` parses each `SKILL.md` frontmatter by hand (`name`, `description`, including `>` / `|` block values). No extra Python dependency.
+
+**200**
+
+```json
+{
+  "skills": [
+    { "name": "git-push-with-tag", "dir": "git-push-with-tag", "description": "Commits intended changes, …" }
+  ],
+  "sync": {
+    "ok": true,
+    "commit": "<full sha>",
+    "finished_at": "2026-11-03T00:15:32Z",
+    "message": "ok"
+  }
+}
+```
+
+| Field | Required | Meaning |
+|---|---|---|
+| `skills` | yes | One row per folder that contains `SKILL.md`. `name` and `dir` are the folder name. `description` is the YAML frontmatter (may be `""`). |
+| `sync` | yes | Contents of `status.json`, or `null` if that file is missing. |
+
+**503** if the skills mount is missing. Laravel treats a failed GET as `{ "skills": [] }` and ignores `dir` / `sync`.
+
+Verified inside the host-api container 2026-11-03: both `dev-docs` skills + descriptions + `sync` block. **UNVERIFIED** from Stella through Caddy.
+
+## `POST /v1/skills/sync`
+
+Bearer required. Live **2026-11-03**. Writes `EDISON_SKILLS_SYNC_DIR/trigger` (default `/var/lib/edison-skills-sync` → host `~/cursor-agent/skills-sync`). systemd `edison-skills-sync.path` starts `sync-skills.sh`. An asyncio lock serializes concurrent calls.
+
+Waits up to `EDISON_SKILLS_SYNC_TIMEOUT` (default **30** s) for `status.json` mtime to change.
+
+| Status | Body |
+|---|---|
+| **200** | Same as `GET /v1/skills` (fresh `sync`) |
+| **502** | `{ "message": "Skills sync failed: …" }` |
+| **202** | `{ "message": "Skills sync started, still running.", "sync": … }` |
+| **503** | Sync-dir mount missing |
+
+Verified inside the host-api container 2026-11-03: **200** after a few seconds (`finished_at` 00:11:28 → 00:15:32). **UNVERIFIED** from Stella through Caddy.
 
 ---
 
@@ -680,6 +731,9 @@ If `cursor-agent` restarts on its own (Docker restart policy, not via `run.sh`),
 | `EDISON_MAX_RUNS` | `3` | Parallel runs; more → **429** |
 | `EDISON_RUN_TIMEOUT` | `900` | Host deadline per run, seconds (→ **504** or partial `done` with `timeout: true`) |
 | `EDISON_SSE_PING` | `15` | SSE keep-alive comment interval, seconds |
+| `EDISON_SKILLS_DIR` | `/etc/host-api/skills` | Mounted global skills copy (host `~/cursor-agent/state/cursor/skills`) |
+| `EDISON_SKILLS_SYNC_DIR` | `/var/lib/edison-skills-sync` | Mounted `~/cursor-agent/skills-sync/` (`status.json` + `trigger`) |
+| `EDISON_SKILLS_SYNC_TIMEOUT` | `30` | Seconds `POST /v1/skills/sync` waits before **202** |
 
 `docker-compose.yml` `host-api` volumes:
 
@@ -689,7 +743,11 @@ If `cursor-agent` restarts on its own (Docker restart policy, not via `run.sh`),
       - ./host-api/allowed_signers:/etc/host-api/allowed_signers:ro
       - ./host-api/catalog.json:/etc/host-api/catalog.json:ro
       - host-api-state:/var/lib/host-api
+      - /root/cursor-agent/state/cursor/skills:/etc/host-api/skills:ro
+      - /root/cursor-agent/skills-sync:/var/lib/edison-skills-sync
 ```
+
+The skills-sync **directory** is mounted (not the single `status.json` file) because atomic tmp + `mv` creates a new inode — same class as the Caddyfile `rm` + `nano` gotcha.
 
 Do not write token values into docs.
 
@@ -754,11 +812,27 @@ Known cosmetic issue (not from this change): in JSON mode, `output` comes from C
 
 Not tested: full reboot of the Edison box (only the service restart).
 
+### Global skills (2026-11-02/03, on Edison)
+
+| Test | Result |
+|---|---|
+| `ssh -T git@github.com` with the default root key | authenticated as `foxcraftdigital/dev-docs` |
+| Shallow clone + `sync-skills.sh` | `ok cfe03f4`; both skills under `/root/.cursor/skills` in `cursor-agent` |
+| `systemctl start edison-skills-sync.service` | journal `sync-skills: ok cfe03f4` |
+| `systemctl restart cursor-agent` | 5 mounts remounted, then skills sync ok |
+| Trigger file (`touch` of a new file) | `.path` fired |
+| `GET /v1/skills` inside host-api | both skills + `sync` |
+| `POST /v1/skills/sync` inside host-api | **200**; `finished_at` 00:11:28 → 00:15:32 |
+
 **UNVERIFIED:**
 
 - Signed `POST /system/health` from Atlas prod (`2.31.42.13`) with the atlas-prod key.
 - End-to-end chat in the `edison.dev` UI, including resume via the app.
 - Whether the Atlas Edison card (`/monitoring/edison`) shows extra mounts from `mounts.json`. **TODO (Dominik):** check.
+- `GET` / `POST /v1/skills` from Stella through Caddy.
+- Push to `dev-docs` `main` picked up within 15 min.
+- `.path` on `touch` of an already existing `trigger`.
+- Full box reboot (timer `OnBootSec` + `run.sh` sync).
 
 ---
 

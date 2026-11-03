@@ -1,6 +1,6 @@
 # Open Gaps & Next Steps
 
-Last updated: 2026-11-02
+Last updated: 2026-11-03
 
 **Cross-system overview:** [integration/system-overview.md](integration/system-overview.md) (Atlas + ddashboard + Stella + Edison). AI-chat path only: [integration/ddashboard-and-stella-server.md](integration/ddashboard-and-stella-server.md).
 
@@ -58,6 +58,11 @@ Host rebuilt 2026-10-09 onto CX33 (`edison-ip` = `178.105.203.54`). See [`edison
 - [ ] **Throwaway `*.staging.foxcraft.digital` sites** (wp-staging-api) are not in the catalog and have no SSH container yet. Needs a separate spec: catalog rows per build, stable SSH host keys across rebuilds (otherwise `accept-new` fails with "host identification changed"), Atlas rebuild guard for dirty/unpushed repos.
 - [ ] **sshfs error text** — a rejected key shows `Connection reset by peer` instead of `Permission denied`. Optional: run a `ssh -o BatchMode=yes … true` probe before sshfs to return a clearer 422.
 - [ ] **UI end-to-end chat on `edison.dev`** — **UNVERIFIED.** Includes resume via the app. Browser test still open.
+- [x] **Global agent skills on Edison** — closed 2026-11-03. Host sync (default-key deploy key, shallow clone, `sync-skills.sh`, timer, `.path` unit, `run.sh` hook) + `GET /v1/skills` / `POST /v1/skills/sync`. See [`edison/skills.md`](edison/skills.md).
+- [ ] **`git-push-with-tag` is loaded globally on live staging trees.** Its description triggers on "push", "deploy", "ship", "release" and tells the agent to commit, tag and push — conflicts with the live-tree guard. Decide: allowlist in `sync-skills.sh`, or mark the skill IDE-only in `dev-docs`.
+- [ ] **Deploy-key fingerprint** — **TODO (Dominik):** record in [`edison/skills.md`](edison/skills.md) (`ssh-keygen -lf ~/.ssh/id_ed25519.pub`). Do not invent it.
+- [ ] **Skills UI: sync-now** — `/` autocomplete is in the Edison repo (calls `GET /v1/skills`). Optional Settings / "sync now" button (`POST /v1/skills/sync`) is not built. **UNVERIFIED** on `edison.dev`.
+- [ ] **Live update test** — push to `dev-docs` `main`, confirm the host copy updates within 15 min. **UNVERIFIED.**
 
 ### Edison app (Laravel) — 2026-10-26
 
@@ -150,6 +155,10 @@ Service live at `https://stella-media-api.foxcraft.digital`. Contract: [`stella-
 - [x] **Atlas dev app: deploy client + UI behind a flag, off on prod** — `ATLAS_SELF_DEPLOY_ENABLED` (404 when off). Button on the Server: atlas card; toasts on terminal status. See [`atlas/monitoring.md`](atlas/monitoring.md).
 
 ---
+
+## Closed 2026-11-03
+
+- **Global agent skills on Edison** — deploy key (`id_ed25519`, comment `edison-dev-docs`), shallow `~/cursor-agent/dev-docs`, `sync-skills.sh`, timer + `.path` unit, `run.sh` hook, `GET /v1/skills` / `POST /v1/skills/sync`. Fingerprint, live-update test, and `git-push-with-tag` vs live-tree guard stay open. See [`edison/skills.md`](edison/skills.md).
 
 ## Closed 2026-11-02
 

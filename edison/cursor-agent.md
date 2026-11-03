@@ -2,7 +2,7 @@
 
 **Status:** Rebuilt 2026-10-09 on the new CX33 host. Mounts are created by host-api `ensure` (catalog hosts only) and remounted from `mounts.json`. Currently mounted: osgar, dominikliss (2026-11-02). Persistence (ssh config, known_hosts, Cursor login and CLI state) is on the host.
 
-**Related:** [README.md](README.md), [infrastructure.md](infrastructure.md), [host-api.md](host-api.md) (`ensure` / `remount`), Stella [`dev-ssh-access.md`](../stella-server/dev-ssh-access.md)
+**Related:** [README.md](README.md), [infrastructure.md](infrastructure.md), [host-api.md](host-api.md) (`ensure` / `remount`), [skills.md](skills.md) (global `dev-docs` copy), Stella [`dev-ssh-access.md`](../stella-server/dev-ssh-access.md)
 
 ---
 
@@ -84,7 +84,12 @@ for i in $(seq 1 30); do
   sleep 2
 done
 docker exec host-api python -m app.mounts remount
+rc=$?
+/root/cursor-agent/sync-skills.sh || echo "run.sh: skills sync failed, continuing"
+exit $rc
 ```
+
+The remount exit code stays the service's exit code. A skills sync failure never fails `cursor-agent.service`. See [skills.md](skills.md).
 
 osgar is remounted because it is in `mounts.json`, not because `run.sh` names it. If `cursor-agent` restarts on its own (Docker restart policy, not via `run.sh`), mounts are lost until something calls `ensure` or `remount`.
 
@@ -133,15 +138,18 @@ Host *
 | `~/cursor-agent/ssh-config` | `/root/.ssh/config` (ro) | SSH hosts |
 | `~/cursor-agent/known_hosts` | `/root/.ssh/known_hosts` | known_hosts |
 | `~/cursor-agent/state/cursor` | `/root/.cursor` | Cursor CLI state |
+| `~/cursor-agent/state/cursor/skills/` | `/root/.cursor/skills/` | Global skills copy written by `sync-skills.sh` (see [skills.md](skills.md)) |
 | `~/cursor-agent/state/config-cursor` | `/root/.config/cursor` | Cursor login (`auth.json` — secret, do not commit) |
+| `~/cursor-agent/dev-docs/` | — (host only) | Shallow clone of `foxcraftdigital/dev-docs` |
+| `~/cursor-agent/skills-sync/` | host-api `/var/lib/edison-skills-sync` | `status.json` + `trigger` |
 
-Persistence gap from the old docs is **closed** (2026-10-09).
+Persistence gap from the old docs is **closed** (2026-10-09). Skills sync live **2026-11-03**.
 
 ---
 
 ## systemd
 
-`/etc/systemd/system/cursor-agent.service` — enabled. Recreates the container and calls host-api `remount` at every boot.
+`/etc/systemd/system/cursor-agent.service` — enabled. Recreates the container, calls host-api `remount`, then `sync-skills.sh` at every boot.
 
 - `Type=oneshot`
 - `RemainAfterExit`
@@ -149,7 +157,9 @@ Persistence gap from the old docs is **closed** (2026-10-09).
 - `Requires=docker.service`
 - `ExecStart=/root/cursor-agent/run.sh`
 
-Reboot test passed (2026-10-09) under the old hard-coded osgar mount. After workspaces v1, `systemctl restart cursor-agent` remounted osgar and dominikliss from `mounts.json` (2026-11-02). Full box reboot after that change is **UNVERIFIED**.
+Skills units (all enabled, 2026-11-03): `edison-skills-sync.service` (oneshot), `.timer` (`OnBootSec=2min`, `OnCalendar=*:0/15`), `.path` (`PathModified=…/skills-sync/trigger`). See [skills.md](skills.md).
+
+Reboot test passed (2026-10-09) under the old hard-coded osgar mount. After workspaces v1, `systemctl restart cursor-agent` remounted osgar and dominikliss from `mounts.json` (2026-11-02). After skills: restart remounted 5 hosts then `sync-skills: ok cfe03f4` (2026-11-03). Full box reboot after skills is **UNVERIFIED**.
 
 ---
 
