@@ -158,23 +158,14 @@ Service live at `https://stella-media-api.foxcraft.digital`. Contract: [`stella-
 
 ## stack-api (Atlas container management) — 2026-11-04
 
-Live at `https://stella-stack-api.foxcraft.digital`. Contract: [`stella-server/stack-api.md`](stella-server/stack-api.md). Isolated `stack` network (`services_stack`); only Caddy and `stack-api` are on it. Docker socket mounted (root-equivalent until `apply` exists — list/restart only). `wp-staging-api` is superseded and will not be deployed.
+Live at `https://stella-stack-api.foxcraft.digital`. Feature list and remaining build work: **[Roadmap in `stella-server/stack-api.md`](stella-server/stack-api.md#roadmap)**. Do not maintain that list here.
 
-**Verified 2026-11-04:**
-- [x] **Auth skeleton** — Caddy IP allowlist (Atlas prod + Stella), app-layer `X-Forwarded-For` check (missing/fake → 403), `X-Stack-Token`, signed `POST /ping` (`principal: atlas-prod`), replay and bad-token 401.
-- [x] **DNS + cert** — A record `stella-stack-api` → `95.217.144.93`; Let's Encrypt production on first attempt with `propagation_delay 45s` / `propagation_timeout 3m`.
-- [x] **Generic SSH image** — `stella/ssh-php:8.5` built 2026-11-04; `hypershape` adopted by hand. See [`stella-server/stack-api.md`](stella-server/stack-api.md#shared-ssh-image-stellassh-phpversion).
-- [x] **Audit log + `list` / `get` / `restart`** — Docker Engine API via httpx + socket. 6 stacks listed from Atlas prod; `/opt/services` invisible; hypershape get/restart verified; `DELETE FROM audit` blocked. Job table deferred to `restore`.
-- [x] **Audit rejected requests** — `run_action` writes `ok`/`error` (including `400`/`404`/`502`); auth failures as principal `-` (`denied` / `ip-denied`). Verified 2026-11-04: `../services` → 400 + error row; `services` → 404; restart `nope` → 404; bad token → 401 + `denied` row.
-- [x] **Bind IP in `ports` output** — `{ip, public, private, type}` (e.g. `0.0.0.0` and `::` for 2206).
+Closed on atlas.dev: Atlas client (flag on, key `/var/www/.ssh/id_ed25519`, `stack_actions` migrated, 11 tests pass, UI shows only `dominikliss`) and the `atlas-dev` signer (`namespaces="stack"`, sandbox scope). Allowlist is `2.31.42.13`, `95.217.144.93`, `172.20.0.1`. `wp-staging-api` is superseded.
 
-**Open:**
-- [ ] **Atlas client** — `.env` has `STELLA_STACK_API_URL` / `STELLA_STACK_API_TOKEN`; code does not read them yet. Planned `stack_api_ssh_key_path` → `/home/atlas/.ssh/atlas-stack-api`.
-- [ ] **Atlas-dev signer** — IP layer already passes from Stella; do **not** add principal `atlas-dev` until code restricts it to stacks marked `sandbox: true`.
-- [ ] **WP blueprint in stack-api** (then move `dominikliss`).
-- [ ] **WP-CLI Deprecated notice on PHP 8.5** — decide whether to suppress `E_DEPRECATED` for the `wp` wrapper only.
-- [ ] **`apply` / `restore` / `php-version` / `delete` / Adminer** — then Laravel and .NET blueprints.
-- [ ] **Docker-socket policy checks** — refuse `privileged`, `cap_add`, `network_mode: host`, `pid: host`, bind mounts outside the app folder, `docker.sock`, `edge` on `ssh`/`db`/`adminer`, images outside the allowlist. See the planned section in [`stella-server/stack-api.md`](stella-server/stack-api.md).
+**Open (concrete, not in the roadmap):**
+- [ ] **Enable the Atlas client on prod** — `STELLA_STACK_API_KEY_PATH=/home/atlas/.ssh/atlas-stack-api`, `STELLA_STACK_API_ENABLED=true`, migration `2026_11_04_020000_create_stack_actions_table`. Flag stays off until then.
+- [ ] **Nonce in `StackApiClient`** — every request body needs a random `nonce`. Ed25519 signatures are deterministic; identical requests in the same second are replay (01:29, audit row 19).
+- [ ] **Re-decide `dominikliss` as the sandbox** before `apply` / `delete`. Current `STACK_API_SANDBOX_STACKS` is `dominikliss.foxcraft.digital`.
 
 ---
 
@@ -185,6 +176,9 @@ Live at `https://stella-stack-api.foxcraft.digital`. Contract: [`stella-server/s
 - **Shared SSH image + hypershape migration** — `stella/ssh-php:8.5` (PHP 8.5.12, WP-CLI 2.12.0). Users from `atlas/users.conf` + per-user keys; persistent `/home`; `ssh` on `internal` only. hypershape moved off `php8.4` + per-site `Dockerfile.ssh`; `edison` has its own key. See [`stella-server/stack-api.md`](stella-server/stack-api.md#shared-ssh-image-stellassh-phpversion) and [`stella-server/wordpress-staging.md`](stella-server/wordpress-staging.md#ssh-container-shared-image).
 - **stack-api Docker access** — Engine API over the socket (httpx). Signed `list` / `get` / `restart`; append-only `audit` table. `/opt/services` cannot be listed or restarted. See [`stella-server/stack-api.md`](stella-server/stack-api.md).
 - **stack-api audit + bind IP** — every signed action and every auth/IP denial is written through `run_action`; `ports` includes `ip`. See [`stella-server/stack-api.md`](stella-server/stack-api.md).
+- **stack-api Atlas client on atlas.dev** — flag on, `stack_actions` migrated, 11 tests pass; `atlas-dev` limited to sandbox `dominikliss`. `172.20.0.1` added to the Caddy/app allowlist. Prod still off.
+- **stack-api principals + sandbox** — `PRINCIPAL_SCOPES` (`atlas-prod` = `all`, `atlas-dev` = `sandbox`); unknown principals rejected; `STACK_API_SANDBOX_STACKS`; list/get `sandbox`, ping `scope`. Incident 00:51: do not add a principal before the restricting code is in the running container.
+- **stack-api `atlas-dev` signer** — existing atlas.dev deploy key, `namespaces="stack"`.
 - **`advoapp-dev` 5080 and `osgar-datahub-dev` 5081** bound to `127.0.0.1` only (`docker port`, verified 2026-11-04).
 
 ## Closed 2026-11-03

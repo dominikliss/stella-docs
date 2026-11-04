@@ -19,8 +19,8 @@ Infra: [`infrastructure.md`](infrastructure.md). System map: [`../integration/sy
   ├── Dockerfile          ← python:3.13-slim + openssh-client
   ├── requirements.txt    ← fastapi, uvicorn, httpx
   ├── .dockerignore       ← .env, allowed_signers, data, images
-  ├── .env                ← chmod 600; STACK_API_TOKEN, STACK_API_ALLOWED_IPS, STACK_API_DB
-  ├── allowed_signers     ← mounted read-only, not baked into the image
+  ├── .env                ← chmod 600; STACK_API_TOKEN, STACK_API_ALLOWED_IPS, STACK_API_DB, STACK_API_SANDBOX_STACKS
+  ├── allowed_signers     ← mounted read-only, not baked into the image; atlas-prod + atlas-dev, both namespaces="stack"
   ├── data/               ← host dir; SQLite at /data/stack-api.sqlite in the container (STACK_API_DB)
   ├── app/main.py
   └── images/ssh-php/     ← shared SSH image (not in the API container)
@@ -65,13 +65,13 @@ With the socket mounted, stack-api is **root-equivalent** on Stella. Until `appl
 
 | Layer | Where | Detail |
 |---|---|---|
-| IP allowlist | Caddy **and** app | Caddy: `@blocked not remote_ip 2.31.42.13 95.217.144.93` → 403. App: rightmost `X-Forwarded-For` must be in `STACK_API_ALLOWED_IPS`; missing header → 403. Applies to every path, including `/health` |
+| IP allowlist | Caddy **and** app | Caddy: `@blocked not remote_ip 2.31.42.13 95.217.144.93 172.20.0.1` → 403. App: rightmost `X-Forwarded-For` must be in `STACK_API_ALLOWED_IPS` (same three IPs); missing header → 403. Applies to every path, including `/health` |
 | Secret token | app | Header `X-Stack-Token`, constant-time compare against `STACK_API_TOKEN` (64 hex chars, `openssl rand -hex 32`, min. 32 chars enforced at startup) |
 | SSH signature | app | See below |
 
 Every failed check answers a generic `401 {"detail":"unauthorized"}` or `403 {"detail":"forbidden"}`. The reason is only logged (`denied reason=…` / `denied ip=…`).
 
-`2.31.42.13` = Atlas prod. `95.217.144.93` = Stella itself (for Atlas dev). Verified 2026-11-04: a request from a container on Stella to the public URL arrives at Caddy as `95.217.144.93`, not as the Docker gateway.
+`2.31.42.13` = Atlas prod. `95.217.144.93` = Stella host. `172.20.0.1` = Docker `edge` gateway. Verified 2026-11-04: a container on `edge` (atlas.dev app) calling the public URL is routed through Docker's proxy; Caddy sees `172.20.0.1` (`netstat` inside `services-caddy-1`: peer `::ffff:172.20.0.1`), not `95.217.144.93`. From the Stella host itself the source stays `95.217.144.93`. `172.20.0.1` means any container on `edge` — same trust level as the Stella IP; token + signature + sandbox scope remain the real gates. **Gotcha:** test container-to-API paths from inside the container, not only from the host.
 
 ### Signed requests
 
@@ -82,22 +82,26 @@ POST body = {"payload": …, "signature": …, "request": "<JSON string>"}
 
 - `ssh-keygen -Y find-principals` (signer → principal), then `ssh-keygen -Y verify -n stack -I <principal>`
 - **Namespace `stack`** — not `deploy`. Signatures for deploy-api / health-api are never valid here.
+- Unknown principals are rejected.
 - 60 s window, replay cache on the signature hash (in memory, entries kept 120 s)
 - The body hash binds the request JSON to the signature
 - `request` must be a JSON object
+- **Every request must include a random `nonce`.** Ed25519 signatures are deterministic: two identical `{action, timestamp, request}` in the same second produce the same signature and are rejected as replay (seen 2026-11-04 01:29, audit row 19). Atlas `StackApiClient` does not send a nonce yet.
 
-### Key
+### Principals and sandbox
 
-| Item | Value |
-|---|---|
-| Private key | host `atlas`, `/home/atlas/.ssh/atlas-stack-api` (owner `atlas`, no passphrase) |
-| Comment | `atlas-stack-api` |
-| Principal | `atlas-prod` |
-| `allowed_signers` line | `atlas-prod namespaces="stack" ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIBJ7MdsnXmRKl6krZaJYofDeu2GYuap5D0A1b+sCUnej atlas-stack-api` |
+| Principal | Key | Scope |
+|---|---|---|
+| `atlas-prod` | host `atlas`, `/home/atlas/.ssh/atlas-stack-api` (owner `atlas`, no passphrase, comment `atlas-stack-api`) | `all` |
+| `atlas-dev` | atlas.dev `/var/www/.ssh/id_ed25519` (same file as the atlas-dev deploy key) | `sandbox` |
 
-Separate from the shared Atlas deploy key (`/home/atlas/.ssh/id_ed25519`, principal `ddashboard`), which is **not** trusted by stack-api.
+`PRINCIPAL_SCOPES = {"atlas-prod": "all", "atlas-dev": "sandbox"}`. `allowed_signers` has both lines, both `namespaces="stack"`. The shared Atlas prod deploy key (`/home/atlas/.ssh/id_ed25519`, principal `ddashboard`) is **not** trusted by stack-api.
 
-**Atlas dev:** passes the IP layer, but has **no key** in `allowed_signers` yet. Planned: principal `atlas-dev` with its own key, restricted to stacks marked `sandbox: true`. Do not add the key before that restriction exists in code.
+`STACK_API_SANDBOX_STACKS` in stack-api `.env` is the sandbox allowlist — currently `dominikliss.foxcraft.digital` (stack name `dominikliss`). `atlas-dev` sees only those stacks; any other name is `404`. `list` / `get` include `"sandbox"` on each stack; `ping` includes `"scope"`.
+
+**Decision (2026-11-04):** `dominikliss` is the sandbox. Re-decide before `apply` / `delete`.
+
+**Incident 00:51 (2026-11-04):** the `atlas-dev` signer was added to `allowed_signers` before the sandbox-restricting code was in the running container. atlas.dev then restarted the whole `osgar` stack (audit row 11). No damage. **Rule:** never add a principal before the restricting code is verified in the running container.
 
 ### Atlas `.env`
 
@@ -112,20 +116,20 @@ Atlas client (2026-11-04): `app/Domain/Stacks/StackApiClient.php`. Flag default 
 
 | Instance | Enable | Key path |
 |---|---|---|
-| atlas.dev | `STELLA_STACK_API_ENABLED=true` first | `/var/www/.ssh/id_ed25519` (same file as the atlas-dev deploy key) |
-| Atlas prod | keep false until atlas.dev is proven | `/home/atlas/.ssh/atlas-stack-api` |
+| atlas.dev | **on** 2026-11-04 (`STELLA_STACK_API_ENABLED=true` in `src/.env`) | `/var/www/.ssh/id_ed25519` |
+| Atlas prod | **off** (flag stays false) | `/home/atlas/.ssh/atlas-stack-api` when enabled |
 
 Admin role only. Atlas records restarts in `stack_actions` (`user_id`, stack, service, result, detail, created_at`). stack-api keeps its own audit log.
 
 ### Atlas client
 
-`StellaSshSigner::sign($payload, 'stack', $keyPath)` — namespace **`stack`**, not `deploy`. Payload `<action>:<unix_ts>:<sha256(request_json)>`. POST `{payload, signature, request}` where `request` is the exact JSON string that was hashed. Header `X-Stack-Token`. Restart timeout 65 s.
+`StellaSshSigner::sign($payload, 'stack', $keyPath)` — namespace **`stack`**, not `deploy`. Payload `<action>:<unix_ts>:<sha256(request_json)>`. POST `{payload, signature, request}` where `request` is the exact JSON string that was hashed. Header `X-Stack-Token`. Restart timeout 65 s. **Open:** put a random `nonce` in every request body (see signed requests).
 
 | Atlas | stack-api |
 |---|---|
-| `GET /api/stacks` | `POST /stacks/list` action `stack-list` request `{}` |
-| `GET /api/stacks/{name}` | `POST /stacks/get` action `stack-get` request `{"name"}` |
-| `POST /api/stacks/{name}/restart` | `POST /stacks/restart` action `stack-restart` request `{"name"}` or `{"name","service"}` |
+| `GET /api/stacks` | `POST /stacks/list` action `stack-list` request `{nonce}` |
+| `GET /api/stacks/{name}` | `POST /stacks/get` action `stack-get` request `{"name", nonce}` |
+| `POST /api/stacks/{name}/restart` | `POST /stacks/restart` action `stack-restart` request `{"name", nonce}` or `{"name","service", nonce}` |
 
 Name `^[a-z0-9][a-z0-9.-]{0,252}$`, service `^[a-z0-9][a-z0-9_-]{0,62}$` — validated in Atlas before the call. Mapped errors: 401/403 → `stack-api rejected the request`; 404 detail passed through; 400 → `invalid input`; 502 → `docker error` (results passed through); connection → `stack-api unreachable`. Never log the token, signature, or key contents.
 
@@ -142,10 +146,10 @@ Signed endpoints: action = payload prefix. Auth is IP + token + signature unless
 | Path | Action | Request | Response |
 |---|---|---|---|
 | `GET /health` | — | — (IP only) | `{"status":"ok"}` |
-| `POST /ping` | `stack-ping` | JSON object | `{"ok":true,"principal":…,"request":{…}}` |
-| `POST /stacks/list` | `stack-list` | `{}` | `{"stacks":[{name, type, path, containers:[{id (12 chars), name, service, image, state, status, ports:[{ip, public, private, type}]}]}]}` |
-| `POST /stacks/get` | `stack-get` | `{"name"}` | one stack; containers also have `started_at`, `restart_count`, `health`. `400` `invalid name`, `404` `stack not found` |
-| `POST /stacks/restart` | `stack-restart` | `{"name", "service"?}` | restarts one service or the whole stack (`db` first); Docker restart `t=10`. `{"name","results":[{service, name, ok}]}`. `404` `service not found`; `502` with `results` if any restart failed |
+| `POST /ping` | `stack-ping` | JSON object + `nonce` | `{"ok":true,"principal":…,"scope":…,"request":{…}}` |
+| `POST /stacks/list` | `stack-list` | `{nonce}` | `{"stacks":[{name, type, path, sandbox, containers:[{id (12 chars), name, service, image, state, status, ports:[{ip, public, private, type}]}]}]}` |
+| `POST /stacks/get` | `stack-get` | `{"name", nonce}` | one stack including `sandbox`; containers also have `started_at`, `restart_count`, `health`. `400` `invalid name`, `404` `stack not found` (also for a sandbox principal asking for a non-sandbox stack) |
+| `POST /stacks/restart` | `stack-restart` | `{"name", "service"?, nonce}` | restarts one service or the whole stack (`db` first); Docker restart `t=10`. `{"name","results":[{service, name, ok}]}`. `404` `service not found`; `502` with `results` if any restart failed |
 
 Docker errors → `502` `"docker error"`.
 
@@ -188,7 +192,7 @@ stella-stack-api.foxcraft.digital {
             propagation_timeout 3m
         }
     }
-    @blocked not remote_ip 2.31.42.13 95.217.144.93
+    @blocked not remote_ip 2.31.42.13 95.217.144.93 172.20.0.1
     respond @blocked 403
     reverse_proxy stack-api:8000
 }
@@ -216,6 +220,8 @@ stella-stack-api.foxcraft.digital {
 | wrong token on `/stacks/list` | Atlas prod | `401`; audit row (`-`, `denied`, `reason=bad token path=/stacks/list ip=2.31.42.13`) |
 | `ports` on list/get | Atlas prod | bind IP present (`0.0.0.0` and `::` for 2206) |
 | audit after the first list/get/restart | Stella | 3 `ok` rows; `DELETE FROM audit` failed with `audit is append-only` |
+| atlas.dev app → public URL | inside atlas.dev container | Caddy peer `172.20.0.1`; after allowlist, principal `atlas-dev` lists only sandbox `dominikliss` |
+| Identical request in the same second (no nonce) | Atlas | 401 `replay` (01:29, audit row 19) — Ed25519 signatures are deterministic |
 
 Test helper on host `atlas` (token from Atlas `.env`, sign with `/home/atlas/.ssh/atlas-stack-api`, namespace `stack`):
 
@@ -224,6 +230,7 @@ stack_call() {
   local ACTION="$1" URLPATH="$2" REQ="$3"
   local STACK_TOKEN TS HASH PAYLOAD TMP BODY
   STACK_TOKEN=$(grep '^STELLA_STACK_API_TOKEN=' /var/www/atlas/.env | cut -d= -f2- | tr -d '[:space:]')
+  REQ=$(python3 -c 'import json,os,sys; d=json.loads(sys.argv[1]); d.setdefault("nonce", os.urandom(16).hex()); print(json.dumps(d,separators=(",",":")))' "$REQ")
   TS=$(date +%s)
   HASH=$(printf %s "$REQ" | sha256sum | cut -d' ' -f1)
   PAYLOAD="${ACTION}:${TS}:${HASH}"
@@ -249,7 +256,7 @@ One-shot ping (same signing; prefer `stack_call` for the stack endpoints):
 
 ```bash
 STACK_TOKEN=$(grep '^STELLA_STACK_API_TOKEN=' /var/www/atlas/.env | cut -d= -f2- | tr -d '[:space:]')
-REQ='{"hello":"stella"}'
+REQ=$(python3 -c 'import json,os; print(json.dumps({"hello":"stella","nonce":os.urandom(16).hex()}))')
 TS=$(date +%s)
 HASH=$(printf %s "$REQ" | sha256sum | cut -d' ' -f1)
 PAYLOAD="stack-ping:${TS}:${HASH}"
@@ -299,21 +306,56 @@ Creates `/run/sshd` and `/etc/ssh/sshd_config.d`, `ssh-keygen -A` (missing host 
 | File in `/home/dominik` | survives `docker compose up -d --force-recreate ssh` |
 | `getent hosts db` from `-ssh` | resolves |
 
-## Planned (not built)
+## Roadmap
 
-Security controls agreed for the Docker-socket phase:
+Single list. Do not duplicate it in [`../open-gaps.md`](../open-gaps.md).
 
-- Strict schema per field (names `^[a-z0-9.-]+$`, PHP versions from a list, whitelisted ini keys, no newlines); commands only as argument lists; every path must resolve under `/opt/apps/<type>/<name>/`
-- **Policy check on every rendered compose file before `up`:** refuse `privileged`, `cap_add`, `network_mode: host`, `pid: host`, bind mounts outside the app folder, `docker.sock`, `edge` on `ssh`/`db`/`adminer`, images outside the allowlist
-- Mounts limited to `docker.sock`, `/opt/apps`, and the Caddy `sites/` folder; Caddy reload via the admin API, not a container restart
-- No Hetzner DNS token in stack-api (wildcard `*.foxcraft.digital` → Stella instead; explicit records keep precedence)
-- Soft delete to `/opt/apps/.trash/<name>-<ts>`, volumes kept 7 days
-- Jobs in SQLite (not in memory), one lock per stack plus a limit for heavy jobs — job table deferred until long-running actions (`restore`). Audit log is already live.
+### Foundation
 
-Build order:
+- [x] Auth (IP Caddy+app, token, signature namespace `stack`, replay), DNS/cert
+- [x] `list` / `get` / `restart`, append-only audit log incl. rejected requests
+- [x] Principals + sandbox scope (`PRINCIPAL_SCOPES`, `STACK_API_SANDBOX_STACKS`; unknown principals rejected)
+- [x] Shared SSH image `stella/ssh-php` (`users.conf` + `keys/`, live sync, persistent `/home`, WP-CLI)
+- [ ] Job table in SQLite for long-running actions (one lock per stack, limit for heavy jobs)
+- [ ] `logs` endpoint (last N lines per service)
 
-1. ~~Skeleton: auth~~ (done 2026-11-04) → ~~SQLite + `list` / `get` / `restart`~~ (done 2026-11-04; audit log only, no job table yet; jobs come with long-running actions like `restore`)
-2. ~~Generic SSH image~~ (done 2026-11-04; `hypershape` adopted by hand) → WP blueprint in stack-api, then move `dominikliss`
-3. `apply` with SSH users and PHP settings (`PHP_INI_SCAN_DIR` + per-site `zz-atlas.ini`)
-4. `restore` (staging from backup)
-5. `php-version`, `delete`, Adminer on demand, then Laravel and .NET blueprints
+### apply (create/change from a spec) — needs the safeguards first
+
+- [ ] Spec schema with strict validation (names, PHP versions from a list, whitelisted ini keys, no newlines; paths must resolve under `/opt/apps/<type>/<name>/`)
+- [ ] Policy check on every rendered compose before `up` (refuse `privileged`, `cap_add`, `network_mode: host`, `pid: host`, bind mounts outside the app folder, `docker.sock`, `edge` on `ssh`/`db`/`adminer`, images outside the allowlist)
+- [ ] WordPress blueprint (template of the hypershape compose; `ssh` on `internal`)
+- [ ] SSH users and keys via spec (`users.conf` + `keys/`, then `atlas-sync-users`)
+- [ ] Outbound SSH key per user (`ssh-keys/generate`, returns only the `.pub`, for GitHub deploy keys)
+- [ ] PHP version change as a job (DB dump first, `wp` + `ssh` image together, verify `php -v` / HTTP / fatals / ACL, revert)
+- [ ] PHP settings: `PHP_INI_SCAN_DIR` with shared `php-defaults.ini` + per-site `zz-atlas.ini`, whitelisted keys (`memory_limit`, `upload_max_filesize`, `post_max_size`, `max_execution_time`, `max_input_time`, `max_input_vars`, `display_errors`, `date.timezone`, `session.gc_maxlifetime`, selected `opcache.*`); never `auto_prepend_file`, `disable_functions`, `open_basedir`, `extension`; return effective values via `php -i`
+- [ ] Domain/TLS: Caddy `sites/*.caddy` imported by the main Caddyfile, reload via the admin API; wildcard `*.foxcraft.digital` → Stella so stack-api needs no DNS token
+- [ ] SSH port allocation (next free 22XX) + firewall: decide on a `DOCKER-USER` range rule (e.g. 2200–2299 for team IPs) instead of per-site edits
+- [ ] Drift detection (hash of rendered files; mismatch blocks apply until "reconcile")
+- [ ] Adopt existing stacks: hypershape (done by hand) → `dominikliss` → `osgar`, `advoapp` (need .NET blueprint) → `atlas.dev`, `edison.dev` (need Laravel blueprint)
+
+### WordPress extras
+
+- [ ] `fix-permissions` action (chmod/SetGID/setfacl after first start or updates)
+- [ ] Staging guard toggle (mu-plugin: no outgoing mail, noindex, `blog_public=0`)
+- [ ] Real cron (`DISABLE_WP_CRON` + scheduled `wp cron event run`)
+- [ ] DB dump / import / safe search-replace via WP-CLI
+- [ ] Optional basic auth / IP restriction per site in the Caddy block
+- [ ] Labels as toggles: `backup.exclude`, `health.enable`
+- [ ] Git repos for custom plugins/themes; Edison workspace registration (`/v1/workspaces/ensure`)
+
+### restore / delete / databases
+
+- [ ] `restore`: staging from an Atlas backup as create + restore job (reuse the wp-staging-api code: manifest check, streaming decrypt, collation mapping, search-replace, deactivate mail plugins); also "refresh from newer backup"
+- [ ] `delete`: soft delete to `/opt/apps/.trash/<name>-<ts>`, volumes kept 7 days, optional final DB dump
+- [ ] Adminer on demand per stack (internal network only, one-time auto-login URL, TTL ~30 min, read-only DB user by default on non-sandbox stacks, dump before write access)
+
+### Other stack types
+
+- [ ] Laravel blueprint (`app`, queue, scheduler, `db` mysql 8.4, `ssh` with composer/node; version = build arg; `queue:restart` after changes)
+- [ ] .NET blueprint (`-dev` with `dotnet watch` + supervisord `stopasgroup`/`killasgroup`, MSSQL named volume, `ssh` with node/supervisorctl/sqlcmd)
+
+### Hardening / later
+
+- [ ] Optional second confirmation (email/TOTP) for destructive actions on non-sandbox stacks
+- [ ] Audit mirror in Atlas
+- [ ] WP-CLI Deprecated notice on PHP 8.5 (suppress `E_DEPRECATED` for the `wp` wrapper only?)

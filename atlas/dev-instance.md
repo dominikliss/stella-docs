@@ -73,6 +73,10 @@ Do not write secret values here. This instance has its **own** `APP_KEY` (not co
 | `BROADCAST_CONNECTION` | `log` (no Redis / Reverb container) |
 | `ATLAS_ALLOWED_IPS` | empty — Caddy does the IP filtering |
 | `DEPLOY_SSH_KEY_PATH` | `/var/www/.ssh/id_ed25519` |
+| `STELLA_STACK_API_URL` | `https://stella-stack-api.foxcraft.digital` |
+| `STELLA_STACK_API_TOKEN` | set (value not recorded) |
+| `STELLA_STACK_API_ENABLED` | `true` (2026-11-04) |
+| `STELLA_STACK_API_KEY_PATH` | `/var/www/.ssh/id_ed25519` (same file as the deploy key) |
 
 ---
 
@@ -140,6 +144,12 @@ Stella `DOCKER-USER` ACCEPTs port **2205** from Dominik’s IP, the managed host
 - The settings page shows “CONNECTED” after “Test Connection”.
 
 ---
+
+## Stacks UI (2026-11-04)
+
+Enabled on this instance. Keys live in `src/.env` (see table above). Migration `2026_11_04_020000_create_stack_actions_table` run. 11 Stack tests pass. Signs as principal `atlas-dev` — stack-api returns only the sandbox stack `dominikliss`. Prod stays off. Contract: [`../stella-server/stack-api.md`](../stella-server/stack-api.md).
+
+A container on `edge` calling `https://stella-stack-api.foxcraft.digital` is seen by Caddy as `172.20.0.1`, not `95.217.144.93`. Test that path from **inside** the app container. See [`../stella-server/stack-api.md`](../stella-server/stack-api.md).
 
 ## Verified
 

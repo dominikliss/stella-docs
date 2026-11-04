@@ -212,7 +212,7 @@ stella-stack-api.foxcraft.digital {
             propagation_timeout 3m
         }
     }
-    @blocked not remote_ip 2.31.42.13 95.217.144.93
+    @blocked not remote_ip 2.31.42.13 95.217.144.93 172.20.0.1
     respond @blocked 403
     reverse_proxy stack-api:8000
 }
@@ -300,7 +300,7 @@ For a **stubborn new subdomain** whose first DNS-01 attempt hits NXDOMAIN (Hetzn
             propagation_timeout 3m
 ```
 
-`stella-media-api.foxcraft.digital` uses this (no `@blocked` — HMAC is the app-layer check; port 443 is already team-IP filtered). `stella-stack-api.foxcraft.digital` uses the same delay pair **and** an allow-list `@blocked not remote_ip` (Atlas prod + Stella). Do not copy those two lines onto existing sites unless that site is actually failing issuance/renewal.
+`stella-media-api.foxcraft.digital` uses this (no `@blocked` — HMAC is the app-layer check; port 443 is already team-IP filtered). `stella-stack-api.foxcraft.digital` uses the same delay pair **and** an allow-list `@blocked not remote_ip 2.31.42.13 95.217.144.93 172.20.0.1` (Atlas prod, Stella host, `edge` gateway). `172.20.0.1` is required because an `edge` container (atlas.dev) calling the public URL arrives at Caddy as the `edge` gateway, not as `95.217.144.93` (verified 2026-11-04, `netstat` peer `::ffff:172.20.0.1`). Same trust as the Stella IP; token + signature + sandbox scope are the real gates. Test container-to-API paths from inside the container. Do not copy those two lines onto existing sites unless that site is actually failing issuance/renewal.
 
 The `dir` line is decisive — without it, Caddy can still fall back internally to `acme-staging-v02.api.letsencrypt.org` even with `issuer acme` set. A global `acme_dns hetzner {env.HETZNER_API_TOKEN}` alone also does **not** lock the issuer.
 

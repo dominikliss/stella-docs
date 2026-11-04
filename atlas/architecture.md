@@ -35,7 +35,7 @@ Business code lives under `app/Domain/{Name}/` (controllers, models, jobs, servi
 | `Tools` | IMAP migration proxy to Stella `imap-sync`; TrackingTime import / open-task sync (ddashboard [`../stella-dashboard/atlas-client-lookup.md`](../stella-dashboard/atlas-client-lookup.md) for client stubs) |
 | `Projects` | Imported customers/projects/tasks; project metadata edit; attachment download; one-way Trello push ([`projects.md`](projects.md)) |
 | `Notifications` | Rules, Slack webhooks, in-app inbox, weekly hour-budget checker ([`notifications.md`](notifications.md)) |
-| `Stacks` | Stella stack-api client: list / get / restart app stacks. Admin only. Hidden unless `STELLA_STACK_API_ENABLED`. Local `stack_actions` history |
+| `Stacks` | Stella stack-api client: list / get / restart app stacks. Admin only. Hidden unless `STELLA_STACK_API_ENABLED`. Local `stack_actions` history. **On** atlas.dev 2026-11-04; **off** on prod |
 | `Settings` | `app_settings` key/value (SSH path, stack-api SSH path, Brevo, Hetzner Cloud token, backup S3 + X25519 vault, TrackingTime, Trello) |
 
 `App\Providers\AtlasServiceProvider` binds `TokenAuthDriver`. With `ATLAS_DEMO_MODE=true` it binds `FakeTokenAuthDriver` instead so the UI can be exercised without ddashboard.
@@ -145,7 +145,7 @@ signature = ssh-keygen -Y sign -f {key} -n {namespace}  {payload}
 | `StellaHealthApiClient::fetchSystemHealth` | `system-health:` | `deploy` | `deploy_ssh_key_path` |
 | `StackApiClient` | `stack-ping` / `stack-list` / `stack-get` / `stack-restart` | `stack` | `stack_api_ssh_key_path` (fallback `STELLA_STACK_API_KEY_PATH`) |
 
-stack-api POST body is `{payload, signature, request}` with header `X-Stack-Token`. Never log the token, signature, or key contents. Stella verifies stack-api with principal `atlas-prod` and namespace `stack`. Replay window is 60 seconds on Stella.
+stack-api POST body is `{payload, signature, request}` with header `X-Stack-Token`. Never log the token, signature, or key contents. Stella verifies stack-api with namespace `stack`. Prod principal `atlas-prod` (`/home/atlas/.ssh/atlas-stack-api`, flag still off). atlas.dev principal `atlas-dev` (`/var/www/.ssh/id_ed25519`) — sandbox stacks only (`dominikliss`). Replay window is 60 seconds on Stella. Every request JSON needs a random `nonce` (Ed25519 signatures are deterministic; `StackApiClient` does not send one yet).
 
 deploy-api and health-api each have their **own** `allowed_signers` file. health-api’s file has two `ddashboard` lines (`atlas-prod` and `atlas-dev`). deploy-api’s file has only the production key. See [`../stella-server/health-api.md`](../stella-server/health-api.md) and [`dev-instance.md`](dev-instance.md).
 
@@ -159,7 +159,7 @@ deploy-api and health-api each have their **own** `allowed_signers` file. health
 
 ## Tests
 
-Pest feature tests under `tests/Feature/{Auth,Deploy,Projects,Settings}/` and unit tests under `tests/Unit/`. Auth tests point `atlas.ddashboard_url` at a fake host and mock HTTP. Trello tests fake `api.trello.com`.
+Pest feature tests under `tests/Feature/{Auth,Deploy,Projects,Settings,Stacks}/` and unit tests under `tests/Unit/`. Auth tests point `atlas.ddashboard_url` at a fake host and mock HTTP. Trello tests fake `api.trello.com`. Stack tests (`Http::fake` stack-api) pass on atlas.dev (11 tests, 2026-11-04).
 
 ---
 
