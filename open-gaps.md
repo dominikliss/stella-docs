@@ -165,12 +165,12 @@ Live at `https://stella-stack-api.foxcraft.digital`. Contract: [`stella-server/s
 - [x] **DNS + cert** — A record `stella-stack-api` → `95.217.144.93`; Let's Encrypt production on first attempt with `propagation_delay 45s` / `propagation_timeout 3m`.
 - [x] **Generic SSH image** — `stella/ssh-php:8.5` built 2026-11-04; `hypershape` adopted by hand. See [`stella-server/stack-api.md`](stella-server/stack-api.md#shared-ssh-image-stellassh-phpversion).
 - [x] **Audit log + `list` / `get` / `restart`** — Docker Engine API via httpx + socket. 6 stacks listed from Atlas prod; `/opt/services` invisible; hypershape get/restart verified; `DELETE FROM audit` blocked. Job table deferred to `restore`.
+- [x] **Audit rejected requests** — `run_action` writes `ok`/`error` (including `400`/`404`/`502`); auth failures as principal `-` (`denied` / `ip-denied`). Verified 2026-11-04: `../services` → 400 + error row; `services` → 404; restart `nope` → 404; bad token → 401 + `denied` row.
+- [x] **Bind IP in `ports` output** — `{ip, public, private, type}` (e.g. `0.0.0.0` and `::` for 2206).
 
 **Open:**
 - [ ] **Atlas client** — `.env` has `STELLA_STACK_API_URL` / `STELLA_STACK_API_TOKEN`; code does not read them yet. Planned `stack_api_ssh_key_path` → `/home/atlas/.ssh/atlas-stack-api`.
 - [ ] **Atlas-dev signer** — IP layer already passes from Stella; do **not** add principal `atlas-dev` until code restricts it to stacks marked `sandbox: true`.
-- [ ] **Audit rejected requests** — `400` / `404` before the lookup are not written to `audit` yet.
-- [ ] **Bind IP in `ports` output** — `127.0.0.1` vs `0.0.0.0` is not shown yet.
 - [ ] **WP blueprint in stack-api** (then move `dominikliss`).
 - [ ] **WP-CLI Deprecated notice on PHP 8.5** — decide whether to suppress `E_DEPRECATED` for the `wp` wrapper only.
 - [ ] **`apply` / `restore` / `php-version` / `delete` / Adminer** — then Laravel and .NET blueprints.
@@ -184,6 +184,7 @@ Live at `https://stella-stack-api.foxcraft.digital`. Contract: [`stella-server/s
 - **`wp-staging-api` superseded** — will not be deployed as a separate service. Staging from an Atlas backup becomes a stack-api `create` + `restore` job.
 - **Shared SSH image + hypershape migration** — `stella/ssh-php:8.5` (PHP 8.5.12, WP-CLI 2.12.0). Users from `atlas/users.conf` + per-user keys; persistent `/home`; `ssh` on `internal` only. hypershape moved off `php8.4` + per-site `Dockerfile.ssh`; `edison` has its own key. See [`stella-server/stack-api.md`](stella-server/stack-api.md#shared-ssh-image-stellassh-phpversion) and [`stella-server/wordpress-staging.md`](stella-server/wordpress-staging.md#ssh-container-shared-image).
 - **stack-api Docker access** — Engine API over the socket (httpx). Signed `list` / `get` / `restart`; append-only `audit` table. `/opt/services` cannot be listed or restarted. See [`stella-server/stack-api.md`](stella-server/stack-api.md).
+- **stack-api audit + bind IP** — every signed action and every auth/IP denial is written through `run_action`; `ports` includes `ip`. See [`stella-server/stack-api.md`](stella-server/stack-api.md).
 - **`advoapp-dev` 5080 and `osgar-datahub-dev` 5081** bound to `127.0.0.1` only (`docker port`, verified 2026-11-04).
 
 ## Closed 2026-11-03

@@ -122,13 +122,13 @@ Signed endpoints: action = payload prefix. Auth is IP + token + signature unless
 |---|---|---|---|
 | `GET /health` | — | — (IP only) | `{"status":"ok"}` |
 | `POST /ping` | `stack-ping` | JSON object | `{"ok":true,"principal":…,"request":{…}}` |
-| `POST /stacks/list` | `stack-list` | `{}` | `{"stacks":[{name, type, path, containers:[{id (12 chars), name, service, image, state, status, ports:[{public, private, type}]}]}]}` |
+| `POST /stacks/list` | `stack-list` | `{}` | `{"stacks":[{name, type, path, containers:[{id (12 chars), name, service, image, state, status, ports:[{ip, public, private, type}]}]}]}` |
 | `POST /stacks/get` | `stack-get` | `{"name"}` | one stack; containers also have `started_at`, `restart_count`, `health`. `400` `invalid name`, `404` `stack not found` |
 | `POST /stacks/restart` | `stack-restart` | `{"name", "service"?}` | restarts one service or the whole stack (`db` first); Docker restart `t=10`. `{"name","results":[{service, name, ok}]}`. `404` `service not found`; `502` with `results` if any restart failed |
 
 Docker errors → `502` `"docker error"`.
 
-**Known gap:** `ports` in the output does not show the bind IP yet (`127.0.0.1` vs `0.0.0.0`). **TODO:** add it.
+`ports` includes the bind IP (`ip`, `public`, `private`, `type`) — e.g. `0.0.0.0` and `::` for 2206.
 
 FastAPI docs (`/docs`, `/redoc`, `/openapi.json`) are disabled.
 
@@ -136,11 +136,18 @@ FastAPI docs (`/docs`, `/redoc`, `/openapi.json`) are disabled.
 
 SQLite table `audit` (`id`, `ts` UTC ISO, `principal`, `action`, `stack`, `service`, `result` `ok`/`error`, `detail`). Triggers block `UPDATE` and `DELETE` (`audit is append-only`, verified). Protects against API/SQL changes, not against root on Stella.
 
+Every signed action goes through one helper (`run_action`). Result is `ok` or `error`, including `400` `invalid name`, `404` `stack not found` / `service not found`, and `502` Docker errors. For invalid input the raw value is stored (cut to 200 chars), e.g. stack `../services`. `detail` is cut to 2000 chars. If the audit write fails, it is logged to stdout and the request continues.
+
+Rejected auth is audited with principal `-`:
+
+| Action | `detail` | Examples |
+|---|---|---|
+| `denied` | `reason=<reason> path=<path> ip=<ip>` | bad token, bad signature, replay, stale timestamp |
+| `ip-denied` | `ip=<ip> path=<path>` | missing / disallowed `X-Forwarded-For` |
+
 ```bash
 docker exec stack-api python -c "import sqlite3; [print(r) for r in sqlite3.connect('/data/stack-api.sqlite').execute('SELECT id, ts, principal, action, stack, service, result FROM audit')]"
 ```
-
-**Known gap:** requests rejected with `400`/`404` before the lookup are not written to the audit log yet. **TODO:** audit failed attempts too.
 
 ---
 
@@ -182,9 +189,12 @@ stella-stack-api.foxcraft.digital {
 | `POST /stacks/list` | Atlas prod | all 6 stacks (`advoapp.finditoo`, `atlas.dev`, `dominikliss`, `edison.dev`, `hypershape`, `osgar.datahub`); no `/opt/services` containers |
 | `POST /stacks/get` `hypershape` | Atlas prod | `wp` / `db` / `ssh` with `started_at` / `restart_count` |
 | `POST /stacks/restart` hypershape `ssh` | Atlas prod | `ok` |
-| name `../services` | Atlas prod | `400` `invalid name` |
-| name `services` | Atlas prod | `404` `stack not found` |
-| audit after the above | Stella | 3 `ok` rows; `DELETE FROM audit` failed with `audit is append-only` |
+| name `../services` | Atlas prod | `400` `invalid name`; audit `error` row with stack `../services` |
+| name `services` | Atlas prod | `404` `stack not found`; audit `error` row |
+| restart service `nope` | Atlas prod | `404`; audit `error` row |
+| wrong token on `/stacks/list` | Atlas prod | `401`; audit row (`-`, `denied`, `reason=bad token path=/stacks/list ip=2.31.42.13`) |
+| `ports` on list/get | Atlas prod | bind IP present (`0.0.0.0` and `::` for 2206) |
+| audit after the first list/get/restart | Stella | 3 `ok` rows; `DELETE FROM audit` failed with `audit is append-only` |
 
 Test helper on host `atlas` (token from Atlas `.env`, sign with `/home/atlas/.ssh/atlas-stack-api`, namespace `stack`):
 
