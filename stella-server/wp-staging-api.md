@@ -1,6 +1,8 @@
 # wp-staging-api (automated WordPress staging from Atlas backups)
 
-**Status:** code in the Atlas repo under `stella/wp-staging-api/`. **Not deployed yet** (2026-10-22). Planned URL: `https://stella-wp-staging.foxcraft.digital`.
+**Status: superseded 2026-11-04.** Will **not** be deployed as a separate service. Staging from an Atlas backup is a `create` + `restore` job on [`stack-api.md`](stack-api.md) (`https://stella-stack-api.foxcraft.digital`). Code remains in the Atlas repo under `stella/wp-staging-api/` as historical reference only. Planned URL `https://stella-wp-staging.foxcraft.digital` is obsolete.
+
+The rest of this page describes the design that was not shipped.
 
 Atlas → WP Sites → a completed **full** backup → **Create staging**. Stella pulls the encrypted backup from Atlas, decrypts it, and builds `https://<site-label>.staging.foxcraft.digital` (e.g. `client.com` → `client-com.staging.foxcraft.digital`). A new build for the same site replaces the old one.
 

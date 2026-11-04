@@ -2,7 +2,7 @@
 
 Dedicated AI / services host. No general-purpose UI — **Atlas**, **ddashboard**, and **Foxx Cloud** (nest, `dedi6724`) are the HTTP clients.
 
-**Atlas** is a separate Hetzner Cloud host (`atlas`, `2.31.42.13`, `https://atlas.foxcraft.digital`) — not this machine, not the managed `foxcrr` host. Same Cloud project as Edison. Runbook: [`../atlas/server.md`](../atlas/server.md). Stella `DOCKER-USER` ACCEPTs `2.31.42.13` on 443 so Atlas can reach deploy-api and health-api.
+**Atlas** is a separate Hetzner Cloud host (`atlas`, `2.31.42.13`, `https://atlas.foxcraft.digital`) — not this machine, not the managed `foxcrr` host. Same Cloud project as Edison. Runbook: [`../atlas/server.md`](../atlas/server.md). Stella `DOCKER-USER` ACCEPTs `2.31.42.13` on 443 so Atlas can reach deploy-api, health-api, and stack-api.
 
 **System map:** [`../integration/system-overview.md`](../integration/system-overview.md)
 
@@ -16,7 +16,8 @@ Dedicated AI / services host. No general-purpose UI — **Atlas**, **ddashboard*
 | [stella-api.md](stella-api.md) | FastAPI `/chat/*` (ddashboard) |
 | [deploy-api.md](deploy-api.md) | Signed deploy trigger (Atlas) |
 | [health-api.md](health-api.md) | Signed system-status snapshot for Atlas — dynamic containers + Caddyfile certs |
-| [wp-staging-api.md](wp-staging-api.md) | Signed: build a WordPress staging copy from an encrypted Atlas backup (not deployed yet) |
+| [stack-api.md](stack-api.md) | Container management for Atlas — skeleton live 2026-11-04 (`/health`, signed `/ping`); no Docker socket yet |
+| [wp-staging-api.md](wp-staging-api.md) | **Superseded** by stack-api — will not be deployed |
 | [media-api.md](media-api.md) | RAW/HEIC/JPEG/video-poster decode for Foxx Cloud (HMAC; `/convert` and `/convert-remote`) — `stella-media-api.foxcraft.digital` |
 | [imap-sync-service.md](imap-sync-service.md) | Express + `imapsync` mailbox copy (Atlas) |
 | [backup.md](backup.md) | Nightly restic → Storage Box — automatic scope, DB dumps, weekly verify |

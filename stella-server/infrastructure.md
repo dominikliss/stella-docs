@@ -7,7 +7,7 @@
 - **CPU:** Intel i7-8700
 - **RAM:** 124 GB
 - **WAN interface:** `eno1` — this matters for firewall rules, see Security section
-- **Role:** AI inference, API services, media decode, IMAP sync, reverse-proxied dev/staging apps
+- **Role:** AI inference, API services, media decode, IMAP sync, container management (stack-api), reverse-proxied dev/staging apps
 
 ### ddashboard (Hetzner Managed)
 - **Role:** WordPress — ddashboard theme, Stella **chat** client, REST `dls/v1` (including auth tokens consumed by Atlas)
@@ -17,7 +17,7 @@
 - **Host:** CX33 `atlas`, `2.31.42.13`, Ubuntu 26.04, not containerized
 - **URL:** `https://atlas.foxcraft.digital` (replaces `https://dev.atlas.foxcraft.digital` on the managed `foxcrr` host)
 - **Docs:** [`../atlas/README.md`](../atlas/README.md), [`../atlas/server.md`](../atlas/server.md), [`../integration/system-overview.md`](../integration/system-overview.md)
-- Reuses the old managed-host SSH key Stella trusts as principal `ddashboard` (key comment `atlas-prod`). Calls deploy-api and health-api over 443 — see `DOCKER-USER` ACCEPT for `2.31.42.13` below.
+- Reuses the old managed-host SSH key Stella trusts as principal `ddashboard` (key comment `atlas-prod`). Calls deploy-api, health-api, and stack-api over 443 — see `DOCKER-USER` ACCEPT for `2.31.42.13` below.
 - Old instance still on the managed host until retired. **TODO (Dominik):** confirm its crons are deactivated and decide when to retire it.
 
 ### Edison (Hetzner Cloud) — separate machine, not this host
@@ -30,6 +30,8 @@
 
 Core Docker-managed services live at `/opt/services/docker-compose.yml`. Dev/staging apps live under `/opt/apps/`, one folder per app, each with their own `docker-compose.yml` (see "App deployment pattern" below).
 
+**Rule (decided 2026-11-04):** stacks under `/opt/apps/` are not edited by hand. Changes go through Atlas → [`stack-api.md`](stack-api.md). Blueprint changes go through the templates in the repo. The runbooks below describe the live layout and the hand-built sites that predate this rule.
+
 | Service | Runtime | Port | Notes |
 |---------|---------|------|-------|
 | `caddy` | Docker (custom build, see below) | 443 (public) | Reverse proxy — `stella.foxcraft.digital` block serves `/ollama`, `/imap-sync`, `/stella`; subdomain-based blocks for dev/staging apps. ACME data in named volume `caddy-data`. Direct `8080:8080` publish removed 2026-09-01. **Running container is `services-caddy-1`** (no `container_name:`) |
@@ -39,6 +41,7 @@ Core Docker-managed services live at `/opt/services/docker-compose.yml`. Dev/sta
 | `ollama` | Docker (`edge` network) | 11434 (published to `127.0.0.1` only) | LLM inference — containerized 2026-08-10, see below |
 | `health-api` | Docker (`edge` network) | 443 via Caddy (`stella-health-api.foxcraft.digital`) | System status endpoint for Atlas — [`health-api.md`](health-api.md) |
 | `media-api` | Docker (`edge` network) | 443 via Caddy (`stella-media-api.foxcraft.digital`) | RAW/HEIC/JPEG/video-poster decode for Foxx Cloud (HMAC; RawTherapee + Adobe DCPs for `master` on RAW). `/convert-remote` pulls from / writes to Storage Box (ro mounts `profiles/`, `ssh/`; outbound port 23 verified). [`media-api.md`](media-api.md). No published ports. cpuset `6-11` |
+| `stack-api` | Docker (`stack` network only, no host port) | 443 via Caddy (`stella-stack-api.foxcraft.digital`) | Container management API for Atlas — [`stack-api.md`](stack-api.md). Skeleton only (2026-11-04) |
 | `backup` | Docker (`edge` network, no host port) | — | Nightly restic backup to Hetzner Storage Box — see [`backup.md`](backup.md) |
 | `osgar-datahub-dev` | Docker (.NET dev, hot-reload) | 5081→8080 (localhost) | `.NET` app, same pattern as `advoapp-dev` — `Dockerfile.dev` + bind-mounted `src`; compose file at `/opt/apps/dotnet/osgar.datahub.foxcraft.digital/docker-compose.dev.yml` |
 | `osgar-datahub-db` | Docker (MSSQL 2022) | — (internal only) | `mcr.microsoft.com/mssql/server:2022-latest`, data volume `osgar-datahub-mssql-data`; same compose file as `osgar-datahub-dev` |
@@ -196,6 +199,21 @@ stella-media-api.foxcraft.digital {
     reverse_proxy media-api:8080
 }
 
+stella-stack-api.foxcraft.digital {
+    tls {
+        issuer acme {
+            email projects@foxcraft.digital
+            dir https://acme-v02.api.letsencrypt.org/directory
+            dns hetzner {env.HETZNER_API_TOKEN}
+            propagation_delay 45s
+            propagation_timeout 3m
+        }
+    }
+    @blocked not remote_ip 2.31.42.13 95.217.144.93
+    respond @blocked 403
+    reverse_proxy stack-api:8000
+}
+
 osgar.datahub.foxcraft.digital {
     tls {
         issuer acme {
@@ -279,13 +297,13 @@ For a **stubborn new subdomain** whose first DNS-01 attempt hits NXDOMAIN (Hetzn
             propagation_timeout 3m
 ```
 
-`stella-media-api.foxcraft.digital` uses this (no `@blocked` — HMAC is the app-layer check; port 443 is already team-IP filtered). Do not copy those two lines onto existing sites unless that site is actually failing issuance/renewal.
+`stella-media-api.foxcraft.digital` uses this (no `@blocked` — HMAC is the app-layer check; port 443 is already team-IP filtered). `stella-stack-api.foxcraft.digital` uses the same delay pair **and** an allow-list `@blocked not remote_ip` (Atlas prod + Stella). Do not copy those two lines onto existing sites unless that site is actually failing issuance/renewal.
 
 The `dir` line is decisive — without it, Caddy can still fall back internally to `acme-staging-v02.api.letsencrypt.org` even with `issuer acme` set. A global `acme_dns hetzner {env.HETZNER_API_TOKEN}` alone also does **not** lock the issuer.
 
-**Already pinned with `dir`:** `stella.foxcraft.digital`, `advoapp.finditoo.foxcraft.digital`, `stella-deployment-api.foxcraft.digital`, `stella-health-api.foxcraft.digital`, `stella-media-api.foxcraft.digital`, `osgar.datahub.foxcraft.digital`, `dominikliss.foxcraft.digital`, `atlas.dev.foxcraft.digital`, `edison.dev.foxcraft.digital` (2026-10-26; cert in about 27 s on the first attempt, no `propagation_delay`). `stella-media-api` also has `propagation_delay 45s` + `propagation_timeout 3m`.
+**Already pinned with `dir`:** `stella.foxcraft.digital`, `advoapp.finditoo.foxcraft.digital`, `stella-deployment-api.foxcraft.digital`, `stella-health-api.foxcraft.digital`, `stella-media-api.foxcraft.digital`, `stella-stack-api.foxcraft.digital`, `osgar.datahub.foxcraft.digital`, `dominikliss.foxcraft.digital`, `atlas.dev.foxcraft.digital`, `edison.dev.foxcraft.digital` (2026-10-26; cert in about 27 s on the first attempt, no `propagation_delay`). `stella-media-api` and `stella-stack-api` also have `propagation_delay 45s` + `propagation_timeout 3m` (stack-api first attempt succeeded 2026-11-04).
 
-Each new subdomain gets its own block at the bottom, reverse-proxying to a container name on the `edge` network — Caddy handles TLS automatically via DNS-01, no manual cert management needed.
+Each new subdomain gets its own block at the bottom, reverse-proxying to a container name — usually on the `edge` network. **Exception:** `stella-stack-api` is on the isolated `stack` network (`services_stack`); only Caddy and `stack-api` join it. Caddy handles TLS automatically via DNS-01, no manual cert management needed.
 
 **After any Caddyfile edit:** `docker compose restart caddy` is required (not `up -d` alone — Compose does not recreate/reload on bind-mounted file content changes). Restart mid-retry is fine; Caddy simply restarts the attempt for the affected domain. **Also** `docker compose up -d --force-recreate health-api` — health-api bind-mounts the Caddyfile as a **single file**; `sed -i` (new inode) leaves the container on the old file, so cert discovery for the new domain stays stale until force-recreate (Issue 4, 2026-10-18). `docker compose restart caddy` was enough for Caddy itself.
 
@@ -417,6 +435,8 @@ This is the same inode class of bug as “never `rm` + recreate a bind-mounted f
 
 **Goal: adding a new dev/staging app should never require new firewall work.**
 
+**Rule (decided 2026-11-04):** stacks under `/opt/apps/` are not edited by hand. Changes go through Atlas → [`stack-api.md`](stack-api.md). Blueprint changes go through the templates in the repo. The checklist below is the live layout and the procedure used for hand-built sites that predate this rule.
+
 All new apps (dotnet dev environments, WP staging sites, etc.) join a shared Docker network called `edge` and publish **no host ports at all**. Caddy is the only thing with ports actually exposed on the host; it reaches every app internally by container name.
 
 ```bash
@@ -533,7 +553,7 @@ curl -s -X POST "https://api.hetzner.cloud/v1/zones/567656/rrsets" \
   }'
 ```
 
-Worked example 2026-10-18: rrset name `stella-media-api`, TTL 300, value `95.217.144.93`. A first record `media-api` was created and deleted again (no cert was ever issued for it). Naming follows `stella-health-api` / `stella-deployment-api`.
+Worked example 2026-10-18: rrset name `stella-media-api`, TTL 300, value `95.217.144.93`. A first record `media-api` was created and deleted again (no cert was ever issued for it). Naming follows `stella-health-api` / `stella-deployment-api`. Same pattern 2026-11-04: rrset name `stella-stack-api`.
 
 **Known non-issue:** ProtonVPN's own DNS resolver (observed at `10.2.0.1`) is slow/unreliable picking up brand-new records, even though public resolvers (Google `8.8.8.8`, Cloudflare `1.1.1.1`) reflect them within seconds. This is not a security or server-side issue — just expect it every time a new subdomain is added, and don't waste time debugging the server over it. Workarounds: query a public resolver directly (`dig @8.8.8.8 ...`) to confirm the record is live, or use `curl --resolve <domain>:443:95.217.144.93 ...` to bypass DNS entirely for testing.
 
@@ -598,7 +618,7 @@ Fully decommissioned. See git history / prior doc versions if a vector search fe
 
 - **UFW** — active, default-deny incoming. Ports 22, 443 restricted to `194.126.177.181` and `23.88.90.12`. Port 8001 additionally allows `172.18.0.0/16` (`services_default` bridge subnet) for Caddy's internal proxy calls, **and `172.20.0.0/16` (`edge` bridge subnet, added 2026-08-10)** for `health-api`'s stella-api check. Port 11434's direct-access rules removed 2026-08-10 once Ollama moved fully behind the `edge` network / Caddy — no longer needs a host-level UFW allowance for the old static-IP whitelist. Host SSH (port 22) remains Dominik-only; per-app Cursor SSH uses Docker-published `22XX` ports — [`dev-ssh-access.md`](dev-ssh-access.md).
 - **fail2ban** — running
-- **Docker-published ports (443, 2201, 2202, 2204, 2205, 2206, 2207, and 8081)** — protected via a custom `DOCKER-USER` iptables chain (details below). Per-app SSH containers add a new `22XX` as they are created. Next free SSH port: **2208**. Port 2203 is free (`advoapp-redesign-ssh` removed 2026-10-10). Port 2205 is Atlas dev (ACCEPT: Dominik’s IP, managed host, Edison). Port 2206 is `hypershape.foxcraft.digital-ssh`. Port 2207 is Edison dev (ACCEPT: Dominik’s IP, managed host, Edison; verified live 2026-10-26). Port 2201 (and 2204) also ACCEPT `178.105.203.54` — Edison **`edison-ip`**, confirmed 2026-10-09 (IPv4 moved with the server; no Stella firewall change). From Edison, `edison-ip` also reaches **2202, 2205, 2206, and 2207** (verified 2026-11-02). **TODO (Dominik):** confirm the exact `DOCKER-USER` lines for 2202 and 2206 in `/usr/local/bin/docker-user-firewall.sh`. See [`../edison/infrastructure.md`](../edison/infrastructure.md). Port **443** also ACCEPT `2.31.42.13` — Atlas Cloud host (added 2026-10-10; Atlas calls deploy-api and health-api). Port **8081** has team-IP ACCEPT + DROP; **TODO (Dominik):** what 8081 is.
+- **Docker-published ports (443, 2201, 2202, 2204, 2205, 2206, 2207, and 8081)** — protected via a custom `DOCKER-USER` iptables chain (details below). Per-app SSH containers add a new `22XX` as they are created. Next free SSH port: **2208**. Port 2203 is free (`advoapp-redesign-ssh` removed 2026-10-10). Port 2205 is Atlas dev (ACCEPT: Dominik’s IP, managed host, Edison). Port 2206 is `hypershape.foxcraft.digital-ssh`. Port 2207 is Edison dev (ACCEPT: Dominik’s IP, managed host, Edison; verified live 2026-10-26). Port 2201 (and 2204) also ACCEPT `178.105.203.54` — Edison **`edison-ip`**, confirmed 2026-10-09 (IPv4 moved with the server; no Stella firewall change). From Edison, `edison-ip` also reaches **2202, 2205, 2206, and 2207** (verified 2026-11-02). **TODO (Dominik):** confirm the exact `DOCKER-USER` lines for 2202 and 2206 in `/usr/local/bin/docker-user-firewall.sh`. See [`../edison/infrastructure.md`](../edison/infrastructure.md). Port **443** also ACCEPT `2.31.42.13` — Atlas Cloud host (added 2026-10-10; Atlas calls deploy-api, health-api, and stack-api). Port **8081** has team-IP ACCEPT + DROP; **TODO (Dominik):** what 8081 is.
 - **Per-site Caddy `remote_ip` scoping (added 2026-09-03)** — client IPs granted access to `osgar.datahub.foxcraft.digital` only; most other Caddy site blocks explicitly deny those IPs via `@blocked remote_ip` matchers. `49.13.27.117` is ACCEPTed on port 443 and denied on some blocks but **not** on the `advoapp.finditoo` block — see the Caddyfile reality check above and [`client-ip-access.md`](client-ip-access.md).
 
 **Note (2026-09-01):** `imap-sync` no longer publishes `3001`, and `caddy` no longer publishes `8080`. The `DOCKER-USER` rules for those two ports are now dead (the packets never arrive) and can be removed in a future cleanup; they are kept for now, harmless. The `:8080` Caddyfile block was already removed on 2026-08-07.
@@ -734,6 +754,7 @@ services:
     networks:
       - default
       - edge
+      - stack
     restart: unless-stopped
 
   imap-sync:
@@ -847,14 +868,31 @@ services:
       - edge
     restart: unless-stopped
 
+  stack-api:
+    build: ./stack-api
+    container_name: stack-api
+    env_file:
+      - ./stack-api/.env
+    volumes:
+      - ./stack-api/allowed_signers:/app/allowed_signers:ro
+    read_only: true
+    tmpfs:
+      - /tmp
+    networks:
+      - stack
+    restart: unless-stopped
+
 networks:
   edge:
     external: true
+  stack:
 
 volumes:
   ollama-models:
   caddy-data:
 ```
+
+`stack` is a Compose-managed network (Docker name `services_stack`). Only `stack-api` and `services-caddy-1` join it — stack-api is deliberately **not** on `edge` so other containers cannot reach it and fake `X-Forwarded-For`. See [`stack-api.md`](stack-api.md).
 
 **⚠️ Known gap — missing `container_name:` on three core services.** `caddy`, `imap-sync`, and `stella-api` have no `container_name:` in `/opt/services/docker-compose.yml`, so Docker Compose auto-names them `services-caddy-1`, `services-imap-sync-1`, and `services-stella-api-1`. `docker compose …` commands still take the **service** name (`caddy`), but raw Docker commands do not:
 

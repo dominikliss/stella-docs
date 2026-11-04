@@ -4,7 +4,9 @@ Established 2026-10-03 with `dominikliss.foxcraft.digital` as the first implemen
 
 **Related:** [`infrastructure.md`](infrastructure.md) (Caddy, DNS, `DOCKER-USER`), [`dev-ssh-access.md`](dev-ssh-access.md) (SSH variant notes), [`php-updates.md`](php-updates.md) (CVE patches, inventory).
 
-**Automated variant:** Atlas can build a throwaway staging copy from an encrypted backup (`<site>.staging.foxcraft.digital`, no SSH container, mail blocked). See [`wp-staging-api.md`](wp-staging-api.md). This page stays the pattern for long-lived, hand-built stagings.
+**Automated variant:** staging from an Atlas backup becomes a `create` + `restore` job on [`stack-api.md`](stack-api.md). [`wp-staging-api.md`](wp-staging-api.md) is superseded and will not be deployed. This page stays the pattern for long-lived, hand-built stagings that predate stack-api.
+
+**Rule (decided 2026-11-04):** stacks under `/opt/apps/` are not edited by hand. Changes go through Atlas → stack-api. Blueprint changes go through the templates in the repo.
 
 ---
 

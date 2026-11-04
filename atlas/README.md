@@ -33,7 +33,7 @@ It is **not** the business dashboard. Clients, invoices, and mail live in **ddas
 |--------|----------|--------------|
 | **Dashboard** | `/dashboard` | Home + Stella status summary |
 | **Deployments** | `/deployments` | SSH rsync deploys and Stella deploy-api deploys |
-| **WP Sites** | `/wp-sites` | Register sites, 5-min uptime, Atlas Connect login, start/list/explore backups; browser decrypt (`/backup-decrypt`); daily + manual infection scans with verdict, report, allowlist, trusted baseline; build a Stella staging site from a completed full backup; download a fresh installable Atlas Connect zip |
+| **WP Sites** | `/wp-sites` | Register sites, 5-min uptime, Atlas Connect login, start/list/explore backups; browser decrypt (`/backup-decrypt`); daily + manual infection scans with verdict, report, allowlist, trusted baseline; build a Stella staging site from a completed full backup (planned via stack-api `create` + `restore`; `wp-staging-api` will not be deployed); download a fresh installable Atlas Connect zip |
 | **Monitoring** | `/monitoring/stella`, `/monitoring/atlas` | Stella and Atlas host health grids + history charts |
 | **Tools → IMAP Migration** | `/tools/imap-migration` | Trigger / poll `imapsync` jobs on Stella |
 | **Tools → TrackingTime Import** | `/tools/tracking-time-import` | Full one-way import of selected TrackingTime projects into Atlas MySQL |
@@ -70,6 +70,7 @@ Browser (IP-allowlisted)
         → ddashboard          identity (login, verify, refresh)
         → Stella deploy-api   signed .NET / Docker deploys
         → Stella health-api   signed dynamic container / Caddyfile-cert / disk / backup snapshot
+        → Stella stack-api    IP + token + signed stack create/change/restart/delete (skeleton 2026-11-04; Atlas code not wired yet)
         → Stella imap-sync    mailbox copy (no HTTP auth)
         → GitHub + SSH hosts  ssh_rsync deploys
         → WP sites            HEAD uptime + Atlas Connect login / backup / scan driver
@@ -258,7 +259,7 @@ The **public** key must be in:
 | `POST` | `/api/wp-sites/{id}/backups/{backup}/download-link` | Signed URL for the encrypted `.atlas.tar` |
 | `POST` | `/api/wp-sites/{id}/backups/{backup}/cancel` | Cancel a running backup |
 | `DELETE` | `/api/wp-sites/{id}/backups/{backup}` | Delete a finished backup and its objects |
-| `POST` | `/api/wp-sites/{id}/backups/{backup}/staging` | Build a Stella staging site from a completed full backup |
+| `POST` | `/api/wp-sites/{id}/backups/{backup}/staging` | Build a Stella staging site from a completed full backup. Atlas currently talks to the never-deployed `wp-staging-api`; the planned backend is [`../stella-server/stack-api.md`](../stella-server/stack-api.md) (`create` + `restore`) |
 | `GET` | `/api/wp-sites/{id}/stagings` | List staging builds for the site |
 | `DELETE` | `/api/wp-sites/{id}/stagings/{staging}` | Tear down a staging site |
 | `GET` | `/api/wp-backups/{backup}/archive` | Encrypted `.atlas.tar` via signed URL (no bearer; `ATLAS_BACKUP_ARCHIVE_IPS` also allowed) |

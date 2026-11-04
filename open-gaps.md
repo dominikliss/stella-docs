@@ -1,6 +1,6 @@
 # Open Gaps & Next Steps
 
-Last updated: 2026-11-03
+Last updated: 2026-11-04
 
 **Cross-system overview:** [integration/system-overview.md](integration/system-overview.md) (Atlas + ddashboard + Stella + Edison). AI-chat path only: [integration/ddashboard-and-stella-server.md](integration/ddashboard-and-stella-server.md).
 
@@ -55,7 +55,7 @@ Host rebuilt 2026-10-09 onto CX33 (`edison-ip` = `178.105.203.54`). See [`edison
 - [ ] **Drop the `EDISON_WORKSPACES` fallback** in `catalog.py` after one release.
 - [ ] **No unmount API in v1** — removing a host is manual (`mounts.json` + `umount -l`).
 - [ ] **Delete rollout backups** — `/opt/services/host-api/app.bak-2026-11-*` and `/root/cursor-agent/*.bak-2026-11-02` after a stable week.
-- [ ] **Throwaway `*.staging.foxcraft.digital` sites** (wp-staging-api) are not in the catalog and have no SSH container yet. Needs a separate spec: catalog rows per build, stable SSH host keys across rebuilds (otherwise `accept-new` fails with "host identification changed"), Atlas rebuild guard for dirty/unpushed repos.
+- [ ] **Throwaway `*.staging.foxcraft.digital` sites** — `wp-staging-api` is superseded; staging is a stack-api `create` + `restore` (not built yet). Edison catalog/SSH for those sites still needs a spec: catalog rows per build, stable SSH host keys across rebuilds (otherwise `accept-new` fails with "host identification changed"), Atlas rebuild guard for dirty/unpushed repos. See [`stella-server/stack-api.md`](stella-server/stack-api.md).
 - [ ] **sshfs error text** — a rejected key shows `Connection reset by peer` instead of `Permission denied`. Optional: run a `ssh -o BatchMode=yes … true` probe before sshfs to return a clearer 422.
 - [ ] **UI end-to-end chat on `edison.dev`** — **UNVERIFIED.** Includes resume via the app. Browser test still open.
 - [x] **Global agent skills on Edison** — closed 2026-11-03. Host sync (default-key deploy key, shallow clone, `sync-skills.sh`, timer, `.path` unit, `run.sh` hook) + `GET /v1/skills` / `POST /v1/skills/sync`. See [`edison/skills.md`](edison/skills.md).
@@ -155,6 +155,29 @@ Service live at `https://stella-media-api.foxcraft.digital`. Contract: [`stella-
 - [x] **Atlas dev app: deploy client + UI behind a flag, off on prod** — `ATLAS_SELF_DEPLOY_ENABLED` (404 when off). Button on the Server: atlas card; toasts on terminal status. See [`atlas/monitoring.md`](atlas/monitoring.md).
 
 ---
+
+## stack-api (Atlas container management) — 2026-11-04
+
+Skeleton live at `https://stella-stack-api.foxcraft.digital`. Contract: [`stella-server/stack-api.md`](stella-server/stack-api.md). Isolated `stack` network (`services_stack`); only Caddy and `stack-api` are on it. `wp-staging-api` is superseded and will not be deployed.
+
+**Verified 2026-11-04:**
+- [x] **Auth skeleton** — Caddy IP allowlist (Atlas prod + Stella), app-layer `X-Forwarded-For` check (missing/fake → 403), `X-Stack-Token`, signed `POST /ping` (`principal: atlas-prod`), replay and bad-token 401.
+- [x] **DNS + cert** — A record `stella-stack-api` → `95.217.144.93`; Let's Encrypt production on first attempt with `propagation_delay 45s` / `propagation_timeout 3m`.
+
+**Open:**
+- [ ] **Atlas client** — `.env` has `STELLA_STACK_API_URL` / `STELLA_STACK_API_TOKEN`; code does not read them yet. Planned `stack_api_ssh_key_path` → `/home/atlas/.ssh/atlas-stack-api`.
+- [ ] **Atlas-dev signer** — IP layer already passes from Stella; do **not** add principal `atlas-dev` until code restricts it to stacks marked `sandbox: true`.
+- [ ] **SQLite jobs + `list` / `get` / `action restart`** — next after the auth skeleton.
+- [ ] **WP blueprint + generic SSH image** — adopt `hypershape` first.
+- [ ] **`apply` / `restore` / `php-version` / `delete` / Adminer** — then Laravel and .NET blueprints.
+- [ ] **Docker-socket policy checks** — refuse `privileged`, `cap_add`, `network_mode: host`, `pid: host`, bind mounts outside the app folder, `docker.sock`, `edge` on `ssh`/`db`/`adminer`, images outside the allowlist. See the planned section in [`stella-server/stack-api.md`](stella-server/stack-api.md).
+
+---
+
+## Closed 2026-11-04
+
+- **stack-api auth skeleton** — live at `https://stella-stack-api.foxcraft.digital`. Isolated `stack` network, three protection layers (Caddy+app IP, token, SSH namespace `stack` with its own key). `GET /health` and signed `POST /ping` verified. No Docker socket yet. See [`stella-server/stack-api.md`](stella-server/stack-api.md).
+- **`wp-staging-api` superseded** — will not be deployed as a separate service. Staging from an Atlas backup becomes a stack-api `create` + `restore` job.
 
 ## Closed 2026-11-03
 
