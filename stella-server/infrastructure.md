@@ -49,7 +49,10 @@ Core Docker-managed services live at `/opt/services/docker-compose.yml`. Dev/sta
 | `advoapp-ssh` | Docker (sshd in SDK image) | 2202 | Same pattern for finditoo advoapp — [`dev-ssh-access.md`](dev-ssh-access.md) |
 | `dominikliss.foxcraft.digital` | Docker (`wordpress:php8.5-apache`) | — (Caddy `:80`) | First WP staging site — [`wordpress-staging.md`](wordpress-staging.md) |
 | `dominikliss.foxcraft.digital-db` | Docker (MariaDB 11) | — (internal only) | Never on `edge` |
-| `dominikliss.foxcraft.digital-ssh` | Docker (sshd in `php:8.5-cli`) | 2204 | WP staging SSH — [`wordpress-staging.md`](wordpress-staging.md). **Must not** join `edge` |
+| `dominikliss.foxcraft.digital-ssh` | Docker (sshd in `php:8.5-cli`) | 2204 | WP staging SSH — [`wordpress-staging.md`](wordpress-staging.md). Legacy per-site `Dockerfile.ssh`. **Must not** join `edge` |
+| `hypershape.foxcraft.digital` | Docker (`wordpress:php8.5-apache`) | — (Caddy `:80`) | WP staging — [`wordpress-staging.md`](wordpress-staging.md). Shared SSH image since 2026-11-04 |
+| `hypershape.foxcraft.digital-db` | Docker (MariaDB 11) | — (internal only) | Never on `edge` |
+| `hypershape.foxcraft.digital-ssh` | Docker (`stella/ssh-php:8.5`, `pull_policy: never`) | 2206 | Shared SSH image. On project `internal` (reaches own `db`). **Must not** join `edge` |
 | `atlas.dev.foxcraft.digital` | Docker (`php:8.5-apache` + MySQL 8.4 + queue/scheduler + ssh) | 2205 (ssh) | Atlas **dev** instance — [`../atlas/dev-instance.md`](../atlas/dev-instance.md). SSH must **not** join `edge` |
 | `edison.dev.foxcraft.digital` | Docker (`php:8.5-apache` + MySQL 8.4 + queue/scheduler + ssh) | 2207 (ssh) | Edison app **dev** instance (added 2026-10-26) — [`../edison/dev-instance.md`](../edison/dev-instance.md). SSH must **not** join `edge` |
 
@@ -461,15 +464,14 @@ Folders are named by subdomain, for easy visual mapping:
   │     └── edison.dev.foxcraft.digital/ ← Edison dev — [`../edison/dev-instance.md`](../edison/dev-instance.md)
   └── wordpress/
         ├── uploads.ini                  ← shared PHP limits (see [`wordpress-staging.md`](wordpress-staging.md#php-limits))
-        └── <subdomain>/                 ← first site: dominikliss.foxcraft.digital
+        └── <subdomain>/                 ← current: hypershape (shared SSH image); legacy: dominikliss
               ├── .env
               ├── docker-compose.yml
-              ├── Dockerfile.ssh
-              ├── authorized_keys
+              ├── atlas/                 ← users.conf + keys/<name>.pub (shared image)
               └── html/
 ```
 
-WordPress staging (folder layout, compose, SSH, permissions, Caddy upstream port 80): [`wordpress-staging.md`](wordpress-staging.md).
+WordPress staging (folder layout, compose, SSH, permissions, Caddy upstream port 80): [`wordpress-staging.md`](wordpress-staging.md). `dominikliss` still has `Dockerfile.ssh` + `authorized_keys` instead of `atlas/`.
 
 **Container names also match the subdomain** — makes `docker ps`/`docker logs` output unambiguous once there are many services running. Example:
 
@@ -925,6 +927,9 @@ Stack was restarted via `docker compose up -d` from `/opt/services` and came bac
 | `atlasdevfoxcraftdigital_ssh-keys` | Atlas dev SSH host keys |
 | `dominiklissfoxcraftdigital_db-data` | WP staging MariaDB (dumped; raw volume excluded from restic) |
 | `dominiklissfoxcraftdigital_ssh-keys` | WP staging SSH host keys |
+| `hypershapefoxcraftdigital_db-data` | hypershape MariaDB (dumped; raw volume excluded from restic) — created 2026-11-04 |
+| `hypershapefoxcraftdigital_ssh-keys` | hypershape SSH host keys — created 2026-11-04 |
+| `hypershapefoxcraftdigital_home` | hypershape SSH `/home` — created 2026-11-04. Whether restic backs it up: **UNVERIFIED** |
 | `osgardatahubfoxcraftdigital_osgar-datahub-mssql-data` | MSSQL (predump `.bak`; raw volume excluded) |
 | `osgardatahubfoxcraftdigital_osgar-datahub-ssh-keys` | osgar SSH host keys |
 | `services_caddy-data` | Caddy ACME certs — **backed up** as of 2026-10-10 |

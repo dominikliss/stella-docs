@@ -21,7 +21,11 @@ Infra: [`infrastructure.md`](infrastructure.md). System map: [`../integration/sy
   ├── .dockerignore       ← .env, allowed_signers
   ├── .env                ← chmod 600; STACK_API_TOKEN, STACK_API_ALLOWED_IPS
   ├── allowed_signers     ← mounted read-only, not baked into the image
-  └── app/main.py
+  ├── app/main.py
+  └── images/ssh-php/     ← shared SSH image (not in the API container)
+        ├── Dockerfile
+        ├── atlas-sync-users
+        └── entrypoint.sh
 ```
 
 Never write the token value into docs.
@@ -166,6 +170,42 @@ sudo -u atlas rm -rf "$TMP"; unset STACK_TOKEN
 
 ---
 
+## Shared SSH image (`stella/ssh-php:<version>`)
+
+Built 2026-11-04. One image per PHP version, used by WordPress stacks' `ssh` service instead of a per-site `Dockerfile.ssh`. First stack: `hypershape`. Pattern: [`wordpress-staging.md`](wordpress-staging.md#ssh-container-shared-image). Updates: [`php-updates.md`](php-updates.md#shared-ssh-image-stellassh-php).
+
+**Source:** `/opt/services/stack-api/images/ssh-php/` — `Dockerfile` (`ARG PHP_VERSION` default `8.5`, `FROM php:${PHP_VERSION}-cli`), `atlas-sync-users`, `entrypoint.sh`.
+
+**Build** (local image only; compose uses `pull_policy: never`):
+
+```bash
+docker build --build-arg PHP_VERSION=8.5 -t stella/ssh-php:8.5 /opt/services/stack-api/images/ssh-php
+```
+
+**Contents:** `openssh-server`, `git`, `curl`, `wget`, `unzip`, `less`, `procps`, `mariadb-client`, WP-CLI phar at `/usr/local/bin/wp`, group `atlasusers`. Verified: PHP 8.5.12, WP-CLI 2.12.0, MariaDB client 11.8.6.
+
+**Known noise:** every `wp` command on PHP 8.5 prints a `Deprecated: Case statements followed by a semicolon` notice from WP-CLI's bundled `react/promise`. Harmless, not suppressed.
+
+### User sync
+
+`/etc/atlas` is mounted read-only with `users.conf` (`name uid` per line, `#` comments) and `keys/<name>.pub`. `atlas-sync-users` validates name (`^[a-z][a-z0-9_-]{0,31}$`) and uid (1000–59999), creates missing users (`useradd -u <uid> -U -M`), refuses UID mismatches, adds users to `www-data` + `atlasusers`, sets `/home/<name>` `750`, `.ssh` `700`, copies the key to `authorized_keys` `600` (removes it if no key file), and removes `atlasusers` members not in `users.conf` (kills processes, `userdel -f`, home kept in the volume).
+
+Live run without restart: `docker exec <stack>-ssh atlas-sync-users`. Keep UIDs stable (existing WP stacks: `dominik` 1000, `pawel` 1001, `edison` 1002).
+
+### `entrypoint.sh`
+
+Creates `/run/sshd` and `/etc/ssh/sshd_config.d`, `ssh-keygen -A` (missing host keys only; `ssh-keys` volume keeps existing ones), writes `/etc/ssh/sshd_config.d/atlas.conf` (`PermitRootLogin no`, `PasswordAuthentication no`, `KbdInteractiveAuthentication no`, `AllowGroups atlasusers`), runs `atlas-sync-users`, then `exec /usr/sbin/sshd -D -e`. Port forwarding stays enabled (Cursor Remote-SSH).
+
+### Verification (2026-11-04, hypershape)
+
+| Test | Result |
+|---|---|
+| Start log | added `dominik` / `pawel` / `edison` + `Server listening` |
+| MacBook login as `dominik` on 2206 | OK, no host-key warning; write test OK; `wp core version` 7.1.3 |
+| Live add `testuser` 1003 then remove | `removed testuser (home kept)` |
+| File in `/home/dominik` | survives `docker compose up -d --force-recreate ssh` |
+| `getent hosts db` from `-ssh` | resolves |
+
 ## Planned (not built)
 
 Security controls agreed for the Docker-socket phase:
@@ -181,7 +221,7 @@ Security controls agreed for the Docker-socket phase:
 Build order:
 
 1. ~~Skeleton: auth~~ (done 2026-11-04) → SQLite jobs, `list` / `get` / `action restart`
-2. Generic SSH image (users from mounted `users.json` + `keys/<user>.pub`, persistent `/home`) and WP blueprint; adopt `hypershape` first
+2. ~~Generic SSH image~~ (done 2026-11-04; `hypershape` adopted by hand) → WP blueprint in stack-api, then move `dominikliss`
 3. `apply` with SSH users and PHP settings (`PHP_INI_SCAN_DIR` + per-site `zz-atlas.ini`)
 4. `restore` (staging from backup)
 5. `php-version`, `delete`, Adminer on demand, then Laravel and .NET blueprints

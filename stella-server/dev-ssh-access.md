@@ -8,7 +8,7 @@
 
 - Host topology, `DOCKER-USER`, core compose: [`infrastructure.md`](infrastructure.md)
 - .NET app folder / `-dev` pattern: [`dotnet-app-deployment.md`](dotnet-app-deployment.md)
-- WordPress staging SSH variant (`php:8.5-cli`, group `www-data`): [`wordpress-staging.md`](wordpress-staging.md)
+- WordPress staging SSH: shared image `stella/ssh-php` (hypershape) or legacy `Dockerfile.ssh` (dominikliss) — [`wordpress-staging.md`](wordpress-staging.md)
 - Edison coding-agent host (sshfs into this container as user `edison`): [`../edison/README.md`](../edison/README.md)
 
 ---
@@ -113,6 +113,8 @@ Confirmed via a live Cursor-agent probe from inside each container (2026-09-01):
 
 The very first version of `osgar-datahub-ssh` was built with `networks: [edge]` (copy-pasted from the `-dev` pattern, which legitimately needs `edge` so Caddy can reach it by name). A Cursor-agent probe run from inside that container found and connected to: Finditoo (`172.20.0.4:8080`, hit a login redirect but got a response), Caddy (`172.20.0.3:80/443`), `deploy-api` (`172.20.0.2:8080`, `/health`, `/docs`, `/apps` all reachable unauthenticated — mutating routes correctly rejected unsigned requests), and `health-api` (`172.20.0.7:8080`, same). Fixed by removing `networks: [edge]` entirely and recreating the container — re-probing afterward confirmed the container dropped into an isolated per-project `_default` network with none of the above reachable. **Any new `-ssh` service must omit `networks:` entirely — this is not optional.**
 
+**Exception (decided 2026-11-04):** WordPress stacks on the shared SSH image (`stella/ssh-php`) put `ssh` on the project's `internal` network only, so it can reach its own `db`. `edge` stays forbidden for every `-ssh` service. Same intent as the .NET rule above. See [`wordpress-staging.md`](wordpress-staging.md#ssh-container-shared-image).
+
 ## Filesystem permissions — the UID/GID problem
 
 App source folders on the host are owned `root:root`, mode `755` (normal for these apps — the `-dev` containers run as root, so this was never an issue before). The new `dominik`/`pawel` users inside the `-ssh` container are non-root and, without a fix, get `Permission denied` on every write — confirmed by a live Cursor-agent write test before the fix.
@@ -164,7 +166,7 @@ iptables -A DOCKER-USER -i $WAN_IF -p tcp --dport 22XX -j DROP
 | 2203 | free | `advoapp-redesign-ssh` removed 2026-10-10 (project finished), firewall rules removed |
 | 2204 | dominikliss.foxcraft.digital (WP staging) | `dominikliss.foxcraft.digital-ssh` |
 | 2205 | atlas.dev.foxcraft.digital (Atlas Laravel) | `ssh` service in `/opt/apps/laravel/atlas.dev.foxcraft.digital/` |
-| 2206 | hypershape.foxcraft.digital | `hypershape.foxcraft.digital-ssh` (not documented further; see [`../open-gaps.md`](../open-gaps.md)) |
+| 2206 | hypershape.foxcraft.digital (WP staging) | `hypershape.foxcraft.digital-ssh` — shared image `stella/ssh-php:8.5` since 2026-11-04 ([`wordpress-staging.md`](wordpress-staging.md#ssh-container-shared-image)). `DOCKER-USER` source IPs still not documented |
 | 2207 | edison.dev.foxcraft.digital (Edison Laravel) | `ssh` service in `/opt/apps/laravel/edison.dev.foxcraft.digital/` — [`../edison/dev-instance.md`](../edison/dev-instance.md) |
 
 Next free port: **2208**. Update the table above when adding one, and check `docker ps` first — this line has drifted before.
@@ -221,7 +223,7 @@ Cursor: `Cmd/Ctrl+Shift+P` → "Remote-SSH: Connect to Host" → pick the host a
 | Working copy | `/home/edison/app` → same host `./src` (osgar / Laravel) / `./html` (WP) bind-mount as the other users |
 | Client | `cursor-agent` container on Edison, via host-api `ensure` + `sshfs` — [`../edison/cursor-agent.md`](../edison/cursor-agent.md) |
 
-Both `Dockerfile.ssh` files still `COPY authorized_keys` to all three users (`dominik`, `pawel`, `edison`). Keys are shared across users in each container. **TODO (Dominik):** give `edison` its own key file (still open).
+Both remaining `Dockerfile.ssh` files (osgar, dominikliss) still `COPY authorized_keys` to all three users. hypershape is split (`atlas/keys/edison.pub`). **TODO (Dominik):** give `edison` its own key file on the leftover sites (or move them to the shared image).
 
 `git config --global --add safe.directory /home/edison/app` was applied manually for user `edison` inside `osgar-datahub-ssh` (repo owned `root:ubuntu`). It lives in `/home/edison/.gitconfig` and is **lost on rebuild**. **TODO (Dominik):** bake into `Dockerfile.ssh`.
 
@@ -229,13 +231,17 @@ Do not write the supervisorctl password into any doc. **TODO (Dominik):** `Docke
 
 **Firewall:** Stella `DOCKER-USER` ACCEPTs Edison’s public IP **`edison-ip` `178.105.203.54`** on 2201 and 2204 (confirmed 2026-10-09 when the address was moved to the new CX33; no Stella firewall change). From Edison, the same IP also reaches **2202, 2205, 2206, and 2207** (verified 2026-11-02). Previously only 2201/2204 were recorded. **TODO (Dominik):** confirm the exact `DOCKER-USER` lines for 2202 and 2206 in `/usr/local/bin/docker-user-firewall.sh`. See [`../edison/infrastructure.md`](../edison/infrastructure.md).
 
-**hypershape (2206):** `edison` user works and `~/app` is the WordPress root (undocumented before 2026-11-02).
+**hypershape (2206):** `edison` has its own key (`atlas/keys/edison.pub`), UID 1002 kept (shared image since 2026-11-04). `~/app` is the WordPress root. Login from Edison after the switch is **UNVERIFIED** (host keys unchanged via the `ssh-keys` volume).
 
 ---
 
 ## WordPress staging variant
 
-WordPress sites do **not** use the .NET `Dockerfile.ssh` above. Base image is `php:8.5-cli`; users are in group `www-data` (GID 33) instead of GID 1000, because WordPress files are owned by `www-data`. Full compose, Dockerfile, permissions, and first-start ACL gotcha: [`wordpress-staging.md`](wordpress-staging.md).
+WordPress sites do **not** use the .NET `Dockerfile.ssh` above.
+
+**Shared image (current, `hypershape`):** `stella/ssh-php:8.5`. Users from mounted `atlas/users.conf` + `atlas/keys/<name>.pub` (one key per user). Persistent `/home` volume. `ssh` on the project's `internal` network only (reaches its own `db`, never `edge`). WP-CLI preinstalled. Live user add/remove: `docker exec <stack>-ssh atlas-sync-users`. See [`wordpress-staging.md`](wordpress-staging.md#ssh-container-shared-image) and [`stack-api.md`](stack-api.md#shared-ssh-image-stellassh-phpversion).
+
+**Legacy (`dominikliss` only):** per-site `Dockerfile.ssh` on `php:8.5-cli`; users in group `www-data` (GID 33); one shared `authorized_keys`; **no `networks:` key** (cannot reach `db`). To be migrated to the shared image. Full compose, Dockerfile, permissions, and first-start ACL gotcha: [`wordpress-staging.md`](wordpress-staging.md).
 
 ### Edison dev (`edison.dev.foxcraft.digital`, port 2207)
 
@@ -243,7 +249,9 @@ Added 2026-10-26. `Dockerfile.ssh` copied unchanged from atlas.dev (`php:8.5-cli
 
 ### WordPress staging `edison` user
 
-A second per-app SSH container with an `edison` user now exists on port **2204** (`dominikliss.foxcraft.digital`). That image currently copies one shared `authorized_keys` to all three users (same as osgar today). **TODO (Dominik):** whether to split `edison` onto its own key file, as this page requires.
+`hypershape` (2206): own key in `atlas/keys/edison.pub` since 2026-11-04.
+
+`dominikliss` (2204): still copies one shared `authorized_keys` to all three users (same as osgar). Closed by moving that site to the shared image.
 
 ## Verifying isolation — external checklist
 
@@ -251,7 +259,7 @@ A standalone script exists for manually confirming no port is reachable from a n
 
 ## Adding SSH to a new app — checklist
 
-1. Add `Dockerfile.ssh` + `authorized_keys` next to `Dockerfile.dev` (template above — includes Node.js and `supervisor`). For WordPress staging, use [`wordpress-staging.md`](wordpress-staging.md) instead (`php:8.5-cli`, group `www-data`).
+1. For .NET: add `Dockerfile.ssh` + `authorized_keys` next to `Dockerfile.dev` (template above — includes Node.js and `supervisor`). For WordPress: use the shared image [`stella/ssh-php`](wordpress-staging.md#ssh-container-shared-image) — no `Dockerfile.ssh`.
 2. Fix host `src/` group perms:
    - Step 1: `chgrp 1000` / `g+rwX` / SetGID (one-time fix on existing tree)
    - Step 2: `setfacl` default ACLs (permanent fix for future build artefacts — required, not optional)

@@ -8,12 +8,14 @@ PHP 2026-10-21 security release: 8.5.12, 8.4.27, 8.3.36, and 8.2.35 fix two crit
 
 ## Inventory
 
-Last checked 2026-10-23.
+Last checked 2026-11-04.
 
 | Where | How installed | Update command | Current version |
 |-------|---------------|----------------|-----------------|
 | `dominikliss.foxcraft.digital` `wp` | Docker `wordpress:php8.5-apache` (moving minor tag) | `docker compose pull wp` then `up -d wp` | 8.5.12 |
 | `dominikliss.foxcraft.digital-ssh` | Docker build `Dockerfile.ssh` (`FROM php:8.5-cli`) | `docker compose up -d --build ssh` | 8.5.12 |
+| `hypershape.foxcraft.digital` `wp` | Docker `wordpress:php8.5-apache` (moving minor tag) | `docker compose pull wp` then `up -d wp` | 8.5.12 (was 8.4 until 2026-11-04) |
+| `hypershape.foxcraft.digital-ssh` | Shared image `stella/ssh-php:8.5` (`pull_policy: never`) | rebuild the tag, then `docker compose up -d ssh` — [Shared SSH image](#shared-ssh-image-stellassh-php) | 8.5.12 |
 | Atlas dev `app` / `queue` / `scheduler` | Local image `atlasdev-app` (`app` has `build: .`; Dockerfile `FROM php:8.5-apache`; `x-atlas` sets `image: atlasdev-app`) | `docker compose build --pull app` then `up -d app queue scheduler` | 8.5.12 |
 | Atlas dev `ssh` | Local build `Dockerfile.ssh` (`php:8.5-cli`) | `docker compose build --pull ssh` then `up -d ssh` | 8.5.12 **UNVERIFIED** (`php -v` not checked after rebuild) |
 | Atlas prod (host `atlas`) | Ubuntu `php8.5-cli` / `php8.5-common` / `php8.5-fpm` `8.5.4-0ubuntu1.5` (`resolute-security`) | see [Atlas prod](#atlas-prod-host-atlas) | 8.5.4-0ubuntu1.5 (CVE backports) |
@@ -55,6 +57,36 @@ Verified 2026-10-23: PHP 8.5.12 in `wp` and `-ssh`; `upload_max_filesize` and `p
 **TODO (Dominik):** delete `/root/wp-before-php85.sql` once the site is confirmed fine.
 
 Upload-limit mount: [`wordpress-staging.md`](wordpress-staging.md#php-limits).
+
+---
+
+## WordPress staging on Stella (`hypershape`)
+
+Done 2026-11-04 together with the shared-image switch. Was `wordpress:php8.4-apache` / `Dockerfile.ssh` (`php:8.4-cli`).
+
+1. DB dump first: `/root/hypershape-before-adopt.sql`
+2. New compose using `wordpress:php8.5-apache` + `stella/ssh-php:8.5` (backup `docker-compose.yml.bak-20261104`)
+3. `docker compose pull wp && docker compose up -d wp ssh`
+
+Verified 2026-11-04: PHP 8.5.12 in `wp` and `-ssh`; site returns HTTP/2 200; no fatals; `getfacl html` still shows `flags: -s-` and `mask::rwx`.
+
+**TODO (Dominik):** delete `/root/hypershape-before-adopt.sql` and `docker-compose.yml.bak-20261104` once the site is confirmed fine.
+
+Details: [`wordpress-staging.md`](wordpress-staging.md#migration-of-hypershape-2026-11-04).
+
+---
+
+## Shared SSH image (`stella/ssh-php`)
+
+A **patch** update needs a rebuild of the local tag, then a recreate of every stack that uses it (today: `hypershape`):
+
+```bash
+docker build --pull --build-arg PHP_VERSION=8.5 -t stella/ssh-php:8.5 /opt/services/stack-api/images/ssh-php
+cd /opt/apps/wordpress/hypershape.foxcraft.digital
+docker compose up -d ssh
+```
+
+A **minor** bump is a new tag (e.g. `stella/ssh-php:8.6`), not an overwrite of `8.5`. Keep `wp` and the SSH image on the same minor. See [`stack-api.md`](stack-api.md#shared-ssh-image-stellassh-phpversion).
 
 ---
 

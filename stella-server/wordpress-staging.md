@@ -2,27 +2,41 @@
 
 Established 2026-10-03 with `dominikliss.foxcraft.digital` as the first implementation. This is the host-wide template for WordPress staging on Stella — same role as [`dotnet-app-deployment.md`](dotnet-app-deployment.md) for .NET apps. The live site was imported into this staging on 2026-10-11 (see [Migrating an existing live site into staging](#migrating-an-existing-live-site-into-staging)).
 
-**Related:** [`infrastructure.md`](infrastructure.md) (Caddy, DNS, `DOCKER-USER`), [`dev-ssh-access.md`](dev-ssh-access.md) (SSH variant notes), [`php-updates.md`](php-updates.md) (CVE patches, inventory).
+**Related:** [`infrastructure.md`](infrastructure.md) (Caddy, DNS, `DOCKER-USER`), [`dev-ssh-access.md`](dev-ssh-access.md) (SSH variant notes), [`php-updates.md`](php-updates.md) (CVE patches, inventory), [`stack-api.md`](stack-api.md#shared-ssh-image-stellassh-phpversion) (shared SSH image).
 
 **Automated variant:** staging from an Atlas backup becomes a `create` + `restore` job on [`stack-api.md`](stack-api.md). [`wp-staging-api.md`](wp-staging-api.md) is superseded and will not be deployed. This page stays the pattern for long-lived, hand-built stagings that predate stack-api.
 
 **Rule (decided 2026-11-04):** stacks under `/opt/apps/` are not edited by hand. Changes go through Atlas → stack-api. Blueprint changes go through the templates in the repo.
 
+**Two SSH variants**
+
+| Variant | Who | Image | How users are defined |
+|---|---|---|---|
+| Shared image (current) | `hypershape.foxcraft.digital` | `stella/ssh-php:8.5` | `atlas/users.conf` + `atlas/keys/<name>.pub` |
+| Per-site `Dockerfile.ssh` (legacy) | `dominikliss.foxcraft.digital` only | build `php:8.5-cli` | baked-in users + shared `authorized_keys` — to be migrated |
+
 ---
 
 ## Folder convention
 
-**`/opt/apps/wordpress/<subdomain>/`** — not `wp-staging`. First site: `dominikliss.foxcraft.digital`.
+**`/opt/apps/wordpress/<subdomain>/`** — not `wp-staging`. First site: `dominikliss.foxcraft.digital` (legacy SSH). Current pattern: `hypershape.foxcraft.digital`.
 
 ```
 /opt/apps/wordpress/
-  ├── uploads.ini            ← shared PHP limits for every WP `wp` service (see [PHP limits](#php-limits))
-  └── dominikliss.foxcraft.digital/
-        ├── .env                 ← chmod 600; DB_PASSWORD + DB_ROOT_PASSWORD
+  ├── uploads.ini                         ← shared PHP limits (see [PHP limits](#php-limits)); not mounted on hypershape
+  ├── hypershape.foxcraft.digital/        ← current pattern (shared SSH image)
+  │     ├── .env                          ← chmod 600; DB_PASSWORD + DB_ROOT_PASSWORD
+  │     ├── docker-compose.yml
+  │     ├── atlas/
+  │     │     ├── users.conf              ← "name uid" per line
+  │     │     └── keys/<name>.pub
+  │     └── html/
+  └── dominikliss.foxcraft.digital/       ← legacy SSH
+        ├── .env
         ├── docker-compose.yml
         ├── Dockerfile.ssh
-        ├── authorized_keys      ← copied from /opt/apps/dotnet/osgar.datahub.foxcraft.digital/authorized_keys
-        └── html/                ← WordPress files, bind-mounted
+        ├── authorized_keys
+        └── html/
 ```
 
 Generate passwords with `openssl rand -hex 16`. Never commit `.env` or write token/password values into docs.
@@ -35,13 +49,16 @@ Generate passwords with `openssl rand -hex 16`. Never commit `.env` or write tok
 |---------|---------------|----------|------------|-------|
 | `wp` | `wordpress:php8.5-apache` | `edge` + `internal` | none | `container_name` = subdomain. Caddy upstream is port **80** (not 8080 like the .NET apps). Moving minor tag — patch level only via `php -v` after `docker compose pull wp`. |
 | `db` | `mariadb:11` | `internal` only — never `edge` | none | Named volume `db-data`. |
-| `ssh` | build `Dockerfile.ssh` | **no `networks:` key** (must not join `edge`) | `2204:22` | Named volume `ssh-keys` on `/etc/ssh` (host keys stable across rebuilds). `html/` bind-mounted to `/home/dominik/app`, `/home/pawel/app`, `/home/edison/app`. |
+| `ssh` | `stella/ssh-php:8.5` (`pull_policy: never`) | `internal` only — never `edge` | `2206:22` (hypershape) | Current pattern. Volumes: `./atlas:/etc/atlas:ro`, `home:/home`, `ssh-keys:/etc/ssh`, `html` → `/home/<user>/app`. See [SSH container (shared image)](#ssh-container-shared-image). |
+| `ssh` (legacy) | build `Dockerfile.ssh` | **no `networks:` key** (cannot reach `db`; must not join `edge`) | `2204:22` (dominikliss) | Named volume `ssh-keys`. `html/` bind-mounted to `/home/<user>/app`. Only `dominikliss`; to be migrated. |
 
-**PHP version must match** between the `wp` image tag and the `FROM` in `Dockerfile.ssh` (both **8.5** here). Staging should match the PHP version of production for the real site. Verified on this site: PHP 8.5.12.
+**Rule (decided 2026-11-04):** `ssh` joins the project's `internal` network so it can reach its own `db`, never another app or `edge`. Same intent as the .NET rule in [`dev-ssh-access.md`](dev-ssh-access.md). Replaces "no `networks:` key" for WP stacks on the shared image.
+
+**PHP version must match** between the `wp` image and the SSH image (shared tag `stella/ssh-php:<minor>`, or the `FROM` in a legacy `Dockerfile.ssh`). Staging should match the PHP version of production for the real site. Both `dominikliss` and `hypershape` are now on **8.5.12**.
 
 ---
 
-## `docker-compose.yml`
+## `docker-compose.yml` (legacy, dominikliss)
 
 ```yaml
 services:
@@ -111,6 +128,116 @@ New WP containers are discovered by health-api and included in the restic backup
 
 ---
 
+## SSH container (shared image)
+
+Current pattern. Image: [`stack-api.md`](stack-api.md#shared-ssh-image-stellassh-phpversion). First stack: `hypershape` (adopted by hand 2026-11-04).
+
+`hypershape` has **no** `uploads.ini` mount.
+
+```yaml
+services:
+  wp:
+    image: wordpress:php8.5-apache
+    container_name: hypershape.foxcraft.digital
+    environment:
+      WORDPRESS_DB_HOST: db
+      WORDPRESS_DB_NAME: wp
+      WORDPRESS_DB_USER: wp
+      WORDPRESS_DB_PASSWORD: ${DB_PASSWORD}
+      WORDPRESS_CONFIG_EXTRA: |
+        if (isset($$_SERVER['HTTP_X_FORWARDED_PROTO']) && $$_SERVER['HTTP_X_FORWARDED_PROTO'] === 'https') { $$_SERVER['HTTPS'] = 'on'; }
+        define('WP_HOME', 'https://hypershape.foxcraft.digital');
+        define('WP_SITEURL', 'https://hypershape.foxcraft.digital');
+    volumes:
+      - ./html:/var/www/html
+    depends_on:
+      - db
+    networks:
+      - edge
+      - internal
+    restart: unless-stopped
+
+  db:
+    image: mariadb:11
+    container_name: hypershape.foxcraft.digital-db
+    environment:
+      MARIADB_DATABASE: wp
+      MARIADB_USER: wp
+      MARIADB_PASSWORD: ${DB_PASSWORD}
+      MARIADB_ROOT_PASSWORD: ${DB_ROOT_PASSWORD}
+    volumes:
+      - db-data:/var/lib/mysql
+    networks:
+      - internal
+    restart: unless-stopped
+
+  ssh:
+    image: stella/ssh-php:8.5
+    pull_policy: never
+    container_name: hypershape.foxcraft.digital-ssh
+    volumes:
+      - ./atlas:/etc/atlas:ro
+      - home:/home
+      - ssh-keys:/etc/ssh
+      - ./html:/home/dominik/app
+      - ./html:/home/pawel/app
+      - ./html:/home/edison/app
+    ports:
+      - "2206:22"
+    networks:
+      - internal
+    restart: unless-stopped
+
+networks:
+  edge:
+    external: true
+  internal:
+
+volumes:
+  db-data:
+  ssh-keys:
+  home:
+```
+
+### Users
+
+`atlas/users.conf`:
+
+```
+dominik 1000
+pawel 1001
+edison 1002
+```
+
+One key per user in `atlas/keys/`. `edison` now has its own key (`edison-agent`), which closes the key-split gap for this site.
+
+Add/remove = edit the files + `docker exec hypershape.foxcraft.digital-ssh atlas-sync-users`. Removed users keep their home in the `home` volume.
+
+Keep UIDs stable across stacks (`dominik` 1000, `pawel` 1001, `edison` 1002).
+
+### What changed vs the legacy `-ssh`
+
+- `/home` is persistent (`home` volume)
+- WP-CLI is in `-ssh` and `db` is reachable — no more copying the phar into the `wp` container
+- `sshd` hardened (`PermitRootLogin no`, password and keyboard-interactive auth off, `AllowGroups atlasusers`)
+
+### Migration of hypershape (2026-11-04)
+
+Was `wordpress:php8.4-apache` + `Dockerfile.ssh` (`php:8.4-cli`), shared `authorized_keys`, `ssh` without `networks:` (no db access).
+
+1. DB dump to `/root/hypershape-before-adopt.sql`
+2. Checked UIDs with `id`
+3. Created `atlas/` files
+4. New compose (backup `docker-compose.yml.bak-20261104`)
+5. `docker compose pull wp && docker compose up -d wp ssh`
+6. Removed `Dockerfile.ssh`, `authorized_keys`, image `hypershapefoxcraftdigital-ssh` and `wordpress:php8.4-apache` (no other container used it)
+
+Verified: PHP 8.5.12 in `wp` and `-ssh`; same UIDs + `atlasusers`; `db` resolves; HTTP/2 200; no fatals; `getfacl html` shows `flags: -s-` and `mask::rwx`. MacBook login as `dominik` on 2206 OK without host-key warning.
+
+**TODO (Dominik):** delete the dump and the `.bak` once confirmed fine.
+
+---
+
 ## PHP limits
 
 The official `wordpress` image ships no upload limits, so the PHP default of 2 MB applies (a 7.5 MB plugin upload failed with "exceeds upload_max_filesize"). Limits are raised by mounting a php.ini fragment into `conf.d/`.
@@ -130,6 +257,8 @@ Each `wp` service mounts it read-only:
 - ../uploads.ini:/usr/local/etc/php/conf.d/uploads.ini:ro
 ```
 
+`hypershape` has **no** `uploads.ini` mount.
+
 Live path and mount on Stella: **UNVERIFIED** (this session could not reach host SSH from the atlas.dev SSH container). Documented as the intended design. **TODO (Dominik):** confirm the file location and the compose `volumes:` line on Stella.
 
 Changing the file after the first mount needs `docker compose up -d wp` per site. Caddy has no body size limit set — nothing to change there.
@@ -140,7 +269,9 @@ Verified 2026-10-23 on `dominikliss.foxcraft.digital`: `upload_max_filesize` and
 
 ---
 
-## `Dockerfile.ssh`
+## `Dockerfile.ssh` (legacy)
+
+Only `dominikliss.foxcraft.digital` still uses this. New sites use the [shared image](#ssh-container-shared-image). The edison key-split gap here is solved by moving to that image.
 
 ```dockerfile
 FROM php:8.5-cli
@@ -174,7 +305,7 @@ Notes:
 - `mkdir -p /var/run/sshd` is required: `php:8.5-cli` is Debian trixie, and `openssh-server` may create the directory itself, so plain `mkdir` is fragile.
 - Users are in group `www-data` (GID 33) instead of GID 1000, because WordPress files are owned by `www-data` (UID/GID 33).
 - No supervisor / Node / mssql-tools (not needed for WP).
-- **Deviation from [`dev-ssh-access.md`](dev-ssh-access.md):** one shared `authorized_keys` for all three users (same as osgar today), although `dev-ssh-access.md` says `edison` should have its own key file. **TODO (Dominik):** whether to split.
+- One shared `authorized_keys` for all three users (same as osgar today). Moving this site to the shared image gives `edison` its own key file.
 
 ---
 
@@ -233,13 +364,15 @@ DNS-01 / staging-fallback notes for this site: [`infrastructure.md`](infrastruct
 
 ## Order of steps for a new WP staging site
 
+Once stack-api has `apply`, new sites are created from Atlas only. Until then, by hand:
+
 1. Folder + `.env` (`chmod 600`, passwords via `openssl rand -hex 16`).
-2. `docker-compose.yml` (incl. the shared `uploads.ini` mount) + `Dockerfile.ssh` + `authorized_keys`.
+2. `docker-compose.yml` from the [shared-image template](#ssh-container-shared-image) + `atlas/users.conf` + `atlas/keys/<name>.pub`. Do **not** add `Dockerfile.ssh` or `authorized_keys`. Include the shared `uploads.ini` mount unless there is a reason not to (`hypershape` has none).
 3. `html/` permissions (section above).
-4. Firewall rules for the new SSH port — [`infrastructure.md`](infrastructure.md) / [`dev-ssh-access.md`](dev-ssh-access.md). Next free port after this site: **2205**.
+4. Firewall rules for the new SSH port — [`infrastructure.md`](infrastructure.md) / [`dev-ssh-access.md`](dev-ssh-access.md). Next free port: **2208** (check `docker ps`).
 5. DNS A record; verify with `dig +short <sub> @1.1.1.1`.
 6. Caddy block (upstream **80**), then `docker compose restart caddy` from `/opt/services`.
-7. `docker compose up -d --build` in the app folder.
+7. Confirm `stella/ssh-php:<minor>` exists locally (`pull_policy: never`), then `docker compose up -d` in the app folder (no `--build`).
 8. Re-apply the first-start permission fix (gotcha above).
 9. Verify with `curl -sI https://<sub>` (expect 302 to the installer) and the issuer via `openssl s_client` (must be Let's Encrypt, **not** `(STAGING)`). Check PHP limits: `docker exec <container> php -i | grep -E 'upload_max_filesize|post_max_size'`.
 
@@ -255,9 +388,15 @@ Host dominikliss.foxcraft.digital
     Port 2204
     User dominik
     IdentityFile ~/.ssh/id_ed25519
+
+Host hypershape.foxcraft.digital
+    HostName 95.217.144.93
+    Port 2206
+    User dominik
+    IdentityFile ~/.ssh/id_ed25519
 ```
 
-Verified working end to end (login, write test in `~/app`). PHP 8.5.12 CLI verified 2026-10-23.
+Verified working end to end (login, write test in `~/app`). PHP 8.5.12 CLI verified 2026-10-23 on `dominikliss`; 2026-11-04 on `hypershape` (no host-key warning after the image switch).
 
 ---
 
@@ -312,7 +451,9 @@ The `wp_*` tables of the empty install stay in the DB (harmless, not dropped).
 
 ### WP-CLI
 
-Not installed in any container. Used the phar from the official image:
+On the **shared image**, WP-CLI is preinstalled in `-ssh` (`/usr/local/bin/wp`) and `db` is reachable on `internal`. Run WP-CLI there.
+
+On the **legacy** `-ssh` (`dominikliss`), the container cannot reach the DB (no network). WP-CLI is not installed in any container. Used the phar from the official image:
 
 ```bash
 docker run --rm --entrypoint cat wordpress:cli /usr/local/bin/wp > /tmp/wp-cli.phar
@@ -320,9 +461,9 @@ docker run --rm --entrypoint cat wordpress:cli /usr/local/bin/wp > /tmp/wp-cli.p
 
 Then `docker cp` into the `wp` container and run as `www-data`.
 
-The `-ssh` container cannot reach the DB (no network), so WP-CLI must run in the `wp` container.
-
 Required flags: `php -d memory_limit=512M … --skip-plugins --skip-themes`. Without them the `mainwp-child` plugin hits the 128 MB limit and WP-CLI dies.
+
+Every `wp` command on PHP 8.5 also prints a `Deprecated: Case statements followed by a semicolon` notice from WP-CLI's bundled `react/promise`. Harmless. See [`stack-api.md`](stack-api.md#shared-ssh-image-stellassh-phpversion).
 
 ### URL replacement
 
