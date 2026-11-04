@@ -99,14 +99,35 @@ Separate from the shared Atlas deploy key (`/home/atlas/.ssh/id_ed25519`, princi
 
 **Atlas dev:** passes the IP layer, but has **no key** in `allowed_signers` yet. Planned: principal `atlas-dev` with its own key, restricted to stacks marked `sandbox: true`. Do not add the key before that restriction exists in code.
 
-### Atlas `.env` (prod)
+### Atlas `.env`
 
 ```
 STELLA_STACK_API_URL=https://stella-stack-api.foxcraft.digital
 STELLA_STACK_API_TOKEN=<value>
+STELLA_STACK_API_ENABLED=false
+STELLA_STACK_API_KEY_PATH=
 ```
 
-Not read by Atlas code yet (2026-11-04). Planned setting: `stack_api_ssh_key_path` → `/home/atlas/.ssh/atlas-stack-api`.
+Atlas client (2026-11-04): `app/Domain/Stacks/StackApiClient.php`. Flag default **false** — `/api/stacks` is 404 and the nav item is hidden. Setting `stack_api_ssh_key_path` (Settings → GitHub, next to the deploy key path) overrides `STELLA_STACK_API_KEY_PATH`.
+
+| Instance | Enable | Key path |
+|---|---|---|
+| atlas.dev | `STELLA_STACK_API_ENABLED=true` first | `/var/www/.ssh/id_ed25519` (same file as the atlas-dev deploy key) |
+| Atlas prod | keep false until atlas.dev is proven | `/home/atlas/.ssh/atlas-stack-api` |
+
+Admin role only. Atlas records restarts in `stack_actions` (`user_id`, stack, service, result, detail, created_at`). stack-api keeps its own audit log.
+
+### Atlas client
+
+`StellaSshSigner::sign($payload, 'stack', $keyPath)` — namespace **`stack`**, not `deploy`. Payload `<action>:<unix_ts>:<sha256(request_json)>`. POST `{payload, signature, request}` where `request` is the exact JSON string that was hashed. Header `X-Stack-Token`. Restart timeout 65 s.
+
+| Atlas | stack-api |
+|---|---|
+| `GET /api/stacks` | `POST /stacks/list` action `stack-list` request `{}` |
+| `GET /api/stacks/{name}` | `POST /stacks/get` action `stack-get` request `{"name"}` |
+| `POST /api/stacks/{name}/restart` | `POST /stacks/restart` action `stack-restart` request `{"name"}` or `{"name","service"}` |
+
+Name `^[a-z0-9][a-z0-9.-]{0,252}$`, service `^[a-z0-9][a-z0-9_-]{0,62}$` — validated in Atlas before the call. Mapped errors: 401/403 → `stack-api rejected the request`; 404 detail passed through; 400 → `invalid input`; 502 → `docker error` (results passed through); connection → `stack-api unreachable`. Never log the token, signature, or key contents.
 
 ---
 

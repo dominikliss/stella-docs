@@ -194,6 +194,8 @@ One key, three jobs:
 2. SSH/rsync to destination servers
 3. Sign requests to Stella deploy-api and health-api (`ssh-keygen -Y sign -n deploy`)
 
+A **second** key signs stack-api (`ssh-keygen -Y sign -n stack`). Settings → GitHub field `stack_api_ssh_key_path` (fallback `STELLA_STACK_API_KEY_PATH`). Prod: `/home/atlas/.ssh/atlas-stack-api`. Atlas dev: `/var/www/.ssh/id_ed25519` (same file as the deploy key). Token stays in `.env` as `STELLA_STACK_API_TOKEN` — never in `app_settings`.
+
 Configured in **Settings → GitHub** (`app_settings.deploy_ssh_key_path` = `/home/atlas/.ssh/id_ed25519` on production; the DB value overrides `.env`). Falls back to `config/deploy.php` / `DEPLOY_SSH_KEY_PATH`.
 
 Production reuses the same keypair as the old managed-host Atlas (principal `ddashboard`, key comment `atlas-prod`) so the 28 rows in `deploy_servers` did not need new `authorized_keys`. The managed host still holds that key and can still deploy/sign. Rotation was considered and deferred.
@@ -269,6 +271,18 @@ The **public** key must be in:
 | `POST` | `/api/wp-sites/{id}/scans/{scan}/trust` | Make a scan the trusted baseline (optional rescan) |
 | `POST` | `/api/wp-sites/{id}/scans/{scan}/allowlist` | Allowlist a finding (`path` + SHA-256) |
 | `GET` / `DELETE` | `/api/wp-sites/{id}/scan-allowlist[/{entry}]` | List / remove allowlist entries. Details: [`atlas-connect/security-scan.md`](atlas-connect/security-scan.md#atlas-implementation) |
+
+### Stacks
+
+Admin only. All three return 404 when `STELLA_STACK_API_ENABLED` is off.
+
+| Method | Path | Purpose |
+|--------|------|---------|
+| `GET` | `/api/stacks` | List Stella app stacks (signed `stack-list`) |
+| `GET` | `/api/stacks/{name}` | One stack plus Atlas `stack_actions` history |
+| `POST` | `/api/stacks/{name}/restart` | Restart a service or the whole stack (`{"service"?}`) |
+
+See [`../stella-server/stack-api.md`](../stella-server/stack-api.md).
 
 ### Monitoring
 
@@ -346,8 +360,8 @@ See [`notifications.md`](notifications.md).
 
 | Method | Path | Purpose |
 |--------|------|---------|
-| `GET` | `/api/settings/github` | Show GitHub/SSH key settings |
-| `PATCH` | `/api/settings/github` | Update GitHub/SSH key settings |
+| `GET` | `/api/settings/github` | Show GitHub/SSH key settings (includes `stack_api_ssh_key_path`) |
+| `PATCH` | `/api/settings/github` | Update GitHub/SSH key settings, including the stack-api key path |
 | `POST` | `/api/settings/github/test` | Test SSH key against GitHub |
 | `GET` | `/api/settings/email` | Show Brevo email settings |
 | `PATCH` | `/api/settings/email` | Update Brevo settings |
@@ -376,6 +390,10 @@ ATLAS_DEMO_MODE=false
 DEPLOY_SSH_KEY_PATH=/home/atlas/.ssh/id_ed25519
 STELLA_DEPLOY_API_URL=https://stella-deployment-api.foxcraft.digital
 STELLA_HEALTH_API_URL=https://stella-health-api.foxcraft.digital
+STELLA_STACK_API_URL=https://stella-stack-api.foxcraft.digital
+STELLA_STACK_API_TOKEN=
+STELLA_STACK_API_ENABLED=false
+STELLA_STACK_API_KEY_PATH=
 ATLAS_HOST_API_URL=https://api.atlas.foxcraft.digital
 ATLAS_SELF_DEPLOY_ENABLED=false
 STELLA_IMAP_SYNC_URL=https://stella.foxcraft.digital/imap-sync

@@ -35,7 +35,8 @@ Business code lives under `app/Domain/{Name}/` (controllers, models, jobs, servi
 | `Tools` | IMAP migration proxy to Stella `imap-sync`; TrackingTime import / open-task sync (ddashboard [`../stella-dashboard/atlas-client-lookup.md`](../stella-dashboard/atlas-client-lookup.md) for client stubs) |
 | `Projects` | Imported customers/projects/tasks; project metadata edit; attachment download; one-way Trello push ([`projects.md`](projects.md)) |
 | `Notifications` | Rules, Slack webhooks, in-app inbox, weekly hour-budget checker ([`notifications.md`](notifications.md)) |
-| `Settings` | `app_settings` key/value (SSH path, Brevo, Hetzner Cloud token, backup S3 + X25519 vault, TrackingTime, Trello) |
+| `Stacks` | Stella stack-api client: list / get / restart app stacks. Admin only. Hidden unless `STELLA_STACK_API_ENABLED`. Local `stack_actions` history |
+| `Settings` | `app_settings` key/value (SSH path, stack-api SSH path, Brevo, Hetzner Cloud token, backup S3 + X25519 vault, TrackingTime, Trello) |
 
 `App\Providers\AtlasServiceProvider` binds `TokenAuthDriver`. With `ATLAS_DEMO_MODE=true` it binds `FakeTokenAuthDriver` instead so the UI can be exercised without ddashboard.
 
@@ -52,6 +53,8 @@ Entry: `resources/views/app.blade.php` → Vite → `resources/js/routes/index.t
 | `/dashboard` | `domains/dashboard/DashboardPage` (+ `StellaServerStatus`, `AtlasServerStatus`, `EdisonServerStatus`) |
 | `/deployments` | `domains/deployments/DeploymentsPage` (+ `ConfirmDeployModal` before each run) |
 | `/wp-sites` | `domains/wp-sites/WpSitesPage` |
+| `/stacks` | `domains/stacks/StacksPage` (nav hidden unless `STELLA_STACK_API_ENABLED`) |
+| `/stacks/$name` | `domains/stacks/StackDetailPage` |
 | `/monitoring/stella` | `domains/monitoring/StellaDetailPage` |
 | `/monitoring/atlas` | `domains/monitoring/AtlasDetailPage` |
 | `/monitoring/edison` | `domains/monitoring/EdisonDetailPage` |
@@ -93,7 +96,7 @@ Login / refresh / logout skip token middleware (still IP-filtered) and proxy to 
 |---------------|---------|
 | `users`, `teams`, Spatie permission tables | Local user projection of ddashboard identity |
 | `personal_access_tokens` | Sanctum leftover — **not** the live Atlas API auth path |
-| `app_settings` | SSH key path/passphrase, Brevo keys, Hetzner Cloud token, TrackingTime, Trello key/token (encrypted), alert recipient |
+| `app_settings` | SSH key path/passphrase, `stack_api_ssh_key_path`, Brevo keys, Hetzner Cloud token, TrackingTime, Trello key/token (encrypted), alert recipient |
 | `deploy_configs`, `deploy_destinations`, `deploy_servers` | What/where to deploy (`deploy_destinations.is_active` defaults true) |
 | `deploy_runs`, `deploy_run_destinations` | Run history + per-target logs / `stella_job_id` |
 | `stella_health_checks`, `stella_service_uptime_logs` | 5-min Stella snapshots (30-day retention) |
@@ -101,6 +104,7 @@ Login / refresh / logout skip token middleware (still IP-filtered) and proxy to 
 | `wp_site_backups` | Atlas Connect backup jobs, progress, manifest hash |
 | `wp_site_scans`, `wp_site_scan_files`, `wp_site_scan_allowlist_entries` | Infection-scan jobs, inventory, allowlist |
 | `wp_site_stagings` | Stella staging builds from a full backup |
+| `stack_actions` | Atlas-side restart history (`user_id`, stack, service, result, detail, created_at). stack-api has its own audit log |
 | `imap_migration_jobs` | Atlas-side IMAP history (hosts/users only — **no passwords**) |
 | `customers`, `projects`, `task_lists`, `tasks`, `task_checklist_items`, `task_comments`, `time_entries`, `attachments` | TrackingTime import (one-way). Trello ids live on projects/tasks/check items/attachments. `projects.max_hours_per_week` / `trello_pushed_hash` and `tasks.skip_trello` are Atlas-local |
 | `slack_destinations`, `notification_rules`, `notification_rule_channels`, `notification_rule_projects`, `notification_bindings`, `notification_events`, `notification_deliveries` | Notification rules, Slack webhooks (encrypted), fires + per-channel deliveries |
@@ -126,21 +130,22 @@ Do not assume Horizon / Redis queues are driving deploys. Production **hard-code
 
 ## Signing Stella requests
 
-`App\Domain\Deploy\Services\StellaSshSigner` is shared by deploy-api and health-api:
+`App\Domain\Deploy\Services\StellaSshSigner` is shared. `sign($payload, $namespace = 'deploy', $keyPath = null)` — existing deploy-api / health-api callers keep namespace `deploy` and the deploy key.
 
 ```
-payload  = "{action}:{unix_timestamp}"
-signature = ssh-keygen -Y sign -f {key} -n deploy  {payload}
-POST JSON { payload, signature }
+payload  = "{action}:{unix_timestamp}"                 # deploy-api / health-api
+payload  = "{action}:{unix_ts}:{sha256(request_json)}" # stack-api / wp-staging
+signature = ssh-keygen -Y sign -f {key} -n {namespace}  {payload}
 ```
 
-| Caller | Action prefix |
-|--------|----------------|
-| `StellaDeployApiService::listApps` | `list-apps:` |
-| `StellaDeployApiService::trigger` | `deploy-{app}:` |
-| `StellaHealthApiClient::fetchSystemHealth` | `system-health:` |
+| Caller | Action prefix | Namespace | Key |
+|--------|----------------|-----------|-----|
+| `StellaDeployApiService::listApps` | `list-apps:` | `deploy` | `deploy_ssh_key_path` |
+| `StellaDeployApiService::trigger` | `deploy-{app}:` | `deploy` | `deploy_ssh_key_path` |
+| `StellaHealthApiClient::fetchSystemHealth` | `system-health:` | `deploy` | `deploy_ssh_key_path` |
+| `StackApiClient` | `stack-ping` / `stack-list` / `stack-get` / `stack-restart` | `stack` | `stack_api_ssh_key_path` (fallback `STELLA_STACK_API_KEY_PATH`) |
 
-Stella verifies with principal `ddashboard` and namespace `deploy` (health-api hardcodes both in `main.py`; Atlas sends no principal). Replay window is 60 seconds on Stella.
+stack-api POST body is `{payload, signature, request}` with header `X-Stack-Token`. Never log the token, signature, or key contents. Stella verifies stack-api with principal `atlas-prod` and namespace `stack`. Replay window is 60 seconds on Stella.
 
 deploy-api and health-api each have their **own** `allowed_signers` file. health-api’s file has two `ddashboard` lines (`atlas-prod` and `atlas-dev`). deploy-api’s file has only the production key. See [`../stella-server/health-api.md`](../stella-server/health-api.md) and [`dev-instance.md`](dev-instance.md).
 

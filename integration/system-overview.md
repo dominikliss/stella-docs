@@ -125,7 +125,7 @@ Details: [`../atlas/auth.md`](../atlas/auth.md).
 | Monitoring cron + dashboard | **health-api** `https://stella-health-api.foxcraft.digital` | SSH signature, payload `system-health:{ts}` | [`../stella-server/health-api.md`](../stella-server/health-api.md), [`../atlas/monitoring.md`](../atlas/monitoring.md) |
 | Tools → IMAP Migration | **imap-sync** `https://stella.foxcraft.digital/imap-sync` | Network restriction only | [`../stella-server/imap-sync-service.md`](../stella-server/imap-sync-service.md), [`../atlas/tools.md`](../atlas/tools.md) |
 | Health-api **fallback** probes | Public Caddy hosts (`/chat/health`, `/ollama`, apps) | None | [`../atlas/monitoring.md`](../atlas/monitoring.md) |
-| Stack list / get / restart (2026-11-04); create / delete not built | **stack-api** `https://stella-stack-api.foxcraft.digital` | IP allowlist + `X-Stack-Token` + SSH signature, namespace `stack`, payload `<action>:<ts>:<sha256(request)>` | [`../stella-server/stack-api.md`](../stella-server/stack-api.md). Atlas `.env` keys exist; code does not read them yet. Staging from backup is `create` + `restore` here — `wp-staging-api` will not be deployed |
+| Stack list / get / restart (2026-11-04); create / delete not built | **stack-api** `https://stella-stack-api.foxcraft.digital` | IP allowlist + `X-Stack-Token` + SSH signature, namespace `stack`, payload `<action>:<ts>:<sha256(request)>` | [`../stella-server/stack-api.md`](../stella-server/stack-api.md). Atlas `Domain/Stacks` (`StackApiClient`). Flag `STELLA_STACK_API_ENABLED` (default false; 404 + hidden nav). Staging from backup is `create` + `restore` here — `wp-staging-api` will not be deployed |
 
 Atlas **does not** call `stella-api` `/chat/*`. That path is ddashboard’s.
 
@@ -217,7 +217,7 @@ Stella’s `deploy-api/allowed_signers` lists this public key as principal **`dd
 
 The private key never crosses the network. Only a short-lived signed payload (`action:unix_timestamp`, 60 s replay window on Stella) is posted.
 
-**stack-api uses a different key.** Production Atlas signs with `/home/atlas/.ssh/atlas-stack-api` (comment `atlas-stack-api`, principal `atlas-prod`, namespace `stack`). The shared deploy key is not in stack-api’s `allowed_signers`. Atlas `.env` has `STELLA_STACK_API_URL` / `STELLA_STACK_API_TOKEN` (token value not recorded here); neither is read by Atlas code yet (2026-11-04). Planned setting: `stack_api_ssh_key_path`. See [`../stella-server/stack-api.md`](../stella-server/stack-api.md).
+**stack-api uses a different key.** Production Atlas signs with `/home/atlas/.ssh/atlas-stack-api` (comment `atlas-stack-api`, principal `atlas-prod`, namespace `stack`). The shared deploy key is not in stack-api’s `allowed_signers`. Atlas reads `STELLA_STACK_API_URL` / `STELLA_STACK_API_TOKEN` / `STELLA_STACK_API_ENABLED` / `STELLA_STACK_API_KEY_PATH` (token value not recorded here). Setting `stack_api_ssh_key_path` overrides the key path. Enable on atlas.dev first (`STELLA_STACK_API_ENABLED=true`, key `/var/www/.ssh/id_ed25519`). See [`../stella-server/stack-api.md`](../stella-server/stack-api.md).
 
 ---
 
