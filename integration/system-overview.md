@@ -125,7 +125,7 @@ Details: [`../atlas/auth.md`](../atlas/auth.md).
 | Monitoring cron + dashboard | **health-api** `https://stella-health-api.foxcraft.digital` | SSH signature, payload `system-health:{ts}` | [`../stella-server/health-api.md`](../stella-server/health-api.md), [`../atlas/monitoring.md`](../atlas/monitoring.md) |
 | Tools → IMAP Migration | **imap-sync** `https://stella.foxcraft.digital/imap-sync` | Network restriction only | [`../stella-server/imap-sync-service.md`](../stella-server/imap-sync-service.md), [`../atlas/tools.md`](../atlas/tools.md) |
 | Health-api **fallback** probes | Public Caddy hosts (`/chat/health`, `/ollama`, apps) | None | [`../atlas/monitoring.md`](../atlas/monitoring.md) |
-| Stack create / change / restart / delete (skeleton 2026-11-04) | **stack-api** `https://stella-stack-api.foxcraft.digital` | IP allowlist + `X-Stack-Token` + SSH signature, namespace `stack`, payload `<action>:<ts>:<sha256(request)>` | [`../stella-server/stack-api.md`](../stella-server/stack-api.md). Atlas `.env` keys exist; code does not read them yet. Staging from backup is `create` + `restore` here — `wp-staging-api` will not be deployed |
+| Stack list / get / restart (2026-11-04); create / delete not built | **stack-api** `https://stella-stack-api.foxcraft.digital` | IP allowlist + `X-Stack-Token` + SSH signature, namespace `stack`, payload `<action>:<ts>:<sha256(request)>` | [`../stella-server/stack-api.md`](../stella-server/stack-api.md). Atlas `.env` keys exist; code does not read them yet. Staging from backup is `create` + `restore` here — `wp-staging-api` will not be deployed |
 
 Atlas **does not** call `stella-api` `/chat/*`. That path is ddashboard’s.
 
@@ -303,7 +303,7 @@ Hetzner Cloud  (same project)
 | **deploy-api** | FastAPI app — signed deploy trigger + status |
 | **health-api** | FastAPI app — signed system-status snapshot |
 | **media-api** | FastAPI app — RAW/HEIC/JPEG/video-poster decode for Foxx Cloud (HMAC; `/convert` body or `/convert-remote` Storage Box). `https://stella-media-api.foxcraft.digital` |
-| **stack-api** | FastAPI app — Atlas container management. Isolated `stack` network. IP + token + SSH signature (namespace `stack`, own key). Skeleton only (`/health`, `/ping`) as of 2026-11-04. `https://stella-stack-api.foxcraft.digital`. [`../stella-server/stack-api.md`](../stella-server/stack-api.md) |
+| **stack-api** | FastAPI app — Atlas container management. Isolated `stack` network. IP + token + SSH signature (namespace `stack`, own key). `list` / `get` / `restart` + append-only audit log (2026-11-04). `https://stella-stack-api.foxcraft.digital`. [`../stella-server/stack-api.md`](../stella-server/stack-api.md) |
 | **Foxx Cloud** | Laravel app on the nest (`dedi6724`). Calls media-api. Not one of the four named Vegapunk systems. |
 | **atlas-api / Atlas host API** | FastAPI on the Atlas host (`https://api.atlas.foxcraft.digital` → `127.0.0.1:8090`). Signed `system-health` snapshot of the Atlas box. See [`../atlas/host-api.md`](../atlas/host-api.md) |
 | **imap-sync** | Express + `imapsync` mailbox copy |

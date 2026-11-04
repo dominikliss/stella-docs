@@ -134,7 +134,7 @@ Service live at `https://stella-media-api.foxcraft.digital`. Contract: [`stella-
 - [ ] **WP staging: mails and MainWP identity on `dominikliss.foxcraft.digital`** — exact copy; `mailpoet`, `wp-mail-smtp`, and `mainwp-child` left active. Real emails can leave staging; `mainwp-child` carries the live site’s identity. **TODO (Dominik):** decide whether to neutralise them. See [`stella-server/wordpress-staging.md`](stella-server/wordpress-staging.md).
 - [ ] **WP staging: leftovers after the 2026-10-11 live import** — `wordpress:cli` image on the Stella host; `/tmp/wp-cli.phar` inside the `wp` container (removal not confirmed); `~/relaunch_dominikliss_com.sql` in the `-ssh` container (110 MB); leftover zip/dump on the managed host (**UNVERIFIED**). **TODO (Dominik).** See [`stella-server/wordpress-staging.md`](stella-server/wordpress-staging.md).
 - [ ] **WP staging: `/root/wp-before-php85.sql`** — 86 MB dump on Stella from the 2026-10-23 PHP 8.5 bump. **TODO (Dominik):** delete once `dominikliss.foxcraft.digital` is confirmed fine. See [`stella-server/wordpress-staging.md`](stella-server/wordpress-staging.md).
-- [ ] **`dominikliss` `wordpress:php8.5-apache` is a moving tag** — patch level only visible via `php -v` inside the container; updates only on `docker compose pull wp`. See [`stella-server/php-updates.md`](stella-server/php-updates.md).
+- [ ] **`dominikliss` `wordpress:php8.5-apache` is a moving tag** — `wp` now runs an untagged image (`sha256:ce31904f…`) because `docker compose pull wp` for hypershape moved the tag. Next `up -d wp` on `dominikliss` picks up the new image; check patch level with `php -v`. See [`stella-server/php-updates.md`](stella-server/php-updates.md).
 - [ ] **Managed host `dedi6724` PHP version** — operator says updated after CVE-2026-109618/109619 (ddashboard, Foxx Cloud, `dominikliss.com` live); exact version **UNVERIFIED**. See [`stella-server/php-updates.md`](stella-server/php-updates.md).
 - [ ] **`hypershape.foxcraft.digital`** — WP staging on Stella. PHP 8.5.12 (`wordpress:php8.5-apache` + shared `stella/ssh-php:8.5`, adopted 2026-11-04). SSH port **2206**, on `internal` (never `edge`). `edison` has its own key (`atlas/keys/edison.pub`, UID 1002). Still open: `DOCKER-USER` source IPs for 2206 not documented; Edison login from Edison after the switch **UNVERIFIED** (host keys unchanged via the `ssh-keys` volume); no `uploads.ini` mount; delete `/root/hypershape-before-adopt.sql` and `docker-compose.yml.bak-20261104`. **TODO (Dominik).** See [`stella-server/wordpress-staging.md`](stella-server/wordpress-staging.md).
 - [ ] **`stella-media-api` Caddy block** — `propagation_delay` / `propagation_timeout` lines are duplicated in the live Caddyfile. Works; **TODO (Dominik):** clean up.
@@ -158,17 +158,19 @@ Service live at `https://stella-media-api.foxcraft.digital`. Contract: [`stella-
 
 ## stack-api (Atlas container management) — 2026-11-04
 
-Skeleton live at `https://stella-stack-api.foxcraft.digital`. Contract: [`stella-server/stack-api.md`](stella-server/stack-api.md). Isolated `stack` network (`services_stack`); only Caddy and `stack-api` are on it. `wp-staging-api` is superseded and will not be deployed.
+Live at `https://stella-stack-api.foxcraft.digital`. Contract: [`stella-server/stack-api.md`](stella-server/stack-api.md). Isolated `stack` network (`services_stack`); only Caddy and `stack-api` are on it. Docker socket mounted (root-equivalent until `apply` exists — list/restart only). `wp-staging-api` is superseded and will not be deployed.
 
 **Verified 2026-11-04:**
 - [x] **Auth skeleton** — Caddy IP allowlist (Atlas prod + Stella), app-layer `X-Forwarded-For` check (missing/fake → 403), `X-Stack-Token`, signed `POST /ping` (`principal: atlas-prod`), replay and bad-token 401.
 - [x] **DNS + cert** — A record `stella-stack-api` → `95.217.144.93`; Let's Encrypt production on first attempt with `propagation_delay 45s` / `propagation_timeout 3m`.
 - [x] **Generic SSH image** — `stella/ssh-php:8.5` built 2026-11-04; `hypershape` adopted by hand. See [`stella-server/stack-api.md`](stella-server/stack-api.md#shared-ssh-image-stellassh-phpversion).
+- [x] **Audit log + `list` / `get` / `restart`** — Docker Engine API via httpx + socket. 6 stacks listed from Atlas prod; `/opt/services` invisible; hypershape get/restart verified; `DELETE FROM audit` blocked. Job table deferred to `restore`.
 
 **Open:**
 - [ ] **Atlas client** — `.env` has `STELLA_STACK_API_URL` / `STELLA_STACK_API_TOKEN`; code does not read them yet. Planned `stack_api_ssh_key_path` → `/home/atlas/.ssh/atlas-stack-api`.
 - [ ] **Atlas-dev signer** — IP layer already passes from Stella; do **not** add principal `atlas-dev` until code restricts it to stacks marked `sandbox: true`.
-- [ ] **SQLite jobs + `list` / `get` / `action restart`** — next after the auth skeleton.
+- [ ] **Audit rejected requests** — `400` / `404` before the lookup are not written to `audit` yet.
+- [ ] **Bind IP in `ports` output** — `127.0.0.1` vs `0.0.0.0` is not shown yet.
 - [ ] **WP blueprint in stack-api** (then move `dominikliss`).
 - [ ] **WP-CLI Deprecated notice on PHP 8.5** — decide whether to suppress `E_DEPRECATED` for the `wp` wrapper only.
 - [ ] **`apply` / `restore` / `php-version` / `delete` / Adminer** — then Laravel and .NET blueprints.
@@ -181,6 +183,8 @@ Skeleton live at `https://stella-stack-api.foxcraft.digital`. Contract: [`stella
 - **stack-api auth skeleton** — live at `https://stella-stack-api.foxcraft.digital`. Isolated `stack` network, three protection layers (Caddy+app IP, token, SSH namespace `stack` with its own key). `GET /health` and signed `POST /ping` verified. No Docker socket yet. See [`stella-server/stack-api.md`](stella-server/stack-api.md).
 - **`wp-staging-api` superseded** — will not be deployed as a separate service. Staging from an Atlas backup becomes a stack-api `create` + `restore` job.
 - **Shared SSH image + hypershape migration** — `stella/ssh-php:8.5` (PHP 8.5.12, WP-CLI 2.12.0). Users from `atlas/users.conf` + per-user keys; persistent `/home`; `ssh` on `internal` only. hypershape moved off `php8.4` + per-site `Dockerfile.ssh`; `edison` has its own key. See [`stella-server/stack-api.md`](stella-server/stack-api.md#shared-ssh-image-stellassh-phpversion) and [`stella-server/wordpress-staging.md`](stella-server/wordpress-staging.md#ssh-container-shared-image).
+- **stack-api Docker access** — Engine API over the socket (httpx). Signed `list` / `get` / `restart`; append-only `audit` table. `/opt/services` cannot be listed or restarted. See [`stella-server/stack-api.md`](stella-server/stack-api.md).
+- **`advoapp-dev` 5080 and `osgar-datahub-dev` 5081** bound to `127.0.0.1` only (`docker port`, verified 2026-11-04).
 
 ## Closed 2026-11-03
 

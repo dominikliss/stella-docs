@@ -41,7 +41,7 @@ Core Docker-managed services live at `/opt/services/docker-compose.yml`. Dev/sta
 | `ollama` | Docker (`edge` network) | 11434 (published to `127.0.0.1` only) | LLM inference — containerized 2026-08-10, see below |
 | `health-api` | Docker (`edge` network) | 443 via Caddy (`stella-health-api.foxcraft.digital`) | System status endpoint for Atlas — [`health-api.md`](health-api.md) |
 | `media-api` | Docker (`edge` network) | 443 via Caddy (`stella-media-api.foxcraft.digital`) | RAW/HEIC/JPEG/video-poster decode for Foxx Cloud (HMAC; RawTherapee + Adobe DCPs for `master` on RAW). `/convert-remote` pulls from / writes to Storage Box (ro mounts `profiles/`, `ssh/`; outbound port 23 verified). [`media-api.md`](media-api.md). No published ports. cpuset `6-11` |
-| `stack-api` | Docker (`stack` network only, no host port) | 443 via Caddy (`stella-stack-api.foxcraft.digital`) | Container management API for Atlas — [`stack-api.md`](stack-api.md). Skeleton only (2026-11-04) |
+| `stack-api` | Docker (`stack` network only, no host port; Docker socket mounted) | 443 via Caddy (`stella-stack-api.foxcraft.digital`) | Container management API for Atlas — [`stack-api.md`](stack-api.md). `list` / `get` / `restart` + append-only audit log (2026-11-04). No `apply` yet |
 | `backup` | Docker (`edge` network, no host port) | — | Nightly restic backup to Hetzner Storage Box — see [`backup.md`](backup.md) |
 | `osgar-datahub-dev` | Docker (.NET dev, hot-reload) | 5081→8080 (localhost) | `.NET` app, same pattern as `advoapp-dev` — `Dockerfile.dev` + bind-mounted `src`; compose file at `/opt/apps/dotnet/osgar.datahub.foxcraft.digital/docker-compose.dev.yml` |
 | `osgar-datahub-db` | Docker (MSSQL 2022) | — (internal only) | `mcr.microsoft.com/mssql/server:2022-latest`, data volume `osgar-datahub-mssql-data`; same compose file as `osgar-datahub-dev` |
@@ -877,6 +877,8 @@ services:
       - ./stack-api/.env
     volumes:
       - ./stack-api/allowed_signers:/app/allowed_signers:ro
+      - ./stack-api/data:/data
+      - /var/run/docker.sock:/var/run/docker.sock
     read_only: true
     tmpfs:
       - /tmp

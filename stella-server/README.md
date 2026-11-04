@@ -16,7 +16,7 @@ Dedicated AI / services host. No general-purpose UI — **Atlas**, **ddashboard*
 | [stella-api.md](stella-api.md) | FastAPI `/chat/*` (ddashboard) |
 | [deploy-api.md](deploy-api.md) | Signed deploy trigger (Atlas) |
 | [health-api.md](health-api.md) | Signed system-status snapshot for Atlas — dynamic containers + Caddyfile certs |
-| [stack-api.md](stack-api.md) | Container management for Atlas — skeleton live 2026-11-04 (`/health`, signed `/ping`); no Docker socket yet |
+| [stack-api.md](stack-api.md) | Container management for Atlas — `list` / `get` / `restart` + append-only audit log (2026-11-04); no `apply` yet |
 | [wp-staging-api.md](wp-staging-api.md) | **Superseded** by stack-api — will not be deployed |
 | [media-api.md](media-api.md) | RAW/HEIC/JPEG/video-poster decode for Foxx Cloud (HMAC; `/convert` and `/convert-remote`) — `stella-media-api.foxcraft.digital` |
 | [imap-sync-service.md](imap-sync-service.md) | Express + `imapsync` mailbox copy (Atlas) |

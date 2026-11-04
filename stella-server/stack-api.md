@@ -1,6 +1,6 @@
 # stack-api (container management for Atlas)
 
-**Status:** skeleton live since 2026-11-04. Only `GET /health` and the signed test endpoint `POST /ping` exist. No Docker socket yet, no stack actions.
+**Status:** live since 2026-11-04. Docker access via the Engine API (httpx over the Unix socket — no compose CLI in the image). Signed `list` / `get` / `restart` plus an append-only SQLite audit log. No `apply` yet; until then stack-api can only list and restart.
 
 **URL:** `https://stella-stack-api.foxcraft.digital`
 
@@ -17,10 +17,11 @@ Infra: [`infrastructure.md`](infrastructure.md). System map: [`../integration/sy
 ```
 /opt/services/stack-api/
   ├── Dockerfile          ← python:3.13-slim + openssh-client
-  ├── requirements.txt    ← fastapi, uvicorn
-  ├── .dockerignore       ← .env, allowed_signers
-  ├── .env                ← chmod 600; STACK_API_TOKEN, STACK_API_ALLOWED_IPS
+  ├── requirements.txt    ← fastapi, uvicorn, httpx
+  ├── .dockerignore       ← .env, allowed_signers, data, images
+  ├── .env                ← chmod 600; STACK_API_TOKEN, STACK_API_ALLOWED_IPS, STACK_API_DB
   ├── allowed_signers     ← mounted read-only, not baked into the image
+  ├── data/               ← host dir; SQLite at /data/stack-api.sqlite in the container (STACK_API_DB)
   ├── app/main.py
   └── images/ssh-php/     ← shared SSH image (not in the API container)
         ├── Dockerfile
@@ -42,6 +43,8 @@ Never write the token value into docs.
       - ./stack-api/.env
     volumes:
       - ./stack-api/allowed_signers:/app/allowed_signers:ro
+      - ./stack-api/data:/data
+      - /var/run/docker.sock:/var/run/docker.sock
     read_only: true
     tmpfs:
       - /tmp
@@ -53,6 +56,8 @@ Never write the token value into docs.
 Top-level network `stack` (Docker name `services_stack`). **Only `stack-api` and `services-caddy-1` are on it.** stack-api is deliberately **not** on `edge`: any container on `edge` could otherwise reach it directly and fake `X-Forwarded-For`. `caddy` has `default`, `edge`, and `stack`.
 
 No published ports.
+
+With the socket mounted, stack-api is **root-equivalent** on Stella. Until `apply` exists it can only list and restart.
 
 ---
 
@@ -105,14 +110,37 @@ Not read by Atlas code yet (2026-11-04). Planned setting: `stack_api_ssh_key_pat
 
 ---
 
+## Stack discovery
+
+A container belongs to a stack if its label `com.docker.compose.project.working_dir` is exactly `/opt/apps/<type>/<name>` with `type` in `{wordpress, laravel, dotnet}` and `name` matching `^[a-z0-9][a-z0-9.-]{0,252}$`. Stack name = folder name, type = parent folder. Everything in `/opt/services` (Caddy, deploy-api, health-api, …) is invisible and cannot be restarted through stack-api.
+
 ## Endpoints (current)
 
-| Path | Action | Auth | Response |
+Signed endpoints: action = payload prefix. Auth is IP + token + signature unless noted.
+
+| Path | Action | Request | Response |
 |---|---|---|---|
-| `GET /health` | — | IP only | `{"status":"ok"}` |
-| `POST /ping` | `stack-ping` | IP + token + signature | `{"ok":true,"principal":…,"request":{…}}` |
+| `GET /health` | — | — (IP only) | `{"status":"ok"}` |
+| `POST /ping` | `stack-ping` | JSON object | `{"ok":true,"principal":…,"request":{…}}` |
+| `POST /stacks/list` | `stack-list` | `{}` | `{"stacks":[{name, type, path, containers:[{id (12 chars), name, service, image, state, status, ports:[{public, private, type}]}]}]}` |
+| `POST /stacks/get` | `stack-get` | `{"name"}` | one stack; containers also have `started_at`, `restart_count`, `health`. `400` `invalid name`, `404` `stack not found` |
+| `POST /stacks/restart` | `stack-restart` | `{"name", "service"?}` | restarts one service or the whole stack (`db` first); Docker restart `t=10`. `{"name","results":[{service, name, ok}]}`. `404` `service not found`; `502` with `results` if any restart failed |
+
+Docker errors → `502` `"docker error"`.
+
+**Known gap:** `ports` in the output does not show the bind IP yet (`127.0.0.1` vs `0.0.0.0`). **TODO:** add it.
 
 FastAPI docs (`/docs`, `/redoc`, `/openapi.json`) are disabled.
+
+## Audit log
+
+SQLite table `audit` (`id`, `ts` UTC ISO, `principal`, `action`, `stack`, `service`, `result` `ok`/`error`, `detail`). Triggers block `UPDATE` and `DELETE` (`audit is append-only`, verified). Protects against API/SQL changes, not against root on Stella.
+
+```bash
+docker exec stack-api python -c "import sqlite3; [print(r) for r in sqlite3.connect('/data/stack-api.sqlite').execute('SELECT id, ts, principal, action, stack, service, result FROM audit')]"
+```
+
+**Known gap:** requests rejected with `400`/`404` before the lookup are not written to the audit log yet. **TODO:** audit failed attempts too.
 
 ---
 
@@ -151,8 +179,42 @@ stella-stack-api.foxcraft.digital {
 | Signed `POST /ping` | Atlas prod | `ok`, `principal: atlas-prod` |
 | Same request again | Atlas prod | 401, log `denied reason=replay` |
 | Wrong token | Atlas prod | 401, log `denied reason=bad token` |
+| `POST /stacks/list` | Atlas prod | all 6 stacks (`advoapp.finditoo`, `atlas.dev`, `dominikliss`, `edison.dev`, `hypershape`, `osgar.datahub`); no `/opt/services` containers |
+| `POST /stacks/get` `hypershape` | Atlas prod | `wp` / `db` / `ssh` with `started_at` / `restart_count` |
+| `POST /stacks/restart` hypershape `ssh` | Atlas prod | `ok` |
+| name `../services` | Atlas prod | `400` `invalid name` |
+| name `services` | Atlas prod | `404` `stack not found` |
+| audit after the above | Stella | 3 `ok` rows; `DELETE FROM audit` failed with `audit is append-only` |
 
-Test script (host `atlas`, token from Atlas `.env`):
+Test helper on host `atlas` (token from Atlas `.env`, sign with `/home/atlas/.ssh/atlas-stack-api`, namespace `stack`):
+
+```bash
+stack_call() {
+  local ACTION="$1" URLPATH="$2" REQ="$3"
+  local STACK_TOKEN TS HASH PAYLOAD TMP BODY
+  STACK_TOKEN=$(grep '^STELLA_STACK_API_TOKEN=' /var/www/atlas/.env | cut -d= -f2- | tr -d '[:space:]')
+  TS=$(date +%s)
+  HASH=$(printf %s "$REQ" | sha256sum | cut -d' ' -f1)
+  PAYLOAD="${ACTION}:${TS}:${HASH}"
+  TMP=$(sudo -u atlas mktemp -d)
+  printf %s "$PAYLOAD" | sudo -u atlas tee "$TMP/payload" >/dev/null
+  sudo -u atlas ssh-keygen -Y sign -f /home/atlas/.ssh/atlas-stack-api -n stack "$TMP/payload"
+  BODY=$(python3 -c 'import json,sys; print(json.dumps({"payload":sys.argv[1],"signature":open(sys.argv[2]).read(),"request":sys.argv[3]}))' "$PAYLOAD" "$TMP/payload.sig" "$REQ")
+  curl -s -X POST "https://stella-stack-api.foxcraft.digital${URLPATH}" \
+    -H "Content-Type: application/json" \
+    -H "X-Stack-Token: $STACK_TOKEN" \
+    -d "$BODY"
+  echo
+  sudo -u atlas rm -rf "$TMP"
+  unset STACK_TOKEN
+}
+
+# stack_call stack-list /stacks/list '{}'
+# stack_call stack-get /stacks/get '{"name":"hypershape"}'
+# stack_call stack-restart /stacks/restart '{"name":"hypershape","service":"ssh"}'
+```
+
+One-shot ping (same signing; prefer `stack_call` for the stack endpoints):
 
 ```bash
 STACK_TOKEN=$(grep '^STELLA_STACK_API_TOKEN=' /var/www/atlas/.env | cut -d= -f2- | tr -d '[:space:]')
@@ -215,12 +277,11 @@ Security controls agreed for the Docker-socket phase:
 - Mounts limited to `docker.sock`, `/opt/apps`, and the Caddy `sites/` folder; Caddy reload via the admin API, not a container restart
 - No Hetzner DNS token in stack-api (wildcard `*.foxcraft.digital` → Stella instead; explicit records keep precedence)
 - Soft delete to `/opt/apps/.trash/<name>-<ts>`, volumes kept 7 days
-- Append-only audit log
-- Jobs in SQLite (not in memory), one lock per stack plus a limit for heavy jobs
+- Jobs in SQLite (not in memory), one lock per stack plus a limit for heavy jobs — job table deferred until long-running actions (`restore`). Audit log is already live.
 
 Build order:
 
-1. ~~Skeleton: auth~~ (done 2026-11-04) → SQLite jobs, `list` / `get` / `action restart`
+1. ~~Skeleton: auth~~ (done 2026-11-04) → ~~SQLite + `list` / `get` / `restart`~~ (done 2026-11-04; audit log only, no job table yet; jobs come with long-running actions like `restore`)
 2. ~~Generic SSH image~~ (done 2026-11-04; `hypershape` adopted by hand) → WP blueprint in stack-api, then move `dominikliss`
 3. `apply` with SSH users and PHP settings (`PHP_INI_SCAN_DIR` + per-site `zz-atlas.ini`)
 4. `restore` (staging from backup)

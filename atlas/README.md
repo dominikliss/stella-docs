@@ -70,7 +70,7 @@ Browser (IP-allowlisted)
         → ddashboard          identity (login, verify, refresh)
         → Stella deploy-api   signed .NET / Docker deploys
         → Stella health-api   signed dynamic container / Caddyfile-cert / disk / backup snapshot
-        → Stella stack-api    IP + token + signed stack create/change/restart/delete (skeleton 2026-11-04; Atlas code not wired yet)
+        → Stella stack-api    IP + token + signed list/get/restart (2026-11-04; Atlas code not wired yet; create/delete not built)
         → Stella imap-sync    mailbox copy (no HTTP auth)
         → GitHub + SSH hosts  ssh_rsync deploys
         → WP sites            HEAD uptime + Atlas Connect login / backup / scan driver
