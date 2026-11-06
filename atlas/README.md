@@ -19,7 +19,7 @@ It is **not** the business dashboard. Clients, invoices, and mail live in **ddas
 |-------|--------------------|
 | Backend | Laravel 12.61, PHP 8.5.4-FPM (pool `atlas`), domain folders under `app/Domain/*` |
 | Frontend | Vite + React 18 SPA (`resources/js`), **TanStack Router** + TanStack Query. Served from a Laravel Blade shell. Inertia packages are leftover from the Breeze starter — they are **not** the live router. |
-| Auth | ddashboard tokens (`/dls/v1/auth/*`). Not Sanctum for the API. See [`auth.md`](auth.md). |
+| Auth | Atlas-issued access/refresh tokens (local password + TOTP). Not Sanctum for the API. See [`auth.md`](auth.md). |
 | Database | MySQL 8.4 (`atlas_prod`; old managed-host name was `dev_atlas_foxcraft_digital`, not `atlas_dev`) |
 | Cache | Redis localhost only (`token:{sha256}` cache after login, general cache) — **not** the deploy queue |
 | Deploy queue | **Database** queue `deployments`, drained by systemd `atlas-queue.service` (not Horizon, not cron + `flock`) |
@@ -41,7 +41,8 @@ It is **not** the business dashboard. Clients, invoices, and mail live in **ddas
 | **Tools → TrackingTime Sync** | `/tools/tracking-time-sync` | Hourly or manual open-task sync; morning or manual uncommented-time refresh; job log |
 | **Projects** | `/projects` | Imported projects, tasks, attachments; edit name/notes/customer/archived/max hours; one-way Trello push ([`projects.md`](projects.md)) |
 | **Notifications** | `/notifications` | In-app inbox (header bell). Rules and Slack webhooks in Settings ([`notifications.md`](notifications.md)) |
-| **Settings** | `/settings` | SSH/GitHub key path, Brevo, Hetzner Cloud token, backup S3 + X25519 vault, TrackingTime, Trello, Slack, notification rules |
+| **Users** | `/users` | Admin create / deactivate / reset password and 2FA ([`auth.md`](auth.md)) |
+| **Settings** | `/settings` | SSH/GitHub key path, Brevo, Hetzner Cloud token, backup S3 + X25519 vault, TrackingTime, Trello, ddashboard service token, Slack, notification rules |
 
 ## Documents in this folder
 
@@ -51,7 +52,7 @@ It is **not** the business dashboard. Clients, invoices, and mail live in **ddas
 | [server.md](server.md) | Production host runbook (stack, Caddy, systemd, deploy) |
 | [host-api.md](host-api.md) | Atlas host API (`api.atlas.foxcraft.digital`) |
 | [dev-instance.md](dev-instance.md) | Stella-hosted `atlas.dev.foxcraft.digital` |
-| [auth.md](auth.md) | ddashboard token proxy, roles, IP allowlist |
+| [auth.md](auth.md) | Local login, TOTP, Atlas tokens, user admin, IP allowlist |
 | [atlas-connect/](atlas-connect/) | WP plugin: login + backups + infection scan |
 | [deploy-pipeline.md](deploy-pipeline.md) | ssh_rsync and stella_deploy_api |
 | [monitoring.md](monitoring.md) | Stella health + WP uptime |
@@ -68,7 +69,7 @@ It is **not** the business dashboard. Clients, invoices, and mail live in **ddas
 ```
 Browser (IP-allowlisted)
     → Atlas SPA / API
-        → ddashboard          identity (login, verify, refresh)
+        → ddashboard          business APIs (clients / TrackingTime ids; service token)
         → Stella deploy-api   signed .NET / Docker deploys
         → Stella health-api   signed dynamic container / Caddyfile-cert / disk / backup snapshot
         → Stella stack-api    IP + token + signed list/get/restart (2026-11-04; Atlas code not wired yet; create/delete not built)
@@ -175,13 +176,13 @@ The old managed-host instance still has those two crons until they are deactivat
 
 ## Authentication
 
-All API routes except `/api/health`, `/api/auth/login`, `/api/auth/refresh`, `/api/auth/logout`, and signed `GET /api/wp-backups/{backup}/archive` require:
+All API routes except `/api/health`, the `/api/auth/login*` / forgot / reset routes, `/api/auth/refresh`, `/api/auth/logout`, and signed `GET /api/wp-backups/{backup}/archive` require:
 
 ```
 Authorization: Bearer {access_token}
 ```
 
-The token is a **ddashboard** access token. Atlas proxies login to `ATLAS_DDASHBOARD_URL` and caches a successful verify. See [`auth.md`](auth.md).
+The token is an **Atlas-issued** access token (`auth_access_tokens`). See [`auth.md`](auth.md).
 
 Inbound HTTP is also filtered by `ATLAS_ALLOWED_IPS` (`AllowedIpMiddleware`, prepended globally in `bootstrap/app.php`). `withoutMiddleware()` on `GET /api/health` never took effect; the route returns early inside the middleware (`$request->is('api/health')`). Fixed and deployed 2026-10-10. **TODO (Dominik):** commit hash / tag. See [`auth.md`](auth.md).
 
@@ -212,6 +213,24 @@ The **public** key must be in:
 
 ## Key API endpoints
 
+### Auth
+
+| Method | Path | Purpose |
+|--------|------|---------|
+| `POST` | `/api/auth/login` | Start login (password; may return a 2FA / password-change challenge) |
+| `POST` | `/api/auth/login/password` | Finish a forced password change |
+| `POST` | `/api/auth/login/two-factor` | Finish TOTP / recovery |
+| `POST` | `/api/auth/login/two-factor/confirm` | Finish first-time TOTP enrollment |
+| `POST` | `/api/auth/forgot-password` | Email a reset link |
+| `POST` | `/api/auth/reset-password` | Set a new password from the link |
+| `POST` | `/api/auth/refresh` | Rotate refresh + access |
+| `POST` | `/api/auth/logout` | Revoke refresh + current bearer |
+| `GET` | `/api/auth/me` | Current user |
+| `PATCH` | `/api/auth/me` | Update name / email |
+| `GET` | `/api/users` | Admin: list users |
+
+See [`auth.md`](auth.md).
+
 ### Deployments
 
 | Method | Path | Purpose |
@@ -223,6 +242,7 @@ The **public** key must be in:
 | `POST` | `/api/deploy/configs/{id}/test` | Test SSH connectivity for all destinations |
 | `POST` | `/api/deploy/configs/{id}/clear-page-cache` | Call the clear-page-cache endpoint |
 | `POST` | `/api/deploy/configs/{id}/regenerate-unused-css` | Call the regenerate-CSS endpoint |
+| `GET` | `/api/deploy/configs/{id}/source.zip` | Fresh GitHub clone, stripped, zipped for WP upload |
 | `GET` | `/api/deploy/servers` | List SSH servers |
 | `POST` | `/api/deploy/servers` | Create an SSH server |
 | `PATCH` | `/api/deploy/servers/{id}` | Update an SSH server |
@@ -376,6 +396,8 @@ See [`notifications.md`](notifications.md).
 | `GET` | `/api/settings/tracking-time` | TrackingTime credential status |
 | `PATCH` | `/api/settings/tracking-time` | Save TrackingTime credentials |
 | `POST` | `/api/settings/tracking-time/test` | Test TrackingTime credentials |
+| `GET` | `/api/settings/ddashboard` | ddashboard URL + whether a service token is stored |
+| `PATCH` | `/api/settings/ddashboard` | Save the ddashboard service token (`••••••••` = keep current) |
 
 ---
 
@@ -386,6 +408,9 @@ See `.env.example` in the Atlas repo. The ones that wire Atlas into the rest of 
 ```
 ATLAS_ALLOWED_IPS=194.126.177.181,23.88.90.12,95.217.144.93
 ATLAS_DDASHBOARD_URL=https://data3.dominikliss.com/wp-json
+ATLAS_DDASHBOARD_SERVICE_TOKEN=
+ATLAS_AUTH_ACCESS_TTL=900
+ATLAS_AUTH_REFRESH_TTL=28800
 ATLAS_DEMO_MODE=false
 
 DEPLOY_SSH_KEY_PATH=/home/atlas/.ssh/id_ed25519
@@ -421,7 +446,7 @@ TRELLO_TOKEN=
 - [`host-api.md`](host-api.md) — Atlas host API (`api.atlas.foxcraft.digital`)
 - [`dev-instance.md`](dev-instance.md) — Stella-hosted `atlas.dev`
 - [`architecture.md`](architecture.md) — domains, SPA routes, hosting, demo mode
-- [`auth.md`](auth.md) — ddashboard token proxy, roles, IP allowlist
+- [`auth.md`](auth.md) — local login, TOTP, Atlas tokens, user admin, IP allowlist
 - [`atlas-connect/`](atlas-connect/) — WP plugin: login + backups (Atlas driver + Settings vault + WP Sites UI); infection scan (Atlas driver, verdict, allowlist, WP Sites UI)
 - [`deploy-pipeline.md`](deploy-pipeline.md) — ssh_rsync and stella_deploy_api
 - [`monitoring.md`](monitoring.md) — Stella health, Atlas host health, WP uptime

@@ -33,7 +33,7 @@ Identity is **`tasks.trello_card_id` only**. Comments are never pushed.
 | Atlas task | Trello |
 |------------|--------|
 | Open, in the mapped active list, no card yet | Create a card in **In progress** |
-| Later archived (`is_archived`) and already has a card | Move that card to **Done** and mark it complete (`dueComplete=true`). Position is not forced to the top. |
+| Later archived (`is_archived`) and already has a card | Move that card to the **top** of **Done** (`pos=top`) and mark it complete (`dueComplete=true`). Cards already on Done keep their place. |
 | Reopened (archived → open again, e.g. in TrackingTime) and has a card | Move the card back to **In progress** (or **Backlog**) and clear complete (`dueComplete=false`) |
 | Open, in the mapped backlog list, no card yet | Create a card in **Backlog** |
 | `skip_trello` on a mapped-list task | Skip — stays in Atlas, no create/update. An existing card is left on the board as-is |

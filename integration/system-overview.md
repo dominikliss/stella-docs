@@ -9,7 +9,7 @@ This is the **cross-system map** for foxcraft.digital: who owns what, which host
 - Atlas host API: [`../atlas/host-api.md`](../atlas/host-api.md)
 - Atlas dev instance: [`../atlas/dev-instance.md`](../atlas/dev-instance.md)
 - Atlas architecture: [`../atlas/architecture.md`](../atlas/architecture.md)
-- Atlas ↔ ddashboard login: [`../atlas/auth.md`](../atlas/auth.md)
+- Atlas login: [`../atlas/auth.md`](../atlas/auth.md)
 - Atlas ↔ WordPress sites: [`../atlas/atlas-connect/`](../atlas/atlas-connect/)
 - ddashboard ↔ Stella (AI chat only): [`ddashboard-and-stella-server.md`](ddashboard-and-stella-server.md)
 - Stella host: [`../stella-server/README.md`](../stella-server/README.md)
@@ -50,10 +50,11 @@ Stella is a **service host**. It does not have a general-purpose UI. Atlas and d
         ▼
      Atlas SPA  ────────── Bearer token ──────────►  Atlas Laravel API
         │                                                 │
-        │                                                 │ 1. login / verify / refresh
+        │                                                 │ 1. Atlas-issued tokens (local password + TOTP)
+        │                                                 │    leftover ddashboard verify only
         │                                                 ▼
-        │                                           ddashboard
-        │                                           /dls/v1/auth/*
+        │                                           Atlas users / auth_*_tokens
+        │                                           ddashboard /dls/v1/atlas/* (service token)
         │
         │                                                 │ 2. signed SSH (namespace `deploy`)
         │                                                 ▼
@@ -94,7 +95,7 @@ Stella is a **service host**. It does not have a general-purpose UI. Atlas and d
 **Hard rules**
 
 1. The **browser never calls Stella**. Atlas, ddashboard, and Foxx Cloud proxy every Stella call server-side.
-2. Atlas **does not** issue its own login passwords. Identity lives in ddashboard (`/dls/v1/auth/*`).
+2. Atlas **does** issue its own login passwords and API tokens. ddashboard is a business API (clients / TrackingTime ids), not the Atlas IdP. See [`../atlas/auth.md`](../atlas/auth.md).
 3. Stella **deploy-api** and **health-api** do not use bearer tokens. They verify an OpenSSH signature from Atlas’s SSH private key, principal `ddashboard` (same keypair as the old managed-host Atlas; the managed host still holds a copy). Stella **stack-api** is a different trust model: Caddy + app IP allowlist, header token `X-Stack-Token`, and a **separate** SSH key (`/home/atlas/.ssh/atlas-stack-api`, principal `atlas-prod`, namespace `stack`). The shared deploy key is not trusted there. See [`../stella-server/stack-api.md`](../stella-server/stack-api.md).
 4. Stella **media-api** uses HMAC-SHA256 (`MEDIA_HMAC_SECRET`), not SSH signatures — shared hosting on the nest often lacks `ssh-keygen -Y`. See [`../stella-server/media-api.md`](../stella-server/media-api.md).
 5. Stella **stella-api** (`/chat/*`) and **imap-sync** have no HTTP auth — ingress is restricted at the network / Caddy layer.
@@ -105,17 +106,16 @@ Stella is a **service host**. It does not have a general-purpose UI. Atlas and d
 
 ## 3. What each HTTP path is for
 
-### Atlas → ddashboard (identity)
+### Atlas identity
+
+Login, refresh, and logout stay on Atlas (`users`, `auth_access_tokens`, `auth_refresh_tokens`). Details: [`../atlas/auth.md`](../atlas/auth.md).
+
+### Atlas → ddashboard (business APIs)
 
 | Atlas call | ddashboard route | Purpose |
 |------------|------------------|---------|
-| `POST /api/auth/login` | `POST /dls/v1/auth/login` | Exchange username/password for access + refresh tokens |
-| `POST /api/auth/refresh` | `POST /dls/v1/auth/refresh` | Rotate access token |
-| `POST /api/auth/logout` | `POST /dls/v1/auth/logout` | Revoke refresh token |
-| Token middleware (cache miss) | `GET /dls/v1/auth/verify` | Validate bearer token, read `{ id, email, name, roles[] }` |
-| Tools → TrackingTime Import | `GET /dls/v1/atlas/clients`, `/atlas/clients/{id}`, `/atlas/users` | Slim client stub + team users. Bearer + IP allowlist (Atlas `2.31.42.13`, Stella `95.217.144.93` only). Atlas calls these; **not implemented on ddashboard yet.** [`../stella-dashboard/atlas-client-lookup.md`](../stella-dashboard/atlas-client-lookup.md) |
-
-Details: [`../atlas/auth.md`](../atlas/auth.md).
+| Token middleware (unknown Atlas bearer) | `GET /dls/v1/auth/verify` | Leftover: accept an old ddashboard access token until it expires |
+| Tools → TrackingTime Import | `GET /dls/v1/atlas/clients`, `/atlas/clients/{id}`, `/atlas/users` | Slim client stub + team users. Settings → ddashboard service token (env fallback `ATLAS_DDASHBOARD_SERVICE_TOKEN`) + IP allowlist (Atlas `2.31.42.13`, Stella `95.217.144.93` only). [`../stella-dashboard/atlas-client-lookup.md`](../stella-dashboard/atlas-client-lookup.md) |
 
 ### Atlas → Stella (ops)
 
@@ -225,7 +225,7 @@ The private key never crosses the network. Only a short-lived signed payload (`a
 
 | Data | Source of truth | Replica / history |
 |------|-----------------|-------------------|
-| Users, roles, passwords | **ddashboard** (WordPress) | Atlas `users` + Spatie roles (synced on login / verify) |
+| Users, roles, passwords | **Atlas** (`users`, TOTP, Spatie roles) | Leftover ddashboard verify can still firstOrCreate a local row |
 | Clients, invoices, mail | **ddashboard** MySQL | Atlas stores a client stub (`ddashboard_id`, `tracking_time_pro_id`, `name`) after import — [`../stella-dashboard/atlas-client-lookup.md`](../stella-dashboard/atlas-client-lookup.md) |
 | PM board (`dls_pm_*`) | **ddashboard** MySQL | Existing in-theme board. New TrackingTime imports go to Atlas MySQL (tasks, lists, attachments, time entries). Optional one-way Trello push from Atlas: [`../atlas/projects.md`](../atlas/projects.md) |
 | Deploy configs, runs, logs | **Atlas** MySQL | Stella deploy-api keeps its own in-memory/job logs during a run |

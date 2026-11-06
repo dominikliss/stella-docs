@@ -28,17 +28,17 @@ Business code lives under `app/Domain/{Name}/` (controllers, models, jobs, servi
 
 | Domain | Responsibility |
 |--------|----------------|
-| `Auth` | Login proxy, token middleware, IP allowlist, `DdashboardTokenDriver` / `FakeTokenAuthDriver` |
-| `Deploy` | Configs, servers, runs, rsync, Stella deploy-api client, SSH signer, GitHub branches, folder browser |
+| `Auth` | Local password + TOTP login, Atlas-issued tokens, user admin, IP allowlist; leftover `DdashboardTokenDriver` / `FakeTokenAuthDriver` verify fallback |
+| `Deploy` | Configs, servers, runs, rsync, Stella deploy-api client, SSH signer, GitHub branches, folder browser, source zip (`DeploySourcePackager`) |
 | `Monitoring` | Stella health-api + public-probe fallback; Atlas host-api health + optional self-deploy; Hetzner Cloud (atlas + edison backups); history + prune |
 | `WpSites` | Site registry, uptime job, Atlas Connect login, down-alert mail, backup driver + explorer + browser decrypt — see [`atlas-connect/backups.md`](atlas-connect/backups.md). Infection scan driver, inventory, allowlist, verdict — [`atlas-connect/security-scan.md`](atlas-connect/security-scan.md). Staging from a full backup is planned as `create` + `restore` on Stella [`stack-api`](../stella-server/stack-api.md); `wp-staging-api` will not be deployed. Fresh Atlas Connect zip (`GET /api/wp-sites/atlas-connect.zip`) |
 | `Tools` | IMAP migration proxy to Stella `imap-sync`; TrackingTime import / open-task sync (ddashboard [`../stella-dashboard/atlas-client-lookup.md`](../stella-dashboard/atlas-client-lookup.md) for client stubs) |
 | `Projects` | Imported customers/projects/tasks; project metadata edit; attachment download; one-way Trello push ([`projects.md`](projects.md)) |
 | `Notifications` | Rules, Slack webhooks, in-app inbox, weekly hour-budget checker ([`notifications.md`](notifications.md)) |
 | `Stacks` | Stella stack-api client: list / get / restart app stacks. Admin only. Hidden unless `STELLA_STACK_API_ENABLED`. Local `stack_actions` history. **On** atlas.dev 2026-11-04; **off** on prod |
-| `Settings` | `app_settings` key/value (SSH path, stack-api SSH path, Brevo, Hetzner Cloud token, backup S3 + X25519 vault, TrackingTime, Trello) |
+| `Settings` | `app_settings` key/value (SSH path, stack-api SSH path, Brevo, Hetzner Cloud token, backup S3 + X25519 vault, TrackingTime, Trello, ddashboard service token) |
 
-`App\Providers\AtlasServiceProvider` binds `TokenAuthDriver`. With `ATLAS_DEMO_MODE=true` it binds `FakeTokenAuthDriver` instead so the UI can be exercised without ddashboard.
+`App\Providers\AtlasServiceProvider` binds `TokenAuthDriver` for the leftover ddashboard-bearer fallback. With `ATLAS_DEMO_MODE=true` it binds `FakeTokenAuthDriver`. Live login uses local passwords and `AuthTokenService`.
 
 ---
 
@@ -49,6 +49,10 @@ Entry: `resources/views/app.blade.php` → Vite → `resources/js/routes/index.t
 | Route | Page |
 |-------|------|
 | `/login` | `domains/auth/LoginPage` |
+| `/forgot-password` | `domains/auth/ForgotPasswordPage` |
+| `/reset-password` | `domains/auth/ResetPasswordPage` |
+| `/profile` | `domains/auth/ProfilePage` |
+| `/users` | `domains/auth/UsersPage` (admin) |
 | `/backup-decrypt` | `domains/wp-sites/BackupDecryptPage` (no token; private key stays in the tab) |
 | `/dashboard` | `domains/dashboard/DashboardPage` (+ `StellaServerStatus`, `AtlasServerStatus`, `EdisonServerStatus`) |
 | `/deployments` | `domains/deployments/DeploymentsPage` (+ `ConfirmDeployModal` before each run) |
@@ -79,14 +83,14 @@ HTTP
   → AllowedIpMiddleware     (global prepend; GET /api/health returns early inside the class)
   → TokenAuthMiddleware     (auth.token group)
        1. Laravel actingAs (tests)
-       2. Cache hit  token:{sha256(bearer)} → local User
-       3. Cache miss → DdashboardTokenDriver::verify()
+       2. Atlas access token (auth_access_tokens / AuthTokenService)
+       3. Leftover: DdashboardTokenDriver::verify()
             GET {ATLAS_DDASHBOARD_URL}/dls/v1/auth/verify
-       4. firstOrCreate User, sync Spatie roles, bind team
+       4. bind local User + team
   → Domain controller
 ```
 
-Login / refresh / logout skip token middleware (still IP-filtered) and proxy to ddashboard. See [`auth.md`](auth.md).
+Login / refresh / logout / forgot / reset skip token middleware (still IP-filtered) and use Atlas-issued tokens. See [`auth.md`](auth.md).
 
 ---
 
@@ -94,9 +98,9 @@ Login / refresh / logout skip token middleware (still IP-filtered) and proxy to 
 
 | Table / store | Purpose |
 |---------------|---------|
-| `users`, `teams`, Spatie permission tables | Local user projection of ddashboard identity |
-| `personal_access_tokens` | Sanctum leftover — **not** the live Atlas API auth path |
-| `app_settings` | SSH key path/passphrase, `stack_api_ssh_key_path`, Brevo keys, Hetzner Cloud token, TrackingTime, Trello key/token (encrypted), alert recipient |
+| `users`, `teams`, Spatie permission tables | Atlas identity (password, TOTP, `is_active`, roles). `ddashboard_user_id` is leftover from the old proxy |
+| `auth_access_tokens`, `auth_refresh_tokens` | Atlas-issued API sessions (hashed). Sanctum `personal_access_tokens` is leftover |
+| `app_settings` | SSH key path/passphrase, `stack_api_ssh_key_path`, Brevo keys, Hetzner Cloud token, TrackingTime, Trello key/token, ddashboard service token (encrypted), alert recipient |
 | `deploy_configs`, `deploy_destinations`, `deploy_servers` | What/where to deploy (`deploy_destinations.is_active` defaults true) |
 | `deploy_runs`, `deploy_run_destinations` | Run history + per-target logs / `stella_job_id` |
 | `stella_health_checks`, `stella_service_uptime_logs` | 5-min Stella snapshots (30-day retention) |
@@ -159,7 +163,7 @@ deploy-api and health-api each have their **own** `allowed_signers` file. health
 
 ## Tests
 
-Pest feature tests under `tests/Feature/{Auth,Deploy,Projects,Settings,Stacks}/` and unit tests under `tests/Unit/`. Auth tests point `atlas.ddashboard_url` at a fake host and mock HTTP. Trello tests fake `api.trello.com`. Stack tests (`Http::fake` stack-api) pass on atlas.dev (11 tests, 2026-11-04).
+Pest feature tests under `tests/Feature/{Auth,Deploy,Projects,Settings,Stacks}/` and unit tests under `tests/Unit/`. Auth tests create local users (password + TOTP). Trello tests fake `api.trello.com`. Stack tests (`Http::fake` stack-api) pass on atlas.dev (11 tests, 2026-11-04).
 
 ---
 
