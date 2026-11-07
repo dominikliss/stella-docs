@@ -12,7 +12,7 @@ Ops accounts live in Atlas (`users.password`, TOTP secret, recovery codes, Spati
 
 A leftover `DdashboardTokenDriver` still verifies an unknown bearer against `GET {ATLAS_DDASHBOARD_URL}/dls/v1/auth/verify` so an old ddashboard access token can open the API until it expires. New sessions never go that path.
 
-**SPA chrome** for `/login`, `/forgot-password`, `/reset-password` is a branded landing (pink atmosphere, centered card), not Technical Precision app chrome. Snapshot, tokens, and WCAG 2.1 AA: [`../design-language/auth-landing.md`](../design-language/auth-landing.md).
+**SPA chrome** for `/login`, `/forgot-password`, `/reset-password` is the 2026-11-07 **landing language** (pink as chrome, glow, 8–12px radius, 1px pink focus + soft halo), not Technical Precision. Snapshot, comparison table, and WCAG 2.1 AA: [`../design-language/auth-landing.md`](../design-language/auth-landing.md).
 
 ---
 

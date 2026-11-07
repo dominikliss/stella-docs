@@ -352,6 +352,6 @@ Material Symbols Outlined (FILL 0, wght 300)
 
 ## 11. Auth landing (Atlas-only exception)
 
-Unauthenticated Atlas screens (`/login`, `/forgot-password`, `/reset-password`) shipped 2026-11-07 as a **pink branded landing**, not as Technical Precision chrome. Full snapshot, tokens used, WCAG 2.1 AA decisions: [auth-landing.md](auth-landing.md).
+Unauthenticated Atlas screens (`/login`, `/forgot-password`, `/reset-password`) shipped 2026-11-07 as a **pink branded landing**, not as Technical Precision chrome. That landing is the seed of a possible later app-wide language (pink as chrome, glow, 8–12px radius, 1px pink focus + soft halo). Full snapshot, comparison table, tokens, WCAG 2.1 AA: [auth-landing.md](auth-landing.md).
 
-Do not treat that file as a second design language for the rest of Atlas. A later app-wide redesign may replace it. Until then, copy from SPEC for signed-in UI and from `auth-landing.md` only when touching those three routes.
+Until a redesign lands, copy from SPEC for signed-in UI and from `auth-landing.md` only when touching those three routes — or when the user asks to extend the new language.

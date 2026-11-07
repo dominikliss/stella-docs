@@ -1,6 +1,27 @@
 # Atlas auth landing (2026-11-07)
 
-Snapshot of the unauthenticated screens after the 2026-11-07 design sessions, plus the WCAG 2.1 AA pass that followed. **Not** the shared Technical Precision chrome. The signed-in app still follows [SPEC.md](SPEC.md). Dominik intends a later app-wide redesign; keep this file as the record of what shipped on login / forgot / reset / 2FA that day.
+Snapshot of the unauthenticated screens after the 2026-11-07 design sessions, plus the WCAG 2.1 AA pass that followed. **Not** the shared Technical Precision chrome. The signed-in app still follows [SPEC.md](SPEC.md). Dominik intends a later app-wide redesign; this file is the record of the **new landing language** (pink chrome, glow, 8–12px radius, soft focus) and the AA rules that have to travel with it.
+
+---
+
+## New language at a glance
+
+Copy these when the rest of Atlas is redesigned. Do not copy Technical Precision’s white primary button, 4px radius, or “no glow / no gradient” rules onto a screen that should feel like login.
+
+| Rule | Landing | Technical Precision (signed-in) |
+|------|---------|----------------------------------|
+| Accent | Atlas pink `#f472b6` **is chrome** (CTA, step, focus, checked) | Pink is identity-only; primary action is white |
+| Atmosphere | `layer-0` + pink radials + fading pink grid + faint mark | Flat `layer-0`, no gradients |
+| Card | Opaque `layer-1`, **12px** radius, pink border + pink glow | 4px radius, `tech-border`, no shadow |
+| CTA | 40px, **8px** radius, `#09090B` on `#f472b6`; hover/active `#ec4899` + pink glow; no white flash | 32–36px, 4px, white fill, no glow |
+| Field rest | 40px, **8px** radius, fill `#09090B`, border `outline` `#8e9192` | 4px, `outline-variant` / `tech-border` |
+| Field focus | **1px `#f472b6` border** + **3px halo** `rgba(244, 114, 182, 0.2)`. Not a second solid ring (that read as a fat outline). | 1px white border, no glow |
+| CTA / checkbox focus | Dark 2px gap + outer 2px white ring (pink-on-black cannot hit 3:1 both ways) | 1px white border |
+| Title | 22px / 600 on the card | `h1` 18px |
+| Links | Underlined `on-surface-variant`, hover pink | Colour / placement only is not enough next to body text |
+| Copy | No slogans. Header wordmark, version, `© foxcraft.digital` | Ops density |
+
+WCAG that is part of this language, not optional polish: rest borders `#8e9192`, field focus = 1px pink (halo is decoration), form errors as `role="alert"` + `aria-invalid`, page title per step, the page must scroll (no `overflow: hidden` trap), underlined links, `prefers-reduced-motion` on the spinner.
 
 **Routes:** `/login`, `/forgot-password`, `/reset-password`  
 **Code:** `resources/js/domains/auth/AuthShell.tsx`, `LoginPage.tsx`, `OtpInput.tsx`, `ForgotPasswordPage.tsx`, `ResetPasswordPage.tsx`, `resources/css/app.css` (`.auth-*`)  
@@ -66,7 +87,7 @@ Uses Technical Precision layers, then **Atlas identity pink as chrome**. That br
 | Step / hover links | `atlas` `#f472b6` | |
 | CTA fill | `#f472b6` → hover/active `#ec4899` | Text `#09090B`, weight 600 |
 | Input / checkbox / OTP rest border | `outline` `#8e9192` | WCAG 1.4.11; not `tech-border-bright` `#3F3F46` (~2:1) |
-| Input / OTP focus | 1px + 2px solid `#f472b6` | |
+| Input / OTP focus | 1px `#f472b6` border + 3px halo `rgba(244, 114, 182, 0.2)` | The 1px border is the 1.4.11 indicator (~7:1). Do not add a second solid ring. |
 | CTA / checkbox focus | `0 0 0 2px #0C0C0E, 0 0 0 4px #ffffff` | Double ring: white is adjacent to the dark gap, not to the pink fill |
 | Error | `error` `#ffb4ab` | Text + border |
 | Text | `primary` / `on-surface` / `on-surface-variant` | Same as SPEC §2.2 |
@@ -147,6 +168,7 @@ Audit was code-based (this conversation, 2026-11-07). Target: **WCAG 2.1 Level A
 | Criterion | Was | Now |
 |-----------|-----|-----|
 | **1.4.11** Non-text contrast | Input / OTP / checkbox border `#3F3F46` on `#0C0C0E` ≈ 2:1. Fill `#09090B` vs card is ~1:1, so the border *is* the control edge. | Rest border `#8e9192` (design-token `outline`). |
+| **1.4.11** Field focus | First AA pass used 1px + **2px solid** `#f472b6` — contrast-legal but visually a thick outline. | **1px `#f472b6` border** (≈7:1, the actual indicator) + **3px 20% halo**. Do not bring the solid extra ring back. Error focus uses the same halo in `#ffb4ab`. |
 | **1.4.11** CTA focus | `box-shadow: 0 0 0 3px rgba(244,114,182,0.35)` ≈ 2:1 vs the page. A solid pink or white ring cannot hit 3:1 against **both** `#f472b6` and `#09090B`. | Dark 2px gap + outer 2px white ring (GDS-style offset indicator). Same on the checkbox. |
 | **1.4.3** CTA `:active` | `#09090B` on `#db2777` ≈ 4.4:1 at 13px. | Active = hover `#ec4899` (~5.8:1). |
 | **1.4.3** Footer version | `on-surface-variant/70` on the bottom-left pink glow could drop to ~3:1. | Full `on-surface-variant`. |
@@ -178,7 +200,7 @@ AA has no minimum px size. 12px labels and 13px body are legal here because cont
 ### How to keep AA if the landing is redesigned
 
 1. Control edges ≥ 3:1 against the adjacent fill (`outline` `#8e9192` on this dark card works; `#3F3F46` does not).
-2. Focus indicator ≥ 3:1 against **both** the control and the background — use a two-colour offset ring if the CTA is saturated pink on near-black.
+2. Focus indicator ≥ 3:1 against **both** the control and the background. Fields: 1px pink border is enough; keep the halo soft. CTA: two-colour offset ring (pink-on-black cannot do both with one colour).
 3. Associate errors (`aria-invalid`, `aria-describedby`, `role="alert"`). Do not hang a form-level failure only on Password.
 4. Change `document.title` per step.
 5. Never `overflow: hidden` a centered auth card; the page must be able to scroll at 320px CSS width.
