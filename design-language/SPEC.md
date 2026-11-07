@@ -14,12 +14,12 @@ Use this when building any internal tool that submodules `stella-docs`. The UI r
 ## Hard rules
 
 - Dark only. No light theme.
-- No box-shadows, blurs, or glass. (Atlas currently cheats on the login card and the mobile nav backdrop — do not copy those.)
-- No decorative gradients.
+- No box-shadows, blurs, or glass in **app chrome**. (Atlas cheats on the mobile nav backdrop. Auth landing is a documented exception — [auth-landing.md](auth-landing.md) — do not copy it into signed-in screens.)
+- No decorative gradients in **app chrome**. Auth landing uses pink radials and a grid; that is landing-only.
 - Depth = darker/lighter surfaces + 1px borders.
 - Information density over whitespace.
 - Status colour is for **state only**, never as a brand accent on chrome.
-- Atlas pink / Stella sky / Edison green are **product identity** for those three systems, not shared chrome. See §2.5.
+- Atlas pink / Stella sky / Edison green are **product identity** for those three systems, not shared chrome. See §2.5. Auth landing is the exception that uses Atlas pink as chrome.
 
 Canonical values are the **live tokens** (this file + `tokens.json`), not the Zinc prose that still sits in Atlas `design/DESIGN.md`.
 
@@ -347,3 +347,11 @@ Material Symbols Outlined (FILL 0, wght 300)
 - Not ddashboard (different fonts, purple accent, German, desktop-only).
 - Not a public marketing brand.
 - Do not port Breeze leftovers (`PrimaryButton` gray/indigo, white modal + shadow).
+
+---
+
+## 11. Auth landing (Atlas-only exception)
+
+Unauthenticated Atlas screens (`/login`, `/forgot-password`, `/reset-password`) shipped 2026-11-07 as a **pink branded landing**, not as Technical Precision chrome. Full snapshot, tokens used, WCAG 2.1 AA decisions: [auth-landing.md](auth-landing.md).
+
+Do not treat that file as a second design language for the rest of Atlas. A later app-wide redesign may replace it. Until then, copy from SPEC for signed-in UI and from `auth-landing.md` only when touching those three routes.

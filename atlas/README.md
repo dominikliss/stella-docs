@@ -53,6 +53,7 @@ It is **not** the business dashboard. Clients, invoices, and mail live in **ddas
 | [host-api.md](host-api.md) | Atlas host API (`api.atlas.foxcraft.digital`) |
 | [dev-instance.md](dev-instance.md) | Stella-hosted `atlas.dev.foxcraft.digital` |
 | [auth.md](auth.md) | Local login, TOTP, Atlas tokens, user admin, IP allowlist |
+| [../design-language/auth-landing.md](../design-language/auth-landing.md) | Login / forgot / reset UI snapshot (2026-11-07) and WCAG 2.1 AA |
 | [atlas-connect/](atlas-connect/) | WP plugin: login + backups + infection scan |
 | [deploy-pipeline.md](deploy-pipeline.md) | ssh_rsync and stella_deploy_api |
 | [monitoring.md](monitoring.md) | Stella health + WP uptime |

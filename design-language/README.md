@@ -8,6 +8,7 @@ Shared visual language for **new internal ops tools** (Atlas and anything that s
 |------|------|
 | [SPEC.md](SPEC.md) | The language: colour, type, layout, components, shell recipe |
 | [tokens.json](tokens.json) | Machine-readable tokens. Copy these names into Tailwind / CSS |
+| [auth-landing.md](auth-landing.md) | Atlas login / forgot / reset snapshot (2026-11-07) + WCAG 2.1 AA. Not shared chrome. |
 
 **Reference implementation:** Atlas SPA (`resources/js`, `resources/css/app.css`, `tailwind.config.ts`). Atlas mockups live in the Atlas repo under `design/`.
 
