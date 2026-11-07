@@ -1,8 +1,8 @@
 # stella-docs
 
-**Single source of truth** for foxcraft.digital: **ddashboard**, **Stella**, **Atlas**, and **Edison**.
+**Single source of truth** for foxcraft.digital: **ddashboard**, **Stella**, **Atlas**, **Edison**, and **york**.
 
-Vendored as `docs/stella-docs` in the theme and in Atlas. Edit **here**, push this repo, then bump the parent submodule pointer.
+Vendored as `docs/stella-docs` in the theme, Atlas, and Edison. Edit **here**, push this repo, then bump the parent submodule pointer.
 
 ---
 
@@ -16,6 +16,7 @@ Servers use One Piece Vegapunk-satellite names. Firewalls, IPs, and networks use
 | **Stella** | AI / services host (dedicated) |
 | **Atlas** | Operations platform (deploys, health, WP sites, IMAP copy, TrackingTime import, Trello push, notifications) |
 | **Edison** | Coding-agent host (Hetzner Cloud) — “Invention” |
+| **york** | Access gateway (Hetzner Cloud WireGuard) — not a service host |
 
 ---
 
@@ -28,6 +29,7 @@ Servers use One Piece Vegapunk-satellite names. Firewalls, IPs, and networks use
 | [stella-server/README.md](stella-server/README.md) | Stella host and services |
 | [stella-dashboard/README.md](stella-dashboard/README.md) | ddashboard theme (folder name is historical) |
 | [edison/README.md](edison/README.md) | Edison coding-agent host |
+| [york/README.md](york/README.md) | WireGuard access gateway (set up 2026-11-07) |
 | [design-language/README.md](design-language/README.md) | Shared UI language for Atlas-like internal tools ([auth-landing.md](design-language/auth-landing.md) = Atlas login snapshot, not shared chrome) |
 | [open-gaps.md](open-gaps.md) | Known gaps and backlog |
 
@@ -44,6 +46,7 @@ Topic pages live in each system README. Shared contracts stay as two files (Atla
 | [**stella-server/**](stella-server/) | Stella host: infra, APIs, per-app SSH; app runbooks under [`apps/`](stella-server/apps/) |
 | [**stella-dashboard/**](stella-dashboard/) | ddashboard product docs, OpenAPI, Cursor rule exports |
 | [**edison/**](edison/) | Edison host, `edison-net`, Cursor CLI / sshfs |
+| [**york/**](york/) | WireGuard access gateway: host, peers, MacBook client, whitelist rule |
 | [**design-language/**](design-language/) | Technical Precision: spec + tokens for new internal tools (not ddashboard). Atlas login landing (2026-11-07) + WCAG AA: [auth-landing.md](design-language/auth-landing.md) |
 
 ---

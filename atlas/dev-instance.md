@@ -16,7 +16,7 @@ Laravel Atlas running on **Stella**, not on the production CX33. Separate databa
 | **Path** | `/opt/apps/laravel/atlas.dev.foxcraft.digital/` |
 | **DNS** | A record `atlas.dev` → `95.217.144.93` (zone `567656`) |
 | **TLS** | Let's Encrypt production via DNS-01 |
-| **Caddy** | Block in `/opt/services/caddy/Caddyfile`: 403 for everything except `194.126.177.181`, `reverse_proxy` to `atlas.dev.foxcraft.digital:80` |
+| **Caddy** | Block in `/opt/services/caddy/Caddyfile`: 403 for everything except `194.126.177.181` and `78.47.218.190` (york, 2026-11-07), `reverse_proxy` to `atlas.dev.foxcraft.digital:80` |
 
 ---
 
@@ -135,7 +135,9 @@ Git/GitHub in the **`-ssh` container** works through SSH agent forwarding. That 
 
 If the Cursor terminal has no `SSH_AUTH_SOCK`, run **Remote-SSH: Kill VS Code Server on Host** and reconnect.
 
-Stella `DOCKER-USER` ACCEPTs port **2205** from Dominik’s IP, the managed host, and Edison. Next free SSH container port: **2208** (2206 hypershape, 2207 Edison dev). See [`../stella-server/infrastructure.md`](../stella-server/infrastructure.md).
+Stella `DOCKER-USER` ACCEPTs port **2205** from Dominik’s IP (Proton + york `78.47.218.190`, 2026-11-07), the managed host, and Edison. Next free SSH container port: **2208** (2206 hypershape, 2207 Edison dev). See [`../stella-server/infrastructure.md`](../stella-server/infrastructure.md), [`../york/README.md`](../york/README.md).
+
+Verified 2026-11-07 through york: `ssh atlas.dev.foxcraft.digital 'echo OK'` → OK, `https://atlas.dev.foxcraft.digital` → 200.
 
 ### GitHub clone gotchas (2026-10-11)
 
@@ -151,6 +153,13 @@ Enabled on this instance. Keys live in `src/.env` (see table above). Migration `
 
 A container on `edge` calling `https://stella-stack-api.foxcraft.digital` is seen by Caddy as `172.20.0.1`, not `95.217.144.93`. Test that path from **inside** the app container. See [`../stella-server/stack-api.md`](../stella-server/stack-api.md).
 
+## Gotchas (2026-11-07)
+
+- **Black screen on `atlas.dev`:** a leftover `public/hot` from `npm run dev` makes Laravel load assets from `http://127.0.0.1:5173` → blocked on HTTPS. Fix: stop Vite, delete `public/hot`, `npm run build`. Separate from the Proton packet-loss disconnects — see [`../york/README.md`](../york/README.md).
+- The `-ssh` container had 7 stale Cursor `fileWatcher` processes (some 10 days old) and ~528 PIDs. Remedy: Cursor “Kill Remote SSH Server and Reload Window” or `docker restart atlas.dev.foxcraft.digital-ssh` (app, db, queue keep running). Consider `files.watcherExclude` for `vendor/`, `node_modules/`, `storage/`, `public/build/`, and `init: true` for the ssh service (**UNVERIFIED** whether the PIDs are zombies).
+- Cursor’s agent window keeps “Reconnecting…” after the remote server is killed; start a new chat from the editor window instead.
+- Plain `ssh atlas.dev.foxcraft.digital` takes ~5 s to log in; probably `UseDNS` in the container sshd (**UNVERIFIED**).
+
 ## Verified
 
 - Login
@@ -158,3 +167,4 @@ A container on `edge` calling `https://stella-stack-api.foxcraft.digital` is see
 - Scheduler
 - Queue
 - 0 pending migrations
+- 2026-11-07 through york: SSH `echo OK` and HTTPS 200 on `atlas.dev.foxcraft.digital`

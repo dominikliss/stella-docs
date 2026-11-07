@@ -153,6 +153,8 @@ api.edison.foxcraft.digital {
 
 `flush_interval -1` disables SSE buffering.
 
+**york (2026-11-07):** Hetzner `edison-firewall` TCP/443 now also allows `78.47.218.190`. The Caddy matchers above were **not** given that IP — `/v1/*` from the MacBook via york → 403. See [`../open-gaps.md`](../open-gaps.md), [`../york/README.md`](../york/README.md).
+
 ---
 
 ## allowed_signers

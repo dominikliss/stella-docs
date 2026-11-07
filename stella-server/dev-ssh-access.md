@@ -153,6 +153,7 @@ Each `-ssh` service publishes its port on `0.0.0.0` (`"22XX:22"`), which — per
 
 ```bash
 iptables -A DOCKER-USER -i $WAN_IF -s 194.126.177.181 -p tcp --dport 22XX -j ACCEPT
+iptables -A DOCKER-USER -i $WAN_IF -s 78.47.218.190 -p tcp --dport 22XX -j ACCEPT  # york
 iptables -A DOCKER-USER -i $WAN_IF -s 23.88.90.12 -p tcp --dport 22XX -j ACCEPT
 iptables -A DOCKER-USER -i $WAN_IF -p tcp --dport 22XX -j DROP
 ```

@@ -24,6 +24,10 @@
 - **Role:** Coding-agent sandbox (Cursor CLI). Rebuilt 2026-10-09 on CX33; Primary IPv4 **`edison-ip` `178.105.203.54`**. Must not run on Stella.
 - **Docs:** [`../edison/README.md`](../edison/README.md)
 
+### york (Hetzner Cloud) — access gateway, not this host
+- **Role:** WireGuard access server. Set up 2026-11-07. Operator traffic to Stella leaves via floating IP **`york-floating-ip` `78.47.218.190`** (whitelisted). Primary IP **`york-ip` `2.28.33.52`** is not whitelisted. Proton `194.126.177.181` stays as fallback.
+- **Docs:** [`../york/README.md`](../york/README.md)
+
 ---
 
 ## Services on Stella
@@ -227,7 +231,7 @@ osgar.datahub.foxcraft.digital {
     }
     # Allow team IPs + client IPs; block everyone else.
     # See client-ip-access.md — client IPs are temporary.
-    @blocked not remote_ip 194.126.177.181 23.88.90.12 213.47.151.242 89.67.29.69
+    @blocked not remote_ip 194.126.177.181 78.47.218.190 23.88.90.12 213.47.151.242 89.67.29.69
     respond @blocked 403
     reverse_proxy osgar-datahub-dev:8080
 }
@@ -253,7 +257,7 @@ atlas.dev.foxcraft.digital {
             dns hetzner {env.HETZNER_API_TOKEN}
         }
     }
-    @blocked not remote_ip 194.126.177.181
+    @blocked not remote_ip 194.126.177.181 78.47.218.190
     respond @blocked 403
     reverse_proxy atlas.dev.foxcraft.digital:80
 }
@@ -266,7 +270,7 @@ edison.dev.foxcraft.digital {
             dns hetzner {env.HETZNER_API_TOKEN}
         }
     }
-    @blocked not remote_ip 194.126.177.181
+    @blocked not remote_ip 194.126.177.181 78.47.218.190
     respond @blocked 403
     reverse_proxy edison.dev.foxcraft.digital:80
 }
@@ -275,6 +279,8 @@ edison.dev.foxcraft.digital {
 > **Per-site IP scoping (2026-09-03):** `@blocked` matchers were added to all site blocks. Blocks other than `osgar.datahub` deny the client IPs outright; `osgar.datahub` uses an allow-list. This is the second layer of a two-layer approach — the first layer (DOCKER-USER) lets client IPs reach port 443 at all; Caddy's matchers then restrict which subdomain they can actually use. See [`client-ip-access.md`](client-ip-access.md) for the full rationale, the list of current client IPs, and removal instructions.
 
 > **Caddyfile reality check (2026-10-03):** port 443 in `DOCKER-USER` also ACCEPTs `49.13.27.117`. Caddy `@blocked` deny-lists contain `49.13.27.117` on `stella`, `stella-deployment-api`, `stella-health-api`, and `dominikliss`, but **not** on `advoapp.finditoo` (that block only denies `213.47.151.242` and `89.67.29.69`), so that IP currently reaches `advoapp.finditoo`. **TODO (Dominik):** who is `49.13.27.117` (client? expiry?) and whether the `advoapp.finditoo` block should deny it too. The live `osgar.datahub` upstream is `osgar-datahub-dev:8080` (the excerpt previously showed `osgar.datahub.foxcraft.digital:8080`).
+
+> **york (2026-11-07):** `78.47.218.190` added to the three allow lists (`osgar.datahub`, `atlas.dev`, `edison.dev`). `stack-api` Caddy allow list (`2.31.42.13 95.217.144.93 172.20.0.1`) is unchanged; it never contained the Proton IP. Backup `/root/Caddyfile.bak-2026-11-07`. Written in place (`cat /tmp/Caddyfile.new > caddy/Caddyfile`) to keep the inode for the single-file bind mount, then `docker compose restart caddy` (container `services-caddy-1`, no errors in logs). See [`../york/README.md`](../york/README.md).
 
 **Required template for every new domain block** (copy as-is; only change hostname + upstream). Add the `@blocked` deny-list if any client IPs are in effect — see [`client-ip-access.md`](client-ip-access.md):
 
@@ -309,6 +315,8 @@ The `dir` line is decisive — without it, Caddy can still fall back internally 
 Each new subdomain gets its own block at the bottom, reverse-proxying to a container name — usually on the `edge` network. **Exception:** `stella-stack-api` is on the isolated `stack` network (`services_stack`); only Caddy and `stack-api` join it. Caddy handles TLS automatically via DNS-01, no manual cert management needed.
 
 **After any Caddyfile edit:** `docker compose restart caddy` is required (not `up -d` alone — Compose does not recreate/reload on bind-mounted file content changes). Restart mid-retry is fine; Caddy simply restarts the attempt for the affected domain. **Also** `docker compose up -d --force-recreate health-api` — health-api bind-mounts the Caddyfile as a **single file**; `sed -i` (new inode) leaves the container on the old file, so cert discovery for the new domain stays stale until force-recreate (Issue 4, 2026-10-18). `docker compose restart caddy` was enough for Caddy itself.
+
+**2026-11-07 (york allow lists):** wrote the new Caddyfile in place with `cat /tmp/Caddyfile.new > caddy/Caddyfile` so the inode stayed the same, then `docker compose restart caddy`. Do not `rm` + recreate the bind-mounted file.
 
 **`caddy-data` volume (added 2026-09-01):** Caddy stores ACME certificates under `/data`. Before this volume existed, every `docker compose up -d --force-recreate caddy` (or `down`/`up`) wiped all certs and forced a full re-issuance across every domain. That is what happened when the leftover `8080`/`3001` port publishes were removed — a multi-domain recert storm, including a transient Let's Encrypt staging fallback on `stella-deployment-api.foxcraft.digital` (resolved after clearing one stale `_acme-challenge` TXT record and waiting out normal DNS-01 retries — same Issue 2/3 pattern, no new failure mode). The named volume is declared next to `ollama-models` under the top-level `volumes:` key. **This should prevent the whole-fleet-recert issue from recurring on any future Caddy recreate.** The volume lives outside `/opt/services` as `services_caddy-data`. As of 2026-10-10 restic includes every volume used by a container (except `ollama-models` and dumped DB volumes), so **`caddy-data` is backed up** — a restore should not force a recert storm. See [`backup.md`](backup.md).
 
@@ -618,7 +626,7 @@ Fully decommissioned. See git history / prior doc versions if a vector search fe
 
 ### Current state (verified 2026-08-06; ports updated 2026-08-07, 2026-09-01, 2026-09-03)
 
-- **UFW** — active, default-deny incoming. Ports 22, 443 restricted to `194.126.177.181` and `23.88.90.12`. Port 8001 additionally allows `172.18.0.0/16` (`services_default` bridge subnet) for Caddy's internal proxy calls, **and `172.20.0.0/16` (`edge` bridge subnet, added 2026-08-10)** for `health-api`'s stella-api check. Port 11434's direct-access rules removed 2026-08-10 once Ollama moved fully behind the `edge` network / Caddy — no longer needs a host-level UFW allowance for the old static-IP whitelist. Host SSH (port 22) remains Dominik-only; per-app Cursor SSH uses Docker-published `22XX` ports — [`dev-ssh-access.md`](dev-ssh-access.md).
+- **UFW** — active, default-deny incoming. Ports 22, 443 restricted to `194.126.177.181` and `23.88.90.12`. **2026-11-07:** `ufw allow from 78.47.218.190 to any port 22 proto tcp comment 'york'`. Port 8001 additionally allows `172.18.0.0/16` (`services_default` bridge subnet) for Caddy's internal proxy calls, **and `172.20.0.0/16` (`edge` bridge subnet, added 2026-08-10)** for `health-api`'s stella-api check. Port 11434's direct-access rules removed 2026-08-10 once Ollama moved fully behind the `edge` network / Caddy — no longer needs a host-level UFW allowance for the old static-IP whitelist. Host SSH (port 22) remains Dominik-only; per-app Cursor SSH uses Docker-published `22XX` ports — [`dev-ssh-access.md`](dev-ssh-access.md). Operator access is via york (`78.47.218.190`); Proton stays as fallback. See [`../york/README.md`](../york/README.md).
 - **fail2ban** — running
 - **Docker-published ports (443, 2201, 2202, 2204, 2205, 2206, 2207, and 8081)** — protected via a custom `DOCKER-USER` iptables chain (details below). Per-app SSH containers add a new `22XX` as they are created. Next free SSH port: **2208**. Port 2203 is free (`advoapp-redesign-ssh` removed 2026-10-10). Port 2205 is Atlas dev (ACCEPT: Dominik’s IP, managed host, Edison). Port 2206 is `hypershape.foxcraft.digital-ssh`. Port 2207 is Edison dev (ACCEPT: Dominik’s IP, managed host, Edison; verified live 2026-10-26). Port 2201 (and 2204) also ACCEPT `178.105.203.54` — Edison **`edison-ip`**, confirmed 2026-10-09 (IPv4 moved with the server; no Stella firewall change). From Edison, `edison-ip` also reaches **2202, 2205, 2206, and 2207** (verified 2026-11-02). **TODO (Dominik):** confirm the exact `DOCKER-USER` lines for 2202 and 2206 in `/usr/local/bin/docker-user-firewall.sh`. See [`../edison/infrastructure.md`](../edison/infrastructure.md). Port **443** also ACCEPT `2.31.42.13` — Atlas Cloud host (added 2026-10-10; Atlas calls deploy-api, health-api, and stack-api). Port **8081** has team-IP ACCEPT + DROP; **TODO (Dominik):** what 8081 is.
 - **Per-site Caddy `remote_ip` scoping (added 2026-09-03)** — client IPs granted access to `osgar.datahub.foxcraft.digital` only; most other Caddy site blocks explicitly deny those IPs via `@blocked remote_ip` matchers. `49.13.27.117` is ACCEPTed on port 443 and denied on some blocks but **not** on the `advoapp.finditoo` block — see the Caddyfile reality check above and [`client-ip-access.md`](client-ip-access.md).
@@ -647,14 +655,17 @@ WAN_IF="eno1"
 iptables -F DOCKER-USER
 
 iptables -A DOCKER-USER -i $WAN_IF -s 194.126.177.181 -p tcp --dport 3001 -j ACCEPT
+iptables -A DOCKER-USER -i $WAN_IF -s 78.47.218.190 -p tcp --dport 3001 -j ACCEPT  # york
 iptables -A DOCKER-USER -i $WAN_IF -s 23.88.90.12 -p tcp --dport 3001 -j ACCEPT
 iptables -A DOCKER-USER -i $WAN_IF -p tcp --dport 3001 -j DROP
 
 iptables -A DOCKER-USER -i $WAN_IF -s 194.126.177.181 -p tcp --dport 8080 -j ACCEPT
+iptables -A DOCKER-USER -i $WAN_IF -s 78.47.218.190 -p tcp --dport 8080 -j ACCEPT  # york
 iptables -A DOCKER-USER -i $WAN_IF -s 23.88.90.12 -p tcp --dport 8080 -j ACCEPT
 iptables -A DOCKER-USER -i $WAN_IF -p tcp --dport 8080 -j DROP
 
 iptables -A DOCKER-USER -i $WAN_IF -s 194.126.177.181 -p tcp --dport 443 -j ACCEPT
+iptables -A DOCKER-USER -i $WAN_IF -s 78.47.218.190 -p tcp --dport 443 -j ACCEPT  # york
 iptables -A DOCKER-USER -i $WAN_IF -s 23.88.90.12 -p tcp --dport 443 -j ACCEPT
 iptables -A DOCKER-USER -i $WAN_IF -s 2.31.42.13 -p tcp --dport 443 -j ACCEPT  # atlas
 iptables -A DOCKER-USER -i $WAN_IF -s 213.47.151.242 -p tcp --dport 443 -j ACCEPT  # client (osgar.datahub only — temporary)
@@ -667,37 +678,46 @@ iptables -A DOCKER-USER -i $WAN_IF -p tcp --dport 443 -j DROP
 # Port 2205 is Atlas dev (your IP, managed host, Edison).
 # Port 2206 is hypershape.foxcraft.digital-ssh. Port 2207 is Edison dev (your IP, managed host, Edison).
 iptables -A DOCKER-USER -i $WAN_IF -s 194.126.177.181 -p tcp --dport 2201 -j ACCEPT
+iptables -A DOCKER-USER -i $WAN_IF -s 78.47.218.190 -p tcp --dport 2201 -j ACCEPT  # york
 iptables -A DOCKER-USER -i $WAN_IF -s 23.88.90.12 -p tcp --dport 2201 -j ACCEPT
 iptables -A DOCKER-USER -i $WAN_IF -s 178.105.203.54 -p tcp --dport 2201 -j ACCEPT  # Edison edison-ip (confirmed 2026-10-09)
 iptables -A DOCKER-USER -i $WAN_IF -p tcp --dport 2201 -j DROP
 
 iptables -A DOCKER-USER -i $WAN_IF -s 194.126.177.181 -p tcp --dport 2202 -j ACCEPT
+iptables -A DOCKER-USER -i $WAN_IF -s 78.47.218.190 -p tcp --dport 2202 -j ACCEPT  # york
 iptables -A DOCKER-USER -i $WAN_IF -s 23.88.90.12 -p tcp --dport 2202 -j ACCEPT
 iptables -A DOCKER-USER -i $WAN_IF -p tcp --dport 2202 -j DROP
 # Edison reaches 2202 (verified 2026-11-02 from cursor-agent). The excerpt above
 # does not list edison-ip. TODO (Dominik): confirm the live script lines.
 
 iptables -A DOCKER-USER -i $WAN_IF -s 194.126.177.181 -p tcp --dport 2204 -j ACCEPT
+iptables -A DOCKER-USER -i $WAN_IF -s 78.47.218.190 -p tcp --dport 2204 -j ACCEPT  # york
 iptables -A DOCKER-USER -i $WAN_IF -s 23.88.90.12 -p tcp --dport 2204 -j ACCEPT
 iptables -A DOCKER-USER -i $WAN_IF -s 178.105.203.54 -p tcp --dport 2204 -j ACCEPT  # Edison edison-ip (same as 2201)
 iptables -A DOCKER-USER -i $WAN_IF -p tcp --dport 2204 -j DROP
 
 iptables -A DOCKER-USER -i $WAN_IF -s 194.126.177.181 -p tcp --dport 2205 -j ACCEPT
+iptables -A DOCKER-USER -i $WAN_IF -s 78.47.218.190 -p tcp --dport 2205 -j ACCEPT  # york
 iptables -A DOCKER-USER -i $WAN_IF -s 23.88.90.12 -p tcp --dport 2205 -j ACCEPT
 iptables -A DOCKER-USER -i $WAN_IF -s 178.105.203.54 -p tcp --dport 2205 -j ACCEPT  # Edison
 iptables -A DOCKER-USER -i $WAN_IF -p tcp --dport 2205 -j DROP
 
-# 2206 (hypershape) — rules are live, source IPs not documented here.
-# Edison reaches 2206 (verified 2026-11-02). TODO (Dominik): copy the 2206 lines from the live script.
+# 2206 (hypershape) — Proton line exists in the live script (remaining source IPs still not copied here).
+# Edison reaches 2206 (verified 2026-11-02). york twin added 2026-11-07.
+# TODO (Dominik): copy the remaining 2206 lines from the live script.
+iptables -A DOCKER-USER -i $WAN_IF -s 194.126.177.181 -p tcp --dport 2206 -j ACCEPT
+iptables -A DOCKER-USER -i $WAN_IF -s 78.47.218.190 -p tcp --dport 2206 -j ACCEPT  # york
 
 iptables -A DOCKER-USER -i $WAN_IF -s 194.126.177.181 -p tcp --dport 2207 -j ACCEPT
+iptables -A DOCKER-USER -i $WAN_IF -s 78.47.218.190 -p tcp --dport 2207 -j ACCEPT  # york
 iptables -A DOCKER-USER -i $WAN_IF -s 23.88.90.12 -p tcp --dport 2207 -j ACCEPT
 iptables -A DOCKER-USER -i $WAN_IF -s 178.105.203.54 -p tcp --dport 2207 -j ACCEPT  # Edison
 iptables -A DOCKER-USER -i $WAN_IF -p tcp --dport 2207 -j DROP
 
-# Port 8081 — ACCEPT for the two team IPs, then DROP. Not documented anywhere else.
+# Port 8081 — ACCEPT for the team IPs, then DROP. Not documented anywhere else.
 # TODO (Dominik): say what 8081 is, or mark it as unknown.
 iptables -A DOCKER-USER -i $WAN_IF -s 194.126.177.181 -p tcp --dport 8081 -j ACCEPT
+iptables -A DOCKER-USER -i $WAN_IF -s 78.47.218.190 -p tcp --dport 8081 -j ACCEPT  # york
 iptables -A DOCKER-USER -i $WAN_IF -s 23.88.90.12 -p tcp --dport 8081 -j ACCEPT
 iptables -A DOCKER-USER -i $WAN_IF -p tcp --dport 8081 -j DROP
 ```
@@ -708,9 +728,11 @@ iptables -A DOCKER-USER -i $WAN_IF -p tcp --dport 8081 -j DROP
 
 `2206` + `2207` rules verified live via `iptables` on 2026-10-26 (8 rules).
 
+**york (2026-11-07):** every `-s 194.126.177.181` line in `/usr/local/bin/docker-user-firewall.sh` got a twin with `-s 78.47.218.190` directly below (10 rules: 3001, 8080, 443, 2201, 2202, 2204, 2205, 2206, 2207, 8081). Backup `/root/docker-user-firewall.sh.bak-2026-11-07`. `chmod 755`, script re-run, `iptables -S DOCKER-USER | grep -c 78.47.218.190` = 10. Proton stays as fallback. See [`../york/README.md`](../york/README.md).
+
 Port 3001 / 8080 rules above are leftovers from retired publishes (`imap-sync` and Caddy `:8080`, removed 2026-09-01). Harmless; delete in a future cleanup. **Do not** delete 443 or any `22XX` rule that still has a live `-ssh` container.
 
-**media-api (2026-10-18):** no inbound firewall change. The nest (`dedi6724`, outgoing IP `23.88.90.12`) is already one of the two static team IPs ACCEPTed on port 443 (the other is `194.126.177.181`). Tested from `foxxqn@dedi6724`: HTTPS to `stella-media-api.foxcraft.digital` works. Port 443 filtering is port-wide, so no per-site `remote_ip` block was added; HMAC is the second protection layer. **Outbound port 23** from the container to the Storage Box works (verified: `sftp` listing with the mounted key and pinned `known_hosts`). See [`media-api.md`](media-api.md).
+**media-api (2026-10-18):** no inbound firewall change that day. The nest (`dedi6724`, outgoing IP `23.88.90.12`) is already one of the static team IPs ACCEPTed on port 443 (the other was `194.126.177.181`; **2026-11-07** also `78.47.218.190`). Tested from `foxxqn@dedi6724`: HTTPS to `stella-media-api.foxcraft.digital` works. Port 443 filtering is port-wide, so no per-site `remote_ip` block was added; HMAC is the second protection layer. **Outbound port 23** from the container to the Storage Box works (verified: `sftp` listing with the mounted key and pinned `known_hosts`). See [`media-api.md`](media-api.md).
 
 - Applied by: `docker-user-firewall.service` (systemd oneshot, `After=docker.service`, `WantedBy=multi-user.target`, enabled — survives reboot)
 - **Verified working 2026-08-06** in both directions:

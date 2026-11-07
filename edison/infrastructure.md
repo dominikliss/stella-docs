@@ -30,9 +30,9 @@ Inbound, public NIC only. Attached to the new server.
 
 | Rule | Source | Notes |
 |------|--------|--------|
-| TCP/22 (SSH) | `194.126.177.181`, `95.217.144.93` | Live firewall allows Stella as well as the laptop/VPN IP. Docs previously listed only `194.126.177.181`. **TODO (Dominik):** confirm Stella on 22/ICMP is intentional. |
-| ICMP | Same two IPs — **not** Any | Ping restricted the same way as SSH |
-| TCP/443 | `194.126.177.181`, `95.217.144.93` (Stella: Atlas dev, edison.dev), `2.31.42.13` (Atlas prod) | Opened 2026-11-01 for `api.edison.foxcraft.digital`. Caddy publishes 443 (`docker-compose.yml`: `caddy` with `443:443`). `/v1/*` is IP-allowlisted; Stella is allowed (verified by `GET /v1/capabilities` → 200 from Stella, 2026-11-02). Port 80 not opened. **TODO (Dominik):** record the exact Caddy allowlist and the Hetzner Cloud firewall rule for 443 as they stand today. |
+| TCP/22 (SSH) | `194.126.177.181`, `95.217.144.93`, `78.47.218.190` (york, 2026-11-07) | Live firewall allows Stella as well as Proton (fallback) and york (operator path). Docs previously listed only `194.126.177.181`. **TODO (Dominik):** confirm Stella on 22/ICMP is intentional. |
+| ICMP | Same three IPs — **not** Any | Ping restricted the same way as SSH |
+| TCP/443 | `194.126.177.181`, `95.217.144.93` (Stella: Atlas dev, edison.dev), `2.31.42.13` (Atlas prod), `78.47.218.190` (york, 2026-11-07) | Opened 2026-11-01 for `api.edison.foxcraft.digital`. Caddy publishes 443 (`docker-compose.yml`: `caddy` with `443:443`). `/v1/*` Caddy allow list was **not** given the york IP (MacBook via york → 403) — [`../open-gaps.md`](../open-gaps.md). Stella is allowed on `/v1/*` (verified by `GET /v1/capabilities` → 200 from Stella, 2026-11-02). Port 80 not opened. **TODO (Dominik):** record the exact Caddy allowlist and the Hetzner Cloud firewall rule for 443 as they stand today. |
 
 **Verified 2026-10-09** from Stella (`95.217.144.93`): port 22 on `178.105.203.54` was blocked. That check predates the Stella 22/ICMP rule now present in the live firewall.
 

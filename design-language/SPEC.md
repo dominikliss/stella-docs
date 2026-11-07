@@ -14,12 +14,12 @@ Use this when building any internal tool that submodules `stella-docs`. The UI r
 ## Hard rules
 
 - Dark only. No light theme.
-- No box-shadows, blurs, or glass in **app chrome**. (Atlas cheats on the mobile nav backdrop. Auth landing is a documented exception — [auth-landing.md](auth-landing.md) — do not copy it into signed-in screens.)
-- No decorative gradients in **app chrome**. Auth landing uses pink radials and a grid; that is landing-only.
-- Depth = darker/lighter surfaces + 1px borders.
+- **Atlas** signed-in chrome follows the login language (pink as chrome, 8–12px radius, quiet glow). See §11 and [auth-landing.md](auth-landing.md). Other tools that submodule this spec stay Technical Precision unless they opt in.
+- Technical Precision (non-Atlas): no box-shadows, blurs, glass, or decorative gradients in app chrome. Depth = darker/lighter surfaces + 1px borders.
+- Atlas signed-in: depth = surfaces + 1px borders, plus a **quiet** pink card glow. No login grid. Atmosphere is a faint radial wash only.
 - Information density over whitespace.
 - Status colour is for **state only**, never as a brand accent on chrome.
-- Atlas pink / Stella sky / Edison green are **product identity** for those three systems, not shared chrome. See §2.5. Auth landing is the exception that uses Atlas pink as chrome.
+- Stella sky / Edison green stay **product identity**. Atlas pink is chrome on Atlas (CTA, focus, active nav, checked). See §2.5.
 
 Canonical values are the **live tokens** (this file + `tokens.json`), not the Zinc prose that still sits in Atlas `design/DESIGN.md`.
 
@@ -87,11 +87,15 @@ Full MD3 role set (including unused `secondary` / `tertiary` / `fixed` variants)
 
 ### 2.5 Product identity (optional)
 
-Use only when a screen names Atlas, Stella, or Edison as an entity (monitoring chips, system map). Never as the app accent.
+Stella sky and Edison green: use only when a screen names those systems (monitoring chips, system map). Never as shared chrome.
+
+Atlas pink **is chrome on Atlas** (primary button, focus, active nav, checked control). On other tools it stays identity-only.
 
 | Token | Hex | Tint |
 |-------|-----|------|
 | `atlas` | `#f472b6` | `#831843` |
+| `atlas-hover` | `#ec4899` | — |
+| `on-atlas` | `#09090B` | — |
 | `stella` | `#7dd3fc` | `#0c4a6e` |
 | `edison` | `#86efac` | `#14532d` |
 
@@ -172,12 +176,22 @@ Rules:
 
 ## 5. Shape and elevation
 
+Technical Precision (non-Atlas):
+
 - Default radius: **4px** (`0.25rem`) on buttons, inputs, cards, nav items.
+- Every surface: `1px solid tech-border`.
+- Floating layer: `1px solid tech-border-bright`.
+- No shadow. No blur.
+
+**Atlas** (signed-in + landing):
+
+- Controls / nav items / buttons: **8px**.
+- Cards / dialogs / drawers / tables: **12px**.
 - Pills: `9999px` — **status badges only**.
 - Terminal / code flush to a panel edge: `0`.
-- Every surface: `1px solid tech-border`.
-- Floating layer (modal, dropdown): `1px solid tech-border-bright`.
-- No shadow. No blur.
+- Cards: 1px `rgba(244, 114, 182, 0.16)` + quiet pink glow (`.app-card`). Tables/forms: same border, no glow (`.app-panel`).
+- Floating layer: 1px `rgba(244, 114, 182, 0.28)` (`.app-float`).
+- Overlay: `black/70`, no blur.
 
 ---
 
@@ -197,16 +211,17 @@ Material Symbols Outlined.
 
 ### Buttons
 
-Height is tight: **32–36px**. Font `body-sm` (13px). Radius 4px. Gap icon-to-label `6px`. Disabled: opacity 40–50%, `not-allowed`.
+Height is tight: **32–36px**. Font `body-sm` (13px). Radius **8px on Atlas**, 4px on other tools. Gap icon-to-label `6px`. Disabled: opacity 40–50%, `not-allowed`.
 
 | Kind | Fill | Text | Border | Hover |
 |------|------|------|--------|-------|
-| Primary | `primary` `#ffffff` | `on-primary` | none | `primary-fixed` `#e2e2e2` |
+| Primary (Atlas) | `atlas` `#f472b6` | `on-atlas` `#09090B` | none | `#ec4899` + pink glow |
+| Primary (other tools) | `primary` `#ffffff` | `on-primary` | none | `primary-fixed` `#e2e2e2` |
 | Secondary | transparent | `on-surface` | `tech-border` | `surface-container-high` |
 | Destructive | `status-danger-bg` | `status-danger-text` | `status-danger-border` | `status-danger-border` |
 | Icon-only | transparent | `on-surface-variant` | none | text `primary`, wash `surface-container-high` |
 
-No glow. No shadow. Do not use leftover Breeze buttons (gray/indigo, uppercase tracking).
+Atlas primary focus: dark 2px gap + outer 2px white ring (pink-on-black cannot hit 3:1 both ways). Do not use leftover Breeze buttons (gray/indigo, uppercase tracking). `text-primary` stays **white** for headings — do not recast the MD3 primary token as pink.
 
 ### Inputs
 
@@ -214,7 +229,8 @@ No glow. No shadow. Do not use leftover Breeze buttons (gray/indigo, uppercase t
 - Border rest: `outline-variant` or `tech-border`
 - Text: `body-sm` + `primary` or `on-surface`
 - Placeholder: `on-surface-variant` at ~70%
-- Focus: **1px `primary` border, no glow, no ring offset**
+- Focus (Atlas): **1px `#f472b6` border** + **3px halo** `rgba(244, 114, 182, 0.2)`. Rest border `outline` `#8e9192`.
+- Focus (other tools): **1px `primary` border, no glow, no ring offset**
 - Select: custom chevron (no native arrow), right padding 36px
 - Technical values (tokens, JSON): `mono-sm` on a near-black fill
 
@@ -277,7 +293,8 @@ Do not use pill radius on environment tags.
 - Brand row: 48px, logo + `h1` product name (lowercase is fine)
 - Group label: `label-xs` uppercase `tracking-widest` `on-surface-variant`
 - Item: `body-base`, icon 18px, padding `sm`, radius 4px
-- Active: `surface-container` + `primary` text + **2px left `primary` bar** (compensate padding so text does not shift)
+- Active (Atlas): `atlas/10` wash + `primary` text + **2px left `atlas` bar** (compensate padding so text does not shift)
+- Active (other tools): `surface-container` + `primary` text + **2px left `primary` bar**
 - Inactive: `on-surface-variant`, hover `on-surface` + `surface-container`
 - Settings / sign-out sit under a top border at the bottom
 
@@ -367,8 +384,19 @@ Material Symbols Outlined (FILL 0, wght 300)
 
 ---
 
-## 11. Auth landing (Atlas-only exception)
+## 11. Atlas branded chrome (2026-11-07)
 
-Unauthenticated Atlas screens (`/login`, `/forgot-password`, `/reset-password`) shipped 2026-11-07 as a **pink branded landing**, not as Technical Precision chrome. That landing is the seed of a possible later app-wide language (pink as chrome, glow, 8–12px radius, 1px pink focus + soft halo). Full snapshot, comparison table, tokens, WCAG 2.1 AA: [auth-landing.md](auth-landing.md).
+Atlas unauthenticated screens shipped as a **pink branded landing**. Signed-in Atlas (2026-11-07 follow-up) uses the same language, quieter:
 
-Until a redesign lands, copy from SPEC for signed-in UI and from `auth-landing.md` only when touching those three routes — or when the user asks to extend the new language. **Field errors** stay `mono-sm` with a coral/red label + border. Signed-in: `error` `#ffb4ab`. Auth landing: `status-danger` `#f87171`. Do not use Inter body or Atlas pink for helpers.
+| Surface | Treatment |
+|---------|-----------|
+| Accent | Atlas pink is chrome (CTA, focus, active nav, checked) |
+| Atmosphere | Faint pink radials in the main pane. **No grid**, no watermark |
+| Cards | `.app-card` — 12px, pink border, quiet glow |
+| Tables / forms | `.app-panel` — 12px, pink border, no glow |
+| Dialog / toast / popover | `.app-float` — 12px, brighter pink border |
+| Layout | Unchanged: 220px sidebar, 48px top bar, dense ops |
+
+Landing snapshot, AA rules, and the comparison table: [auth-landing.md](auth-landing.md). Do not copy the landing grid or the 140px card bloom into signed-in screens.
+
+**Field errors** stay `mono-sm` with a coral/red label + border. Signed-in: `error` `#ffb4ab`. Auth landing: `status-danger` `#f87171`. Do not use Inter body or Atlas pink for helpers.

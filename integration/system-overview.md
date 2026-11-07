@@ -17,11 +17,12 @@ This is the **cross-system map** for foxcraft.digital: who owns what, which host
 - Stella stack-api: [`../stella-server/stack-api.md`](../stella-server/stack-api.md)
 - Edison (coding-agent host): [`../edison/README.md`](../edison/README.md)
 - Edison host API: [`../edison/host-api.md`](../edison/host-api.md)
+- york (access gateway): [`../york/README.md`](../york/README.md)
 - Internal-tools UI language: [`../design-language/README.md`](../design-language/README.md)
 
 ---
 
-## 1. The four named systems
+## 1. The five named systems
 
 Servers use One Piece Vegapunk-satellite names. Firewalls, IPs, and networks use **functional** names.
 
@@ -31,6 +32,7 @@ Servers use One Piece Vegapunk-satellite names. Firewalls, IPs, and networks use
 | **Atlas** | Internal ops platform (deploys, Stella health, WP uptime, IMAP migration, TrackingTime import, Trello push) | Hetzner Cloud CX33 `atlas` (`2.31.42.13`) — `https://atlas.foxcraft.digital` | Deploy history, health history, WP-site registry, IMAP job history, imported PM, Trello card ids |
 | **Stella** | Dedicated AI / services machine | Hetzner dedicated | Ollama, stella-api, deploy-api, health-api, media-api, stack-api, imap-sync, Caddy, .NET / WP / Laravel stacks |
 | **Edison** | Coding-agent sandbox | Hetzner Cloud (same project as Atlas) | Cursor CLI container, sshfs mounts, `host-api` behind `api.edison.foxcraft.digital` (Caddy → host-api). **Must not** run on Stella. Atlas prod + Atlas dev may poll `/system/health` (poller not built). `edison.dev` calls `/v1/*`. Atlas also reads Cloud API status/backups. |
+| **york** | Access gateway (not a service host) | Hetzner Cloud CX23 `york` — primary `york-ip` `2.28.33.52` (not whitelisted); floating **`york-floating-ip` `78.47.218.190`** (the whitelisted exit) | WireGuard `wg0` (`10.8.0.1/24`, UDP/51820). Operator traffic to Stella / Atlas / Edison. Proton `194.126.177.181` stays as fallback. Set up 2026-11-07. [`../york/README.md`](../york/README.md) |
 
 Neither Atlas nor ddashboard replaces the other:
 
@@ -46,7 +48,8 @@ Stella is a **service host**. It does not have a general-purpose UI. Atlas and d
 ```
  Operator browser
         │
-        │  HTTPS (IP-allowlisted on Atlas)
+        │  HTTPS via york 78.47.218.190 (Proton 194.126.177.181 fallback)
+        │  IP-allowlisted on Atlas
         ▼
      Atlas SPA  ────────── Bearer token ──────────►  Atlas Laravel API
         │                                                 │
@@ -99,8 +102,8 @@ Stella is a **service host**. It does not have a general-purpose UI. Atlas and d
 3. Stella **deploy-api** and **health-api** do not use bearer tokens. They verify an OpenSSH signature from Atlas’s SSH private key, principal `ddashboard` (same keypair as the old managed-host Atlas; the managed host still holds a copy). Stella **stack-api** is a different trust model: Caddy + app IP allowlist, header token `X-Stack-Token`, and a **separate** SSH key (`/home/atlas/.ssh/atlas-stack-api`, principal `atlas-prod`, namespace `stack`). The shared deploy key is not trusted there. See [`../stella-server/stack-api.md`](../stella-server/stack-api.md).
 4. Stella **media-api** uses HMAC-SHA256 (`MEDIA_HMAC_SECRET`), not SSH signatures — shared hosting on the nest often lacks `ssh-keygen -Y`. See [`../stella-server/media-api.md`](../stella-server/media-api.md).
 5. Stella **stella-api** (`/chat/*`) and **imap-sync** have no HTTP auth — ingress is restricted at the network / Caddy layer.
-6. Atlas itself is IP-allowlisted (`ATLAS_ALLOWED_IPS` = `194.126.177.181`, `23.88.90.12` managed host, `95.217.144.93` Stella) except `GET /api/health`. **TODO (Dominik):** remove `23.88.90.12` unless something on the managed host really calls Atlas; reason for each entry unverified.
-7. Stella `DOCKER-USER` ACCEPTs Atlas (`2.31.42.13`) on 443 so signed deploy-api / health-api / stack-api calls can reach Caddy. The nest (`23.88.90.12`) is already ACCEPTed on 443 (team IP) and is the media-api caller. Atlas inbound Hetzner firewall allows 22/80/443/ICMP from `194.126.177.181` only.
+6. Atlas itself is IP-allowlisted (`ATLAS_ALLOWED_IPS` = `194.126.177.181,23.88.90.12,95.217.144.93,78.47.218.190` — Proton, managed host, Stella, york; **order UNVERIFIED**, check with `grep`) except `GET /api/health`. york `78.47.218.190` appended 2026-11-07. **TODO (Dominik):** remove `23.88.90.12` unless something on the managed host really calls Atlas; reason for each entry unverified.
+7. Stella `DOCKER-USER` ACCEPTs Atlas (`2.31.42.13`) on 443 so signed deploy-api / health-api / stack-api calls can reach Caddy. The nest (`23.88.90.12`) is already ACCEPTed on 443 (team IP) and is the media-api caller. Operator path is york `78.47.218.190` (10 `DOCKER-USER` twins of Proton, 2026-11-07); Proton `194.126.177.181` stays as fallback. Atlas inbound Hetzner firewall allows TCP/22, ICMP, TCP/80 from `194.126.177.181` and `78.47.218.190`; TCP/443 from those plus `95.217.144.93`. Edison inbound: TCP/22 and ICMP from `194.126.177.181`, `95.217.144.93`, `78.47.218.190`; TCP/443 from those plus `2.31.42.13`. `york-ip` `2.28.33.52` is **not** whitelisted.
 
 ---
 
@@ -151,7 +154,7 @@ Caddy + Hetzner firewall allow Atlas prod (`2.31.42.13`) and Stella (`95.217.144
 |--------|-----|------|----------|
 | `edison.dev` on Stella | `https://api.edison.foxcraft.digital` | Bearer `EDISON_HOST_API_TOKEN` | [`../edison/host-api.md`](../edison/host-api.md) |
 
-Caddy restricts `/v1/*` to Stella (`95.217.144.93`) and the MacBook (`194.126.177.181`). The app calls `POST /v1/runs` (SSE). Host also serves `GET /v1/capabilities` (modes / model catalog; **200** from Stella 2026-11-02). `/v1/health` from the app container is verified. **UNVERIFIED:** end-to-end chat in the UI.
+Caddy restricts `/v1/*` to Stella (`95.217.144.93`) and the MacBook Proton IP (`194.126.177.181`). york `78.47.218.190` was **not** added (2026-11-07) — MacBook via york → 403. See [`../open-gaps.md`](../open-gaps.md). The app calls `POST /v1/runs` (SSE). Host also serves `GET /v1/capabilities` (modes / model catalog; **200** from Stella 2026-11-02). `/v1/health` from the app container is verified. **UNVERIFIED:** end-to-end chat in the UI.
 
 ### ddashboard → Stella (AI)
 
@@ -175,7 +178,7 @@ PHP client in MediaRaster: in progress (prefer `/convert-remote` with `dest` whe
 | Feature | Target | Auth |
 |---------|--------|------|
 | Uptime every 5 min | `HEAD https://{domain}` | None (TLS verify off) |
-| One-click WP admin login | `POST https://{domain}/wp-json/atlas-connect/v1/generate-token` | Shared **Atlas Connect** secret (JSON body; site stores only its SHA-256) + Atlas IP (`2.31.42.13` / `95.217.144.93`) in the plugin's `ip_whitelist`. Administrators only. The returned link only opens from the team office IP `194.126.177.181` |
+| One-click WP admin login | `POST https://{domain}/wp-json/atlas-connect/v1/generate-token` | Shared **Atlas Connect** secret (JSON body; site stores only its SHA-256) + Atlas IP (`2.31.42.13` / `95.217.144.93`) in the plugin's `ip_whitelist`. Administrators only. The returned link only opens from the team office IP `194.126.177.181` (york `78.47.218.190` **not** added — login links fail via york; [`../open-gaps.md`](../open-gaps.md)) |
 | Encrypted backup | `POST …/atlas-connect/v1/backup/{start,chunk,cancel,status/{job_id}}` | Same secret + IP allowlist. Atlas sends S3 credentials in the JSON body; the site does not store them. Destination pinned to bucket `atlas-wp-sites-backups` on `https://{fsn1,nbg1,hel1}.your-objectstorage.com` |
 | Infection scan | `POST …/atlas-connect/v1/security/scan/{start,chunk,status/{job_id}}` | Same secret + IP allowlist. Atlas sends `{ path, hash }` allowlist on start; stores inventory + report; site does not keep results |
 
@@ -257,6 +260,14 @@ Hetzner managed (foxcrr / nest)
 ├── ddashboard          WordPress theme + dls/v1
 └── Foxx Cloud          Laravel on dedi6724 — calls Stella media-api
 
+Hetzner Cloud
+└── york  CX23  york-ip 2.28.33.52 (not whitelisted)
+    │     york-floating-ip 78.47.218.190 (whitelisted exit)
+    │     WireGuard 10.8.0.1/24 UDP/51820 — access gateway, not a service host
+    │     MacBook (dominik 10.8.0.2) → Stella / Atlas / Edison
+    │     Proton 194.126.177.181 stays as fallback
+    └── see york/README.md
+
 Hetzner Cloud  (same project as Edison)
 └── atlas  CX33  2.31.42.13
     │     https://atlas.foxcraft.digital
@@ -283,7 +294,7 @@ Hetzner Cloud  (same project)
 └── Edison              coding-agent host — CX33, edison-ip 178.105.203.54
     │     api.edison.foxcraft.digital → caddy → host-api (edison-net)
     │     GET /health (no auth); POST /system/health (signed; Atlas prod + Stella)
-    │     GET/POST /v1/* (bearer; Stella + MacBook) — called by edison.dev
+    │     GET/POST /v1/* (bearer; Stella + MacBook Proton IP; york not on Caddy /v1 allow list) — called by edison.dev
     │     Atlas prod + Atlas dev may poll; Atlas-side CheckEdisonHealth not built
     │     Atlas also reads Cloud backups/status via the Hetzner Cloud API
     └── cursor-agent + sshfs mounts
@@ -304,7 +315,8 @@ Hetzner Cloud  (same project)
 | **health-api** | FastAPI app — signed system-status snapshot |
 | **media-api** | FastAPI app — RAW/HEIC/JPEG/video-poster decode for Foxx Cloud (HMAC; `/convert` body or `/convert-remote` Storage Box). `https://stella-media-api.foxcraft.digital` |
 | **stack-api** | FastAPI app — Atlas container management. Isolated `stack` network. IP + token + SSH signature (namespace `stack`, own key). `list` / `get` / `restart` + append-only audit log (2026-11-04). `https://stella-stack-api.foxcraft.digital`. [`../stella-server/stack-api.md`](../stella-server/stack-api.md) |
-| **Foxx Cloud** | Laravel app on the nest (`dedi6724`). Calls media-api. Not one of the four named Vegapunk systems. |
+| **Foxx Cloud** | Laravel app on the nest (`dedi6724`). Calls media-api. Not one of the five named Vegapunk systems. |
+| **york** | WireGuard access gateway (Hetzner Cloud CX23). Floating IP `78.47.218.190` is the whitelisted exit; primary `2.28.33.52` is not. Not a service host. See [`../york/README.md`](../york/README.md) |
 | **atlas-api / Atlas host API** | FastAPI on the Atlas host (`https://api.atlas.foxcraft.digital` → `127.0.0.1:8090`). Signed `system-health` snapshot of the Atlas box. See [`../atlas/host-api.md`](../atlas/host-api.md) |
 | **imap-sync** | Express + `imapsync` mailbox copy |
 | **Edison** | Separate coding-agent host |

@@ -250,7 +250,7 @@ Environment variables:
 
 Dockerfile: `python:3.12-slim-bookworm`; apt `imagemagick libmagickcore-6.q16-6-extra libheif1 libde265-0 libraw-bin openssh-client rawtherapee libimage-exiftool-perl dcraw ffmpeg`; pip `fastapi uvicorn`; non-root user `media` (uid 10001). The Debian bookworm RawTherapee package is older than 5.13; unknown `.pp3` keys are ignored.
 
-**Network / firewall:** port 443 is filtered port-wide in `DOCKER-USER`; only the nest (`23.88.90.12`) and one team IP (`194.126.177.181`) are allowed. Callers from anywhere else are blocked before they reach media-api. Outbound port 23 from the container to the Storage Box works (verified).
+**Network / firewall:** port 443 is filtered port-wide in `DOCKER-USER`; the nest (`23.88.90.12`), Proton (`194.126.177.181`), and york (`78.47.218.190`, added 2026-11-07) are ACCEPTed. Callers from anywhere else are blocked before they reach media-api. Outbound port 23 from the container to the Storage Box works (verified). Foxx Cloud still calls from the nest; york is the operator path. See [`../york/README.md`](../york/README.md).
 
 **Certificate:** Let's Encrypt production, issued 2026-10-18, expires 2027-01-16. Caddy issuer block keeps `propagation_delay 45s` and `propagation_timeout 3m`. See [`infrastructure.md`](infrastructure.md).
 

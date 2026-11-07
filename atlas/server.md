@@ -105,9 +105,10 @@ Ubuntu apt Caddy is 2.6.2 with no Hetzner plugin. caddyserver.com’s download A
 
 | Rule | Source |
 |------|--------|
-| TCP/22, TCP/80, TCP/443 | `194.126.177.181` only |
-| TCP/443 | `95.217.144.93` (Stella, Atlas dev → host API) |
-| ICMP | `194.126.177.181` only |
+| TCP/22, ICMP, TCP/80 | `194.126.177.181`, `78.47.218.190` (york, 2026-11-07) |
+| TCP/443 | `194.126.177.181`, `95.217.144.93` (Stella, Atlas dev → host API), `78.47.218.190` |
+
+Proton stays as fallback. york is the operator path. See [`../york/README.md`](../york/README.md). The `api.atlas` Caddy block was **not** updated (york IP not added) — [`../open-gaps.md`](../open-gaps.md).
 
 ---
 
@@ -157,7 +158,7 @@ Do not write secret values here.
 
 `APP_KEY` was carried over unchanged from the old instance (needed for encrypted `app_settings` values). `app_settings.deploy_ssh_key_path` was updated to `/home/atlas/.ssh/id_ed25519` (the DB value overrides `.env`).
 
-`ATLAS_ALLOWED_IPS` = `194.126.177.181`, `23.88.90.12` (managed host), `95.217.144.93` (Stella). **TODO (Dominik):** remove `23.88.90.12` unless something on the managed host really calls Atlas; reason for each entry unverified.
+`ATLAS_ALLOWED_IPS` = `194.126.177.181,23.88.90.12,95.217.144.93,78.47.218.190` (`78.47.218.190` appended 2026-11-07; **order UNVERIFIED**, check with `grep`). Backup `/root/atlas-env.bak-2026-11-07`. Then `sudo -u atlas php artisan config:cache`. Symptom before the `.env` change: `{"message":"Access denied."}` = `AllowedIpMiddleware`, not Caddy. **TODO (Dominik):** remove `23.88.90.12` unless something on the managed host really calls Atlas; reason for each entry unverified. See [`../york/README.md`](../york/README.md).
 
 ---
 

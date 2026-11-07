@@ -130,7 +130,7 @@ New Atlas users are assigned `admin` or `developer` by an admin. `viewer` is sti
 
 Login / refresh / logout / forgot / reset **are** IP-filtered.
 
-Production values: `194.126.177.181`, `23.88.90.12` (managed host), `95.217.144.93` (Stella). **TODO (Dominik):** remove `23.88.90.12` unless something on the managed host really calls Atlas; reason for each entry unverified. See [`server.md`](server.md).
+Production values: `194.126.177.181,23.88.90.12,95.217.144.93,78.47.218.190` (`78.47.218.190` york, appended 2026-11-07; **order UNVERIFIED**, check with `grep`). **TODO (Dominik):** remove `23.88.90.12` unless something on the managed host really calls Atlas; reason for each entry unverified. See [`server.md`](server.md), [`../york/README.md`](../york/README.md).
 
 ---
 

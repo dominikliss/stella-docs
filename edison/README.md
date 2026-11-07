@@ -33,7 +33,9 @@ Examples of functional names already in use: primary IPv4 **`edison-ip`** (`178.
 ## Architecture
 
 ```
-MacBook (trusted IP 194.126.177.181)
+MacBook
+  │  via york 78.47.218.190 (operator path, 2026-11-07)
+  │  Proton 194.126.177.181 as fallback
   │  ssh edison   (root, key-only, TCP/22)
   │  GET https://api.edison.foxcraft.digital/health
   ▼
@@ -123,3 +125,4 @@ Tracked in [`../open-gaps.md`](../open-gaps.md) (Edison section). Short list:
 12. Bump the `stella-docs` submodule pointer in the Edison and Atlas repos
 13. **TODO (Dominik):** record the `dev-docs` deploy-key fingerprint in [skills.md](skills.md)
 14. **`git-push-with-tag` is global on live staging trees** — decide allowlist vs IDE-only. See [skills.md](skills.md)
+15. york access gateway (2026-11-07) — [`../york/README.md`](../york/README.md); open whitelist leftovers in [`../open-gaps.md`](../open-gaps.md)

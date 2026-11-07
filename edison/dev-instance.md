@@ -18,7 +18,7 @@ Set up 2026-10-26. Naming scheme for dev instances is `<tool>.dev` (no hyphens).
 | **Path** | `/opt/apps/laravel/edison.dev.foxcraft.digital/` |
 | **DNS** | A record `edison.dev` → `95.217.144.93`, TTL 300 (zone `567656`), created via the Hetzner Cloud API. Verified with `dig @8.8.8.8`. |
 | **TLS** | Let's Encrypt production via DNS-01. Issued in about 27 s on the first attempt; no `propagation_delay` needed. |
-| **Caddy** | Block at the bottom of `/opt/services/caddy/Caddyfile` with the `dir` pin: `@blocked not remote_ip 194.126.177.181` (403 for everything else), `reverse_proxy edison.dev.foxcraft.digital:80` |
+| **Caddy** | Block at the bottom of `/opt/services/caddy/Caddyfile` with the `dir` pin: `@blocked not remote_ip 194.126.177.181 78.47.218.190` (york added 2026-11-07; 403 for everything else), `reverse_proxy edison.dev.foxcraft.digital:80` |
 | **SSH** | Port **2207** (`ssh` service) |
 
 ### Caddy change (2026-10-26)
@@ -109,7 +109,7 @@ Do not write secret values here. This instance has its **own** `APP_KEY` and a f
 | `CACHE_STORE` | `file` |
 | `QUEUE_CONNECTION` | `database` |
 | `BROADCAST_CONNECTION` | `log` |
-| `EDISON_ALLOWED_IPS` | empty — Caddy does the IP filtering |
+| `EDISON_ALLOWED_IPS` | empty — Caddy does the IP filtering. On this instance: **UNVERIFIED**. No Edison prod app exists yet (`edison.foxcraft.digital` has no DNS record). When built, include `78.47.218.190` in `EDISON_ALLOWED_IPS`. |
 | `EDISON_DDASHBOARD_URL` | set (required, see [Incident](#incident-2026-10-26--empty-edison_ddashboard_url)) |
 | `EDISON_DEMO_MODE` | `false` |
 | `EDISON_HOST_API_URL` | `https://api.edison.foxcraft.digital` (added 2026-11-01) |
@@ -148,7 +148,9 @@ Host edison.dev.foxcraft.digital
 
 Git/GitHub in the `-ssh` container works through SSH agent forwarding; GitHub keys are never stored in the container. Verified: `ssh -T git@github.com` answers `Hi dominikliss!`. Do not set `ForwardAgent` under `Host *`.
 
-Stella `DOCKER-USER` ACCEPTs port **2207** from Dominik's IP (`194.126.177.181`), the managed host (`23.88.90.12`), and Edison (`edison-ip` `178.105.203.54`), then DROP. Verified live in `iptables`. Next free SSH container port: **2208**. See [`../stella-server/infrastructure.md`](../stella-server/infrastructure.md).
+Stella `DOCKER-USER` ACCEPTs port **2207** from Dominik's IP (`194.126.177.181` and york `78.47.218.190`, 2026-11-07), the managed host (`23.88.90.12`), and Edison (`edison-ip` `178.105.203.54`), then DROP. Verified live in `iptables`. Next free SSH container port: **2208**. See [`../stella-server/infrastructure.md`](../stella-server/infrastructure.md), [`../york/README.md`](../york/README.md).
+
+`edison.dev` works through york (Caddy on Stella updated 2026-11-07).
 
 ---
 

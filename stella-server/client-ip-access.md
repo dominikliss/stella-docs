@@ -22,7 +22,7 @@
 
 ## Why two layers were needed
 
-Port 443 is Docker-published, so it's filtered by `DOCKER-USER` (iptables), not UFW — and that filter is **port-wide**, not per-domain. Before this change, only the two static team IPs (`194.126.177.181`, `23.88.90.12`) could reach port 443 at all; Caddy itself did no IP filtering per site.
+Port 443 is Docker-published, so it's filtered by `DOCKER-USER` (iptables), not UFW — and that filter is **port-wide**, not per-domain. Before this change, only the two static team IPs (`194.126.177.181`, `23.88.90.12`) could reach port 443 at all; Caddy itself did no IP filtering per site. **2026-11-07:** york floating IP `78.47.218.190` is a third team IP on 443 (twin of the Proton line). Proton stays as fallback. See [`../york/README.md`](../york/README.md).
 
 Simply adding the client IP to `DOCKER-USER` would let it reach **every** Caddy-routed site on the server (`stella.foxcraft.digital`, `advoapp.finditoo`, `stella-deployment-api`, `stella-health-api`), not just `osgar.datahub`. So the fix needed two layers:
 
@@ -37,6 +37,7 @@ Client IPs added as ACCEPT rules in the port-443 block, alongside the two static
 
 ```bash
 iptables -A DOCKER-USER -i $WAN_IF -s 194.126.177.181 -p tcp --dport 443 -j ACCEPT
+iptables -A DOCKER-USER -i $WAN_IF -s 78.47.218.190 -p tcp --dport 443 -j ACCEPT  # york
 iptables -A DOCKER-USER -i $WAN_IF -s 23.88.90.12 -p tcp --dport 443 -j ACCEPT
 iptables -A DOCKER-USER -i $WAN_IF -s 2.31.42.13 -p tcp --dport 443 -j ACCEPT  # atlas
 iptables -A DOCKER-USER -i $WAN_IF -s 213.47.151.242 -p tcp --dport 443 -j ACCEPT
@@ -45,7 +46,7 @@ iptables -A DOCKER-USER -i $WAN_IF -s 49.13.27.117 -p tcp --dport 443 -j ACCEPT
 iptables -A DOCKER-USER -i $WAN_IF -p tcp --dport 443 -j DROP
 ```
 
-Port 443 also ACCEPTs `2.31.42.13` (**atlas** — server caller for deploy-api / health-api, not a client browser) and `49.13.27.117`. No client-IP entry was added for `2201` / `2202` / `2204` — SSH access remains restricted to the two static team IPs (plus Edison **`edison-ip` `178.105.203.54`** on 2201 and 2204 — confirmed 2026-10-09; see [`infrastructure.md`](infrastructure.md)). Port 2203 is free (`advoapp-redesign-ssh` removed 2026-10-10; firewall rules removed). After recreating the firewall script it must be `chmod 755`.
+Port 443 also ACCEPTs `2.31.42.13` (**atlas** — server caller for deploy-api / health-api, not a client browser), `78.47.218.190` (**york**, 2026-11-07), and `49.13.27.117`. No client-IP entry was added for `2201` / `2202` / `2204` — SSH access remains restricted to the team IPs (Proton, york, managed host) plus Edison **`edison-ip` `178.105.203.54`** on 2201 and 2204 — confirmed 2026-10-09; see [`infrastructure.md`](infrastructure.md). Port 2203 is free (`advoapp-redesign-ssh` removed 2026-10-10; firewall rules removed). After recreating the firewall script it must be `chmod 755`.
 
 Script is systemd-applied on boot; reapply manually after edits with:
 
@@ -70,10 +71,10 @@ Every site block **except** `osgar.datahub` gets an explicit deny-list matcher f
 respond @blocked 403
 ```
 
-`osgar.datahub.foxcraft.digital` gets an explicit allow-list matcher instead (static team IPs + client IPs; everyone else 403s):
+`osgar.datahub.foxcraft.digital` gets an explicit allow-list matcher instead (team IPs including york `78.47.218.190` since 2026-11-07 + client IPs; everyone else 403s):
 
 ```caddyfile
-@blocked not remote_ip 194.126.177.181 23.88.90.12 213.47.151.242 89.67.29.69
+@blocked not remote_ip 194.126.177.181 78.47.218.190 23.88.90.12 213.47.151.242 89.67.29.69
 respond @blocked 403
 ```
 

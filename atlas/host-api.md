@@ -74,7 +74,7 @@ Payload `deploy-atlas:main:<ts>`, POST to `https://api.atlas.foxcraft.digital/sy
 
 ## IP whitelist
 
-Hetzner Cloud firewall already allows TCP/443 from `95.217.144.93` (Stella) and from `194.126.177.181`. Caddy is the second layer. In the `api.atlas` Caddy block:
+Hetzner Cloud firewall already allows TCP/443 from `95.217.144.93` (Stella), `194.126.177.181` (Proton), and `78.47.218.190` (york, 2026-11-07). Caddy is the second layer. The `api.atlas` `@blocked` matcher was **not** given the york IP (2026-11-07) — MacBook via york → 403. See [`../open-gaps.md`](../open-gaps.md). In the `api.atlas` Caddy block:
 
 ```
 @deploy_blocked { path /system/deploy* ; not remote_ip 95.217.144.93 }

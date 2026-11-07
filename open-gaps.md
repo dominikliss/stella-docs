@@ -1,8 +1,25 @@
 # Open Gaps & Next Steps
 
-Last updated: 2026-11-04
+Last updated: 2026-11-07
 
-**Cross-system overview:** [integration/system-overview.md](integration/system-overview.md) (Atlas + ddashboard + Stella + Edison). AI-chat path only: [integration/ddashboard-and-stella-server.md](integration/ddashboard-and-stella-server.md).
+**Cross-system overview:** [integration/system-overview.md](integration/system-overview.md) (Atlas + ddashboard + Stella + Edison + york). AI-chat path only: [integration/ddashboard-and-stella-server.md](integration/ddashboard-and-stella-server.md).
+
+---
+
+## york
+
+Access gateway set up 2026-11-07. Runbook: [`york/README.md`](york/README.md). Proton `194.126.177.181` stays as fallback. Whitelisted exit is floating IP `78.47.218.190`; primary `york-ip` `2.28.33.52` is not whitelisted.
+
+- [ ] Atlas Connect one-click WP login: `autologin_ip_whitelist` in each site's `config.php` only allows `194.126.177.181` → login links fail via york. Decide: add `78.47.218.190` or keep login Proton-only.
+- [ ] Edison host-api Caddy `/v1/*` allow list (Stella + `194.126.177.181`) and the `api.atlas` Caddy block: york IP not added. Direct calls from the MacBook via york → 403.
+- [ ] ddashboard `api/v1` (managed host) only allows `194.126.177.181` / `23.88.90.12`. Check whether anything Dominik uses needs it via york.
+- [ ] Pawel's york profile exits with the whitelisted IP, so he now reaches every Stella port that allows `78.47.218.190` (all 22XX, host 22; keys still required). Decide whether that is intended or restrict per-peer on york.
+- [ ] Send `pawel.conf` to Pawel via a secure channel.
+- [ ] Automated whitelist check: from york, request each protected endpoint via `78.47.218.190` (must work) and via `2.28.33.52` (must be blocked), e.g. `curl --interface` / `ssh -b`. Alert in Atlas.
+- [ ] IPv6: york does not forward IPv6 (`::/0` in the client configs blackholes it to avoid leaks). Enable if sites get slow.
+- [ ] Decide when to drop Proton `194.126.177.181` from the whitelists.
+- [ ] Proton support ticket text was drafted (dedicated IP `194.126.177.181`, loss to `95.217.144.93`). **TODO (Dominik):** sent or not.
+- [ ] A stray `php artisan serve` on `127.0.0.1:8000` was running for 3+ days in `atlas.dev.foxcraft.digital-ssh`. **TODO (Dominik):** confirm it is gone after the ssh container restart.
 
 ---
 
@@ -11,7 +28,7 @@ Last updated: 2026-11-04
 - [x] **System-level Atlas docs** — closed 2026-10-01. Atlas is no longer only a folder of module notes. See [`atlas/README.md`](atlas/README.md), [`atlas/architecture.md`](atlas/architecture.md), [`atlas/auth.md`](atlas/auth.md), [`atlas/atlas-connect/`](atlas/atlas-connect/), [`atlas/tools.md`](atlas/tools.md), and [`integration/system-overview.md`](integration/system-overview.md). `atlas/dotnet-azure.md` now describes the live `stella_deploy_api` path (the old “post-deploy hook, not yet signed” plan is obsolete).
 - [ ] **Atlas production host move (2026-10-10)** — live at `https://atlas.foxcraft.digital` on Hetzner Cloud CX33 `atlas` (`2.31.42.13`). Runbook: [`atlas/server.md`](atlas/server.md). Dev instance on Stella: [`atlas/dev-instance.md`](atlas/dev-instance.md). Open items:
   - **TODO (Dominik):** confirm `dev.atlas.foxcraft.digital` crons (`queue-deployments.sh`, `schedule:run`) are deactivated and decide when to retire the managed-host instance.
-  - **TODO (Dominik):** remove `23.88.90.12` from `ATLAS_ALLOWED_IPS` unless something on the managed host really calls Atlas; reason for each entry unverified.
+  - **TODO (Dominik):** remove `23.88.90.12` from `ATLAS_ALLOWED_IPS` unless something on the managed host really calls Atlas; reason for each entry unverified. `78.47.218.190` (york) was appended 2026-11-07; **order UNVERIFIED**.
   - **TODO (Dominik):** bump `@types/node` to `^22` in the Atlas repo (`npm ci` currently needs `--legacy-peer-deps`).
   - **TODO (Dominik):** name of the Hetzner Cloud project that holds Atlas and Edison.
   - **TODO (Dominik):** rotate the reused `atlas-prod` SSH key (managed host still holds a copy). Deferred.

@@ -8,7 +8,7 @@ Shared visual language for **new internal ops tools** (Atlas and anything that s
 |------|------|
 | [SPEC.md](SPEC.md) | The language: colour, type, layout, components, shell recipe |
 | [tokens.json](tokens.json) | Machine-readable tokens. Copy these names into Tailwind / CSS |
-| [auth-landing.md](auth-landing.md) | New Atlas **landing language** (pink chrome, glow, 8–12px radius, soft field focus) + WCAG 2.1 AA. Signed-in chrome still follows SPEC. |
+| [auth-landing.md](auth-landing.md) | Atlas **landing language** (pink chrome, glow, 8–12px radius, soft field focus) + WCAG 2.1 AA. Signed-in Atlas uses the same accent / radius / focus — quieter, no grid. See SPEC §11. |
 
 **Reference implementation:** Atlas SPA (`resources/js`, `resources/css/app.css`, `tailwind.config.ts`). Atlas mockups live in the Atlas repo under `design/`.
 
@@ -42,4 +42,4 @@ This is **spec + tokens**, not an npm package. A shared component library can co
 
 ## Atlas
 
-Atlas **signed-in** chrome implements this SPEC. Unauthenticated screens (`/login`, `/forgot-password`, `/reset-password`) use the landing language in [auth-landing.md](auth-landing.md) — start there if the rest of the app is being redesigned to match login. See [`../atlas/README.md`](../atlas/README.md).
+Atlas **signed-in** chrome (2026-11-07 follow-up) uses the landing accent / radius / focus, quieter — see SPEC §11. Unauthenticated screens (`/login`, `/forgot-password`, `/reset-password`) are the landing snapshot in [auth-landing.md](auth-landing.md). Other tools that submodule this spec stay Technical Precision. See [`../atlas/README.md`](../atlas/README.md).
