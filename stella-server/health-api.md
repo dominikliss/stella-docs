@@ -264,7 +264,7 @@ The 22:10 → 22:15 drop means `seen.json` was reset and/or an AutoRemove skip s
 cd /opt/services && docker compose up -d --build health-api
 ```
 
-Until the payload grows those keys, Atlas keeps using name prefixes — which is why `edison.dev.*`, `hypershape.*`, `media-api`, and `stack-api` land under Other. **TODO:** Atlas `StellaHealthApiClient` + monitoring UI should prefer `type`/`group` when present. See [`../atlas/monitoring.md`](../atlas/monitoring.md) and [`../open-gaps.md`](../open-gaps.md).
+Until the payload grows those keys, Atlas uses name-prefix fallback (`edison.dev.*` → laravel, `hypershape.*` → wordpress, `media-api`/`stack-api` → Services). When the keys appear, Atlas prefers them. See [`../atlas/monitoring.md`](../atlas/monitoring.md).
 
 ### Certs — parsed from the live Caddyfile (2026-10-10)
 

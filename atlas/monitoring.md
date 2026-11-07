@@ -50,28 +50,30 @@ The Stella health service list is dynamic as of 2026-10-10. health-api no longer
 | Category | Services |
 |---|---|
 | `system` | `system:docker_daemon`, `system:ollama_models`, `system:ollama_resources`, `system:cpu_ram`, `system:disk` |
-| `container` | Core Stella containers. Atlas’s hardcoded infra list: `caddy`, `stella-api`, `imap-sync`, `deploy-api`, `ollama`, `backup`, `health-api`. **TODO:** also treat `media-api` / `stack-api` as infra, and prefer health-api `type=service`. |
+| `container` | Core Stella containers. `type=service` from health-api, or (fallback) names `caddy`, `stella-api`, `imap-sync`, `deploy-api`, `ollama`, `backup`, `health-api`, `media-api`, `stack-api`. |
 | `app` | Every other discovered container. Atlas then groups them by stack (see below). |
 | `backup` | `system:backup` — current restic status (not a container) |
 | `http` | `http:stella-api`, `http:ollama`, plus any `health.http` probes |
 | `cert` | One row per site block parsed from the live Caddyfile |
 
-**App grouping (Atlas UI, 2026-10-10; still live 2026-11-07):** hosted containers stay category `app`. `normalizeServices()` writes `meta.app_type` and `meta.app_project` from **name prefixes** — not from health-api.
+**App grouping (Atlas UI, 2026-11-07):** hosted containers stay category `app`. `normalizeServices()` prefers health-api `type` / `group` when present (`meta.app_type`, `meta.app_project`). `type=service` → category `container` (Services tile), not Other.
+
+Fallback when those keys are missing (live payload as of 2026-11-07 22:15 UTC still omits them):
 
 | `app_type` | Name prefixes |
 |---|---|
 | `dotnet` | `advoapp*`, `osgar-datahub*` |
-| `laravel` | `atlas.dev*` |
-| `wordpress` | `*dominikliss*`, `wordpress*` |
+| `laravel` | `atlas.dev*`, `edison.dev*` |
+| `wordpress` | `*dominikliss*`, `*hypershape*`, `wordpress*` |
 | `other` | anything else (shown only when present) |
 
-**Project / subdomain:** strip a trailing `-dev` / `-db` / `-ssh` / `-queue` / `-scheduler`. So `advoapp-dev` + `advoapp-ssh` are one project (`advoapp`); `osgar-datahub-*` is one; `atlas.dev.foxcraft.digital-*` is one; `dominikliss.foxcraft.digital-*` is one.
+Fallback infra names: `caddy`, `stella-api`, `imap-sync`, `deploy-api`, `ollama`, `backup`, `health-api`, `media-api`, `stack-api`.
 
-Tiles show **project counts**, not containers (Dotnet `2/2`, Laravel `1/1`, WordPress `1/1`). A project is up only if every container in it is ok. The uptime tables group rows by that project name under the stack heading.
+**Project / subdomain:** health-api `group` when present; otherwise strip a trailing `-dev` / `-db` / `-ssh` / `-queue` / `-scheduler`. So `advoapp-dev` + `advoapp-ssh` are one project (`advoapp`) until health-api sends `group=advoapp.finditoo.foxcraft.digital`.
 
-**Verified 2026-11-07 22:15 UTC (atlas.dev):** 30 containers all `up`. Under Other: `edison.dev.*` (5), `hypershape.*` (3), `media-api`, `stack-api`. `admiring_goodall` gone (was missing 2026-11-05 17:40 UTC–2026-11-07 22:10 UTC). Live health-api payload has **no** `type`/`group` keys yet.
+Tiles show **project counts**, not containers. A project is up only if every container in it is ok. The uptime tables group rows by that project name under the stack heading. Unknown `type` values get their own tile (after Dotnet / Laravel / WordPress, before Other).
 
-**TODO (Atlas):** switch grouping to health-api `type` / `group` (`StellaHealthApiClient.php`, `resources/js/domains/monitoring/appType.ts`). `type=service` → category `container`; otherwise `meta.app_type` / `meta.app_project` from those fields, with the name-prefix table as fallback. Folder `/opt/apps/<type>/<project>/` is the server-side source of those fields — [`../stella-server/health-api.md`](../stella-server/health-api.md). Until both sides ship, a new app under `/opt/apps/{dotnet,laravel,wordpress}/` still lands in Other.
+**Verified 2026-11-07 22:15 UTC (atlas.dev, before the Atlas fallback change):** 30 containers all `up`. Under Other: `edison.dev.*` (5), `hypershape.*` (3), `media-api`, `stack-api`. `admiring_goodall` gone (was missing 2026-11-05 17:40 UTC–2026-11-07 22:10 UTC). Live health-api payload has **no** `type`/`group` keys yet — rebuild health-api if the code is on disk. Atlas code now uses those fields when they appear, and the name-prefix fallback so edison/hypershape/media-api/stack-api no longer sit in Other.
 
 **Latest verified check (2026-10-10):** 20 containers, 7 certs. See [`../stella-server/health-api.md`](../stella-server/health-api.md).
 
