@@ -34,7 +34,7 @@ It is **not** the business dashboard. Clients, invoices, and mail live in **ddas
 | **Dashboard** | `/dashboard` | Home + Stella status summary |
 | **Deployments** | `/deployments` | SSH rsync deploys and Stella deploy-api deploys |
 | **WP Sites** | `/wp-sites` | Register sites, 5-min uptime, Atlas Connect login, start/list/explore backups; browser decrypt (`/backup-decrypt`); daily + manual infection scans with verdict, report, allowlist, trusted baseline; build a Stella staging site from a completed full backup (planned via stack-api `create` + `restore`; `wp-staging-api` will not be deployed); download a fresh installable Atlas Connect zip |
-| **Stacks** | `/stacks` | Stella compose stacks via stack-api (`list` / `get` / `restart`). Flag-gated, admin only. Live on atlas.dev (sandbox `dominikliss` only); prod off. Contract: [`../stella-server/stack-api.md`](../stella-server/stack-api.md) |
+| **Stacks** | `/stacks` | Stella compose stacks via stack-api (`list` / `get` / `restart` / `logs` / jobs). Flag-gated, admin only. Live on atlas.dev (sandbox `dominikliss.foxcraft.digital` only); prod off. Contract: [`../stella-server/stack-api.md`](../stella-server/stack-api.md) |
 | **Monitoring** | `/monitoring`, `/monitoring/stella`, `/monitoring/atlas`, `/monitoring/edison`, `/monitoring/york` | Stella / Atlas / Edison host health + york Cloud-only status |
 | **Tools → IMAP Migration** | `/tools/imap-migration` | Trigger / poll `imapsync` jobs on Stella |
 | **Tools → TrackingTime Import** | `/tools/tracking-time-import` | Full one-way import of selected TrackingTime projects into Atlas MySQL |
@@ -296,13 +296,16 @@ See [`auth.md`](auth.md).
 
 ### Stacks
 
-Admin only. All three return 404 when `STELLA_STACK_API_ENABLED` is off.
+Admin only. All of these return 404 when `STELLA_STACK_API_ENABLED` is off.
 
 | Method | Path | Purpose |
 |--------|------|---------|
 | `GET` | `/api/stacks` | List Stella app stacks (signed `stack-list`) |
 | `GET` | `/api/stacks/{name}` | One stack plus Atlas `stack_actions` history |
-| `POST` | `/api/stacks/{name}/restart` | Restart a service or the whole stack (`{"service"?}`) |
+| `GET` | `/api/stacks/{name}/logs` | Last N log lines for a service (`service`, `lines` 1–1000, default 200) |
+| `POST` | `/api/stacks/{name}/restart` | Restart a service or the whole stack (`{"service"?, "async"?}`). `async: true` queues a job and records `stack_actions` as `queued` with the job id |
+| `GET` | `/api/stack-jobs` | Recent stack-api jobs (`name?`, `limit` 1–100, default 20) |
+| `GET` | `/api/stack-jobs/{id}` | One stack-api job |
 
 See [`../stella-server/stack-api.md`](../stella-server/stack-api.md).
 
