@@ -198,6 +198,11 @@ health-api no longer uses a hardcoded container list for the whole host.
 | `deploy-api` | `deploy-api` |
 | `ollama` | `ollama` |
 | `backup` | `backup` |
+| `health-api` | `health-api` |
+| `media-api` | `media-api` |
+| `stack-api` | `stack-api` |
+
+**OPEN (2026-11-07):** whether `health-api` / `media-api` / `stack-api` are actually in the running `CORE_CONTAINERS` list was not confirmed by reading `health.py` (atlas.dev-ssh has no host/`docker` access). They **are** in the live payload as `up` containers (signed check 2026-11-07 22:15 UTC, 30 containers). Atlas still classifies `media-api` and `stack-api` as hosted apps (Other) until it reads the new `type`/`group` fields — [`../atlas/monitoring.md`](../atlas/monitoring.md).
 
 Every other container is discovered via `docker ps -a`. Opt out with the label `health.enable=false`. Optional labels:
 
@@ -205,14 +210,61 @@ Every other container is discovered via `docker ps -a`. Opt out with the label `
 |---|---|
 | `health.name` | Display name in the health payload |
 | `health.http=<url>` | Adds an HTTP probe. **Only works for containers on `edge`.** |
+| `health.type` / `health.group` | Override folder-based type/group (see below). |
 
-**Last-seen state:** discovered containers are stored in `/opt/services/health-api/state/seen.json` (mounted at `/state`). A previously seen container that disappears reports `missing`. To retire one on purpose, delete its entry from `seen.json`.
+**Last-seen state:** discovered containers are stored in `/opt/services/health-api/state/seen.json` (mounted at `/state`). A previously seen container that disappears reports `missing`. Deleting `seen.json` is safe — it is rebuilt from `docker ps -a` on the next check; uptime history in Atlas is not affected. To retire one container on purpose, delete only that entry.
 
 **Verified 2026-10-10:** 20 containers all `up` — 6 core + 14 discovered (`advoapp-dev`, `advoapp-ssh`, the 5 `atlas.dev` containers, the 3 `dominikliss` containers, `health-api`, `osgar-datahub-db` / `-dev` / `-ssh`). HTTP checks for `stella-api` and `ollama` up.
 
 **Verified 2026-10-18** by calling the check functions inside the container (not a full signed Atlas round-trip): `media-api` container `up` (`restart_count` 0); `http_checks` `{"status": "up", "code": 200}` via the compose label `health.http=http://media-api:8080/health`; cert `stella-media-api.foxcraft.digital` `days_left` 89 `status` `ok` (after force-recreating health-api — Issue 4). **UNVERIFIED:** how Atlas displays the new entries (check the Atlas dashboard after its next poll).
 
 **⚠️ `advoapp-dev` stuck-orphan state (2026-10-09, 2026-10-12) is invisible here.** Container status and supervisor both look fine (`up` / `app RUNNING`) while a leftover `dotnet` chain holds port 8080 and serves a stale build. A public `curl` can still return `302`, so that is not a health signal either. Only a check that distinguishes the process tree, or a build/version endpoint, would catch it. See [`dotnet-app-deployment.md`](dotnet-app-deployment.md).
+
+### Incident — phantom container `admiring_goodall` (2026-11-05–07)
+
+Atlas showed `admiring_goodall` as **Container missing**, 0% uptime, under **Other**. It was not malware.
+
+It was a throwaway `dotnet publish` container started by `/opt/services/azure-deploy/deploy-advoapp.sh` (`docker run --rm …`, documented at line 22 of that script) during an `advoapp-production` deploy. Trigger: deploy-api `POST /deploy/advoapp-production` on **2026-11-05 18:35 Vienna** (17:35 UTC). The container had no `--name`, so Docker auto-named it `admiring_goodall`. It ran ~23s and removed itself (`--rm`).
+
+health-api's `discover_all()` used `docker ps -a`, saw it during that window, wrote it to `/state/seen.json`, and reported it `missing` on every check after that.
+
+**Verified from atlas.dev DB (2026-11-07):**
+
+| | |
+|---|---|
+| First log | 2026-11-05 17:40:02 UTC — already `missing` (next 5-min cron after the deploy) |
+| Last log | 2026-11-07 22:10:02 UTC — still `missing` |
+| `up` rows | 0 / 631 |
+| 22:15 UTC payload | 30 containers, all `up`; `admiring_goodall` **gone**; no other `missing` containers in the last 3 days |
+
+The 22:10 → 22:15 drop means `seen.json` was reset and/or an AutoRemove skip started applying. **OPEN:** `health.py` source, `state/seen.json`, and `state/meta.json` were not read from this checkout (atlas.dev-ssh has no `/opt/services` or `docker`). A host check that no unknown containers/images remain is also **OPEN**.
+
+### `--rm` / AutoRemove filter (2026-11-07)
+
+**Intended:** `discover_all()` runs `docker inspect` on discovered containers and skips any with `HostConfig.AutoRemove=true`. Throwaway `docker run --rm` tasks (deploy builds, one-offs) are not monitored. Real services (no `--rm`) still are, and still report `missing` if they disappear.
+
+**OPEN:** not confirmed in `health.py`. Corroboration is only that `admiring_goodall` disappeared from the 22:15 UTC payload — that is also explained by deleting its `seen.json` entry.
+
+### Type and group per container (2026-11-07)
+
+**Intended:** `check_container()` returns `type` and `group`, derived from the Compose label `com.docker.compose.project.working_dir`:
+
+| Working dir | `type` | `group` |
+|---|---|---|
+| `/opt/apps/<type>/<project>/…` | `<type>` (`wordpress`, `laravel`, `dotnet`, …) | `<project>` |
+| `/opt/services/…` | `service` | `stella` |
+| no Compose folder | `other` | container name |
+| labels `health.type` / `health.group` | override the folder-based values | |
+
+`/state/meta.json` (new) stores the last known type/group per container so a missing container stays in its group instead of falling into Other.
+
+**OPEN:** the live signed payload at 2026-11-07 22:15 UTC still has only `status`, `started_at`, `restart_count` on every container — **no `type` / `group`**. Either the code is not in the running image, or the container was not rebuilt. health-api bakes `health.py` into the image (only `state/` and `allowed_signers` are mounted), so a code change needs:
+
+```bash
+cd /opt/services && docker compose up -d --build health-api
+```
+
+Until the payload grows those keys, Atlas keeps using name prefixes — which is why `edison.dev.*`, `hypershape.*`, `media-api`, and `stack-api` land under Other. **TODO:** Atlas `StellaHealthApiClient` + monitoring UI should prefer `type`/`group` when present. See [`../atlas/monitoring.md`](../atlas/monitoring.md) and [`../open-gaps.md`](../open-gaps.md).
 
 ### Certs — parsed from the live Caddyfile (2026-10-10)
 
@@ -286,16 +338,33 @@ Possible `backup.status` values: `ok`, `warning`, `failed`, `stale` (last succes
 
 `status` fields are one of `up`/`down`/`degraded`/`missing`/`error`/`ok`/`warning`/`incomplete` depending on the check — Atlas's rendering layer should treat anything other than `up`/`ok` as needing attention.
 
+**Intended extra keys on each container (OPEN — not in the 2026-11-07 22:15 UTC payload):** `"type": "dotnet"|"laravel"|"wordpress"|"service"|"other"|…`, `"group": "<project or stella or container name>"`. See Type and group above.
+
 ---
 
 ## Adding a new service (2026-10-18)
 
-media-api is the worked example. No `health.py` change was needed.
+media-api is the worked example. No `health.py` change was needed for discovery.
 
-1. Put the container on `edge`. `discover_all()` uses `docker ps -a`. The required-core list is still `CORE_CONTAINERS`: `caddy`, `stella-api`, `imap-sync`, `deploy-api`, `ollama`, `backup`. Do **not** add a typical new app/service to that core list.
+1. Put the container on `edge` (or under `/opt/apps/<type>/<project>/` for a hosted app). `discover_all()` uses `docker ps -a`. The required-core list is `CORE_CONTAINERS` (see table above). Do **not** add a typical hosted app to that list. Core Stella services that must alarm when absent (`health-api`, `media-api`, `stack-api`) belong on it.
 2. Optional HTTP probe: compose label `health.http=http://<container>:<port>/health`. **Only works for containers on `edge`.** media-api uses `health.http=http://media-api:8080/health`.
 3. Public cert: add a Caddy site block. Cert domains are parsed from the live Caddyfile (`CADDYFILE_PATH`).
 4. After editing the Caddyfile (including `sed -i`), `docker compose up -d --force-recreate health-api` so it remounts the new inode. Confirm the new container / http check / cert inside the container before waiting for Atlas.
+5. App folder `/opt/apps/<type>/<project>/` is **load-bearing** once type/group ships: health-api derives monitoring type and group from `com.docker.compose.project.working_dir`. Optional override: `health.type` / `health.group`.
+
+### Throwaway / script containers
+
+Containers started from scripts or services must use `--name` and, if temporary, `--rm` plus the label `stella.role=deploy-task`. That keeps them out of monitoring even before the AutoRemove skip, and makes `docker ps` readable. See [`dotnet-app-deployment.md`](dotnet-app-deployment.md) (`deploy-advoapp.sh`) and [`../open-gaps.md`](../open-gaps.md).
+
+### Deploying a health-api code change
+
+`health.py` / `main.py` are copied into the image. Bind mounts are only `state/`, `allowed_signers`, the Caddyfile, `/hostroot`, the Docker socket, and `backup/`. After editing the Python:
+
+```bash
+cd /opt/services && docker compose up -d --build health-api
+```
+
+`restart` / `up -d` without `--build` leaves the old code running.
 
 ## Atlas-side (implemented)
 
@@ -311,6 +380,7 @@ All five items below shipped. See [`../atlas/monitoring.md`](../atlas/monitoring
 
 ## Known limitations
 
+- **Privilege: Docker socket + full host filesystem.** Compose still mounts `/var/run/docker.sock` and `/:/hostroot:ro`. That is effectively root. `/hostroot` is only needed for `statvfs` and `/proc/loadavg` / `/proc/meminfo`. **TODO:** narrow the mount; confirm health-api is not reachable from outside the IP allowlist + signature. See [`../open-gaps.md`](../open-gaps.md).
 - **No UFW status check.** Reading `ufw status` requires host network-namespace access a properly-isolated container doesn't have without `--privileged` or `--pid=host` — deliberately not granted, to keep this service's privilege minimal. If UFW status is ever wanted here, the clean approach is a small host-level cron job that writes `ufw status` output to a file, which this container then reads — not a live syscall from inside the container.
 - **`EXPECTED_OLLAMA_MODELS = 13` is hardcoded.** Update this constant in `health.py` if the intended model list changes, or the check will falsely flag `incomplete` after a deliberate model removal.
 - **`ollama_resource_usage` is specific to the `ollama` container only.** If CPU/memory checks are ever wanted for other containers, `check_ollama_resource_usage()` would need generalizing into a parameterized version (`check_container_resource_usage(name)`), same pattern as `check_container`.

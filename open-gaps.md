@@ -6,6 +6,23 @@ Last updated: 2026-11-07
 
 ---
 
+## health-api — throwaway containers and grouping (2026-11-07)
+
+Incident write-up: [`stella-server/health-api.md`](stella-server/health-api.md). Atlas grouping: [`atlas/monitoring.md`](atlas/monitoring.md).
+
+- [x] **`admiring_goodall` identified** — not malware. Throwaway `docker run --rm` from `deploy-advoapp.sh` during `POST /deploy/advoapp-production` (2026-11-05 18:35 Vienna). Atlas: 631 `missing` rows, 0 `up`, 2026-11-05 17:40 UTC–2026-11-07 22:10 UTC; gone from the 22:15 UTC payload.
+- [ ] **`--rm` / AutoRemove skip in `discover_all()`** — intended; **OPEN** (`health.py` not read from atlas.dev-ssh). Live payload has no AutoRemove-named leftovers as of 22:15 UTC.
+- [ ] **`type` / `group` on each container + `/state/meta.json`** — intended contract; **OPEN**. Live payload 22:15 UTC still only `status` / `started_at` / `restart_count`. Rebuild with `docker compose up -d --build health-api` if the code is on disk but not in the image.
+- [ ] **`CORE_CONTAINERS` includes `health-api`, `media-api`, `stack-api`** — **OPEN** in `health.py`. All three are `up` in the live payload; Atlas still puts `media-api` / `stack-api` under Other.
+- [ ] **`deploy-advoapp.sh` line 22** — add `--name "advoapp-build-$$" --label stella.role=deploy-task` and `trap cleanup EXIT INT TERM` (`docker rm -f`, publish dir, zip). Live script not re-read; documented copy still has unnamed `docker run --rm`.
+- [ ] **deploy-api stop** — Atlas cancel only stops polling. Confirm deploy-api uses SIGTERM (`process.terminate()`) with a timeout before `kill()`, otherwise the trap cannot run. Source **OPEN**.
+- [ ] **Atlas grouping** — switch to health-api `group`/`type` (`StellaHealthApiClient.php`, `resources/js/domains/monitoring/appType.ts`). Today `edison.dev.*`, `hypershape.*`, `media-api`, `stack-api` land under Other.
+- [ ] **health-api privilege** — Docker socket + `/:/hostroot:ro` is effectively root. Narrow `/hostroot` to `statvfs` + `/proc/loadavg` + `/proc/meminfo`. Confirm the service is not reachable from outside the IP allowlist + signature.
+- [ ] **`dominikliss.foxcraft.digital` outdated image** — shows image ID `ce31904fa1e5` instead of a tag. Recreate the container onto the current `wordpress:php8.5-apache` build. Live image **OPEN** (not inspected from atlas.dev-ssh). See [`stella-server/php-updates.md`](stella-server/php-updates.md).
+- [ ] **Optional: `docker image prune -a`** — unused images (alpine, wordpress:cli, wordpress:php8.3-apache, dotnet/sdk:10.0, advoapp-redesign-*). The dotnet SDK will be pulled again on the next advoapp deploy. **OPEN** (image list not read).
+
+---
+
 ## york
 
 Access gateway set up 2026-11-07. Runbook: [`york/README.md`](york/README.md). Proton `194.126.177.181` stays as fallback. Whitelisted exit is floating IP `78.47.218.190`; primary `york-ip` `2.28.33.52` is not whitelisted.
@@ -153,7 +170,7 @@ Service live at `https://stella-media-api.foxcraft.digital`. Contract: [`stella-
 - [ ] **WP staging: mails and MainWP identity on `dominikliss.foxcraft.digital`** — exact copy; `mailpoet`, `wp-mail-smtp`, and `mainwp-child` left active. Real emails can leave staging; `mainwp-child` carries the live site’s identity. **TODO (Dominik):** decide whether to neutralise them. See [`stella-server/wordpress-staging.md`](stella-server/wordpress-staging.md).
 - [ ] **WP staging: leftovers after the 2026-10-11 live import** — `wordpress:cli` image on the Stella host; `/tmp/wp-cli.phar` inside the `wp` container (removal not confirmed); `~/relaunch_dominikliss_com.sql` in the `-ssh` container (110 MB); leftover zip/dump on the managed host (**UNVERIFIED**). **TODO (Dominik).** See [`stella-server/wordpress-staging.md`](stella-server/wordpress-staging.md).
 - [ ] **WP staging: `/root/wp-before-php85.sql`** — 86 MB dump on Stella from the 2026-10-23 PHP 8.5 bump. **TODO (Dominik):** delete once `dominikliss.foxcraft.digital` is confirmed fine. See [`stella-server/wordpress-staging.md`](stella-server/wordpress-staging.md).
-- [ ] **`dominikliss` `wordpress:php8.5-apache` is a moving tag** — `wp` now runs an untagged image (`sha256:ce31904f…`) because `docker compose pull wp` for hypershape moved the tag. Next `up -d wp` on `dominikliss` picks up the new image; check patch level with `php -v`. See [`stella-server/php-updates.md`](stella-server/php-updates.md).
+- [ ] **`dominikliss` `wordpress:php8.5-apache` is a moving tag** — `wp` now runs an untagged image (`sha256:ce31904f…` / `ce31904fa1e5`) because `docker compose pull wp` for hypershape moved the tag. Recreate the container (`docker compose up -d wp`) to pick up the current build; check patch level with `php -v`. Live image **OPEN** from atlas.dev-ssh. See [`stella-server/php-updates.md`](stella-server/php-updates.md).
 - [ ] **Managed host `dedi6724` PHP version** — operator says updated after CVE-2026-109618/109619 (ddashboard, Foxx Cloud, `dominikliss.com` live); exact version **UNVERIFIED**. See [`stella-server/php-updates.md`](stella-server/php-updates.md).
 - [ ] **`hypershape.foxcraft.digital`** — WP staging on Stella. PHP 8.5.12 (`wordpress:php8.5-apache` + shared `stella/ssh-php:8.5`, adopted 2026-11-04). SSH port **2206**, on `internal` (never `edge`). `edison` has its own key (`atlas/keys/edison.pub`, UID 1002). Still open: `DOCKER-USER` source IPs for 2206 not documented; Edison login from Edison after the switch **UNVERIFIED** (host keys unchanged via the `ssh-keys` volume); no `uploads.ini` mount; delete `/root/hypershape-before-adopt.sql` and `docker-compose.yml.bak-20261104`. **TODO (Dominik).** See [`stella-server/wordpress-staging.md`](stella-server/wordpress-staging.md).
 - [ ] **`stella-media-api` Caddy block** — `propagation_delay` / `propagation_timeout` lines are duplicated in the live Caddyfile. Works; **TODO (Dominik):** clean up.
@@ -167,7 +184,7 @@ Service live at `https://stella-media-api.foxcraft.digital`. Contract: [`stella-
 - [x] **Atlas client for the host API** — Laravel `CheckAtlasHealth`, `atlas_health_checks` / `atlas_service_uptime_logs`, dashboard card + `/monitoring/atlas`. See [`atlas/monitoring.md`](atlas/monitoring.md). Hairpin from Atlas to the public URL still open below.
 - [x] **Atlas host-api.md** — runbook at [`atlas/host-api.md`](atlas/host-api.md) (health + deploy, 2026-10-10).
 - [ ] **Atlas prod via the public API URL** — test `https://api.atlas.foxcraft.digital` from Atlas itself (hairpin risk), otherwise use `127.0.0.1:8090` locally.
-- [x] **Hetzner Cloud API in Atlas** — read-only `HETZNER_CLOUD_TOKEN` lists atlas + edison, Cloud backups, snapshots, volumes. Dashboard Edison card + `/monitoring/edison`. See [`atlas/monitoring.md`](atlas/monitoring.md).
+- [x] **Hetzner Cloud API in Atlas** — read-only `HETZNER_CLOUD_TOKEN` lists atlas + edison + york, Cloud backups, snapshots, volumes, floating IPs. Dashboard cards + `/monitoring/{atlas,edison,york}`. york has no health-api (Cloud status only). See [`atlas/monitoring.md`](atlas/monitoring.md).
 - [x] **Edison host API (health + `/v1`)** — live 2026-11-01 at `https://api.edison.foxcraft.digital`; run options 2026-11-02; workspaces v1 2026-11-02 (catalog, `ensure`, repo scan, workspace rule). Docker Caddy + host-api on `edison-net`. See [`edison/host-api.md`](edison/host-api.md). Atlas-side `CheckEdisonHealth` still open. Cloud API still covers power/backup until that exists.
 - [ ] **Patch `/usr/local/bin/atlas-deploy`:** `queue:restart` instead of `systemctl restart atlas-queue`; reject refs starting with `-`
 - [ ] **First real deploy through the host API** (new commits) and record the result in [`atlas/host-api.md`](atlas/host-api.md)
@@ -187,6 +204,10 @@ Closed on atlas.dev: Atlas client (flag on, key `/var/www/.ssh/id_ed25519`, `sta
 - [ ] **Re-decide `dominikliss` as the sandbox** before `apply` / `delete`. Current `STACK_API_SANDBOX_STACKS` is `dominikliss.foxcraft.digital`.
 
 ---
+
+## Closed 2026-11-07
+
+- **`admiring_goodall` identified** — phantom "Container missing" under Other was a 23s `--rm` advoapp build container, not malware. Gone from the health-api payload as of 22:15 UTC. AutoRemove skip, type/group, deploy-script trap, and Atlas grouping remain open above. See [`stella-server/health-api.md`](stella-server/health-api.md).
 
 ## Closed 2026-11-04
 

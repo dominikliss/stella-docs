@@ -50,13 +50,13 @@ The Stella health service list is dynamic as of 2026-10-10. health-api no longer
 | Category | Services |
 |---|---|
 | `system` | `system:docker_daemon`, `system:ollama_models`, `system:ollama_resources`, `system:cpu_ram`, `system:disk` |
-| `container` | Core Stella containers from `CORE_CONTAINERS` in `health.py` (`caddy`, `stella-api`, `imap-sync`, `deploy-api`, `ollama`, `backup`) |
+| `container` | Core Stella containers. Atlas’s hardcoded infra list: `caddy`, `stella-api`, `imap-sync`, `deploy-api`, `ollama`, `backup`, `health-api`. **TODO:** also treat `media-api` / `stack-api` as infra, and prefer health-api `type=service`. |
 | `app` | Every other discovered container. Atlas then groups them by stack (see below). |
 | `backup` | `system:backup` — current restic status (not a container) |
 | `http` | `http:stella-api`, `http:ollama`, plus any `health.http` probes |
 | `cert` | One row per site block parsed from the live Caddyfile |
 
-**App grouping (Atlas UI, 2026-10-10):** hosted containers stay category `app`. `normalizeServices()` writes `meta.app_type` and `meta.app_project`.
+**App grouping (Atlas UI, 2026-10-10; still live 2026-11-07):** hosted containers stay category `app`. `normalizeServices()` writes `meta.app_type` and `meta.app_project` from **name prefixes** — not from health-api.
 
 | `app_type` | Name prefixes |
 |---|---|
@@ -69,7 +69,9 @@ The Stella health service list is dynamic as of 2026-10-10. health-api no longer
 
 Tiles show **project counts**, not containers (Dotnet `2/2`, Laravel `1/1`, WordPress `1/1`). A project is up only if every container in it is ok. The uptime tables group rows by that project name under the stack heading.
 
-A new app under `/opt/apps/{dotnet,laravel,wordpress}/` will land in **Other** until its name prefix is added here (or a future `health.group` label exists).
+**Verified 2026-11-07 22:15 UTC (atlas.dev):** 30 containers all `up`. Under Other: `edison.dev.*` (5), `hypershape.*` (3), `media-api`, `stack-api`. `admiring_goodall` gone (was missing 2026-11-05 17:40 UTC–2026-11-07 22:10 UTC). Live health-api payload has **no** `type`/`group` keys yet.
+
+**TODO (Atlas):** switch grouping to health-api `type` / `group` (`StellaHealthApiClient.php`, `resources/js/domains/monitoring/appType.ts`). `type=service` → category `container`; otherwise `meta.app_type` / `meta.app_project` from those fields, with the name-prefix table as fallback. Folder `/opt/apps/<type>/<project>/` is the server-side source of those fields — [`../stella-server/health-api.md`](../stella-server/health-api.md). Until both sides ship, a new app under `/opt/apps/{dotnet,laravel,wordpress}/` still lands in Other.
 
 **Latest verified check (2026-10-10):** 20 containers, 7 certs. See [`../stella-server/health-api.md`](../stella-server/health-api.md).
 

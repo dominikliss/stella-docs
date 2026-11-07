@@ -2,7 +2,7 @@
 
 **Status:** Set up 2026-11-07. Access gateway, not a service host. Operator traffic to Stella / Atlas / Edison leaves Hetzner via the **floating IP** `78.47.218.190` (the whitelisted exit). Proton `194.126.177.181` stays as fallback everywhere it was already allowed.
 
-**Related:** Stella firewall [`../stella-server/infrastructure.md`](../stella-server/infrastructure.md), Atlas firewall [`../atlas/server.md`](../atlas/server.md), Edison firewall [`../edison/infrastructure.md`](../edison/infrastructure.md), company map [`../integration/system-overview.md`](../integration/system-overview.md). Open items: [`../open-gaps.md`](../open-gaps.md) (section york).
+**Related:** Stella firewall [`../stella-server/infrastructure.md`](../stella-server/infrastructure.md), Atlas firewall [`../atlas/server.md`](../atlas/server.md), Edison firewall [`../edison/infrastructure.md`](../edison/infrastructure.md), company map [`../integration/system-overview.md`](../integration/system-overview.md). Atlas monitoring: `/monitoring/york` (Hetzner Cloud API only — no health-api). Open items: [`../open-gaps.md`](../open-gaps.md) (section york).
 
 ---
 

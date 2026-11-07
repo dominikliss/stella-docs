@@ -166,7 +166,7 @@ DeployRunJob::handleStellaApiDeploy()
      ← { status, current_step, log: [...], commit_sha, commit_message }
      - Append new log lines to DeployRunDestination.log in real time
      - Done when status ∈ { success, failed, error }
-     - Cancelled when DeployRun.status === 'cancelled' (checked each poll cycle)
+     - Cancelled when DeployRun.status === 'cancelled' (checked each poll cycle). Atlas **does not** tell Stella to stop — the script on Stella keeps running. **TODO:** send SIGTERM (`process.terminate()` with timeout before `kill()`) so a trap on `deploy-advoapp.sh` can `docker rm -f` the build container. See [`../stella-server/deploy-api.md`](../stella-server/deploy-api.md).
      - Times out after 30 min (360 × 5 s) → both destination and run set to error
 ```
 

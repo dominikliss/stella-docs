@@ -267,6 +267,13 @@ docker run --rm \
   -w /src \
   mcr.microsoft.com/dotnet/sdk:10.0 \
   dotnet publish -c Release -o /publish
+# Line 22 in the live script is this `docker run --rm` (no --name).
+# 2026-11-05: Docker auto-named it admiring_goodall; health-api remembered it.
+# TODO: --name "advoapp-build-$$" --label stella.role=deploy-task
+# plus trap cleanup EXIT INT TERM (docker rm -f, publish dir, zip).
+# Without the trap, stopping a deploy in Atlas skips script cleanup
+# and the build container keeps running until it finishes.
+# See health-api.md (admiring_goodall) and open-gaps.md.
 
 echo "3/5 — Zipping..."
 rm -f "$ZIP_PATH"
@@ -297,6 +304,8 @@ echo "Done — deployed to $AZURE_WEBAPP_NAME"
 **⚠️ Branch name: `master`, not `main`.** The repo's default branch is `master`. This tripped up the first setup attempt (`fatal: couldn't find remote ref main`) — check `git ls-remote --heads <repo>` before assuming `main` for any future repo.
 
 **Why `dotnet publish` runs via `docker run` rather than a native SDK install:** keeps Stella's host free of language toolchains — same principle as everything else on this server. The container is ephemeral (`--rm`), just borrows the official SDK image for the duration of the build.
+
+**Naming:** `--rm` alone is not enough for health-api. If `docker ps -a` runs during the 23s window, an unnamed container is stored in `seen.json` and reported missing forever (`admiring_goodall`, 2026-11-05–07). Give it `--name` and `stella.role=deploy-task`. **OPEN:** live `/opt/services/azure-deploy/deploy-advoapp.sh` was not re-read from atlas.dev-ssh; the excerpt above is the documented copy.
 
 **Host dependencies this script needs directly on Stella (not containerized):** `zip` (`apt install zip`), `az` CLI (`curl -sL https://aka.ms/InstallAzureCLIDeb | bash`), Docker itself.
 

@@ -12,7 +12,7 @@ Last checked 2026-11-04.
 
 | Where | How installed | Update command | Current version |
 |-------|---------------|----------------|-----------------|
-| `dominikliss.foxcraft.digital` `wp` | Docker `wordpress:php8.5-apache` (moving minor tag) | `docker compose pull wp` then `up -d wp` | 8.5.12 |
+| `dominikliss.foxcraft.digital` `wp` | Docker `wordpress:php8.5-apache` (moving minor tag; reported as untagged ID `ce31904fa1e5`) | recreate: `docker compose up -d wp` after pull | 8.5.12. **TODO:** recreate onto the current tag. Live image **OPEN** from atlas.dev-ssh. |
 | `dominikliss.foxcraft.digital-ssh` | Docker build `Dockerfile.ssh` (`FROM php:8.5-cli`) | `docker compose up -d --build ssh` | 8.5.12 |
 | `hypershape.foxcraft.digital` `wp` | Docker `wordpress:php8.5-apache` (moving minor tag) | `docker compose pull wp` then `up -d wp` | 8.5.12 (was 8.4 until 2026-11-04) |
 | `hypershape.foxcraft.digital-ssh` | Shared image `stella/ssh-php:8.5` (`pull_policy: never`) | rebuild the tag, then `docker compose up -d ssh` — [Shared SSH image](#shared-ssh-image-stellassh-php) | 8.5.12 |

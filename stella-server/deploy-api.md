@@ -123,6 +123,8 @@ Adding a future app = one new entry, pointing at its own deploy script and sourc
 
 **Job tracking:** in-memory only (a Python dict guarded by a lock) — lost on container restart. A persistent plain-text audit trail still exists separately via `deploy.log` (`LOG_PATH`), which records every accepted/rejected request and every finished job with its outcome and commit SHA.
 
+**Stopping a deploy (OPEN, 2026-11-07):** Atlas cancel only sets `DeployRun.status=cancelled` and **stops polling**. It does not call deploy-api to stop the job. **TODO:** confirm how deploy-api kills the script — it should `process.terminate()` (SIGTERM) with a timeout before `kill()`, otherwise a `trap cleanup EXIT INT TERM` in `deploy-advoapp.sh` never runs and the unnamed build container keeps going. Live deploy-api source not read from atlas.dev-ssh. See [`../atlas/deploy-pipeline.md`](../atlas/deploy-pipeline.md) and [`../open-gaps.md`](../open-gaps.md).
+
 ---
 
 ## Commit tracking

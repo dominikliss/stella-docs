@@ -456,6 +456,8 @@ docker network create edge   # one-time setup, already done
 
 ### Folder convention
 
+**Load-bearing for monitoring (2026-11-07):** health-api derives `type` and `group` from the Compose label `com.docker.compose.project.working_dir`. `/opt/apps/<type>/<project>/` is not just a visual convention — moving a stack out of that layout (or composing from a different working dir) changes how Atlas groups it. `/opt/services/…` maps to `type=service`, `group=stella`. Live payload keys **OPEN** — see [`health-api.md`](health-api.md).
+
 Folders are named by subdomain, for easy visual mapping:
 
 ```
@@ -481,7 +483,7 @@ Folders are named by subdomain, for easy visual mapping:
 
 WordPress staging (folder layout, compose, SSH, permissions, Caddy upstream port 80): [`wordpress-staging.md`](wordpress-staging.md). `dominikliss` still has `Dockerfile.ssh` + `authorized_keys` instead of `atlas/`.
 
-**Container names also match the subdomain** — makes `docker ps`/`docker logs` output unambiguous once there are many services running. Example:
+**Container names also match the subdomain** — makes `docker ps`/`docker logs` output unambiguous once there are many services running. Script-started and one-off containers must set `--name` (never rely on Docker’s auto-name). Temporary ones also take `--rm` and the label `stella.role=deploy-task` so health-api does not remember them — [`health-api.md`](health-api.md) (`admiring_goodall`, 2026-11-05–07). Example:
 
 ```yaml
 services:

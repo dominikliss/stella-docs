@@ -1,12 +1,12 @@
 # Atlas auth landing (2026-11-07)
 
-Snapshot of the unauthenticated screens after the 2026-11-07 design sessions, plus the WCAG 2.1 AA pass that followed. This is the seed of Atlas branded chrome. **Signed-in Atlas** (same day, follow-up) now uses the same accent / radius / focus — quieter, no grid, no 140px bloom. See [SPEC.md](SPEC.md) §11. Other tools that submodule this spec stay Technical Precision.
+Snapshot of the unauthenticated screens after the 2026-11-07 design sessions, plus the WCAG 2.1 AA pass that followed. **Not** the shared Technical Precision chrome. Signed-in Atlas keeps white primary buttons and `tech-border`; it only borrows 8–12px radius. See [SPEC.md](SPEC.md) §11.
 
 ---
 
 ## New language at a glance
 
-Copy these for Atlas (landing + signed-in). Do not copy Technical Precision’s white primary button, 4px radius, or “no glow / no gradient” rules onto Atlas. Signed-in drops the grid and the large card bloom; keep density and the 220px sidebar.
+Copy these on `/login`, `/forgot-password`, and `/reset-password` only. Do not copy pink borders, pink CTAs, or pink hover fills onto signed-in screens.
 
 | Rule | Landing | Technical Precision (signed-in) |
 |------|---------|----------------------------------|
@@ -44,7 +44,7 @@ Inspiration was a dark split layout with a pink grid. The first Atlas pass put s
 6. Split 2FA into one box per digit.
 7. Audited and fixed WCAG 2.1 AA.
 
-Signed-in Atlas now uses this accent, radius, and focus. Do **not** copy the landing grid, sales atmosphere, or 140px card bloom into sidebar / tables / Settings.
+Do **not** copy pink borders, pink buttons, or pink hover into sidebar, tables, Settings, or other signed-in chrome. Radius (8–12px) is the only landing trait that travelled into the app.
 
 ---
 
