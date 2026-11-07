@@ -58,7 +58,7 @@ The Stella health service list is dynamic as of 2026-10-10. health-api no longer
 
 **App grouping (Atlas UI, 2026-11-07):** hosted containers stay category `app`. `normalizeServices()` prefers health-api `type` / `group` when present (`meta.app_type`, `meta.app_project`). `type=service` → category `container` (Services tile), not Other.
 
-Fallback when those keys are missing (live payload as of 2026-11-07 22:15 UTC still omits them):
+Fallback when those keys are missing (they have been present since 2026-11-07 22:20 UTC):
 
 | `app_type` | Name prefixes |
 |---|---|
@@ -69,11 +69,11 @@ Fallback when those keys are missing (live payload as of 2026-11-07 22:15 UTC st
 
 Fallback infra names: `caddy`, `stella-api`, `imap-sync`, `deploy-api`, `ollama`, `backup`, `health-api`, `media-api`, `stack-api`.
 
-**Project / subdomain:** health-api `group` when present; otherwise strip a trailing `-dev` / `-db` / `-ssh` / `-queue` / `-scheduler`. So `advoapp-dev` + `advoapp-ssh` are one project (`advoapp`) until health-api sends `group=advoapp.finditoo.foxcraft.digital`.
+**Project / subdomain:** health-api `group` when present (live: `advoapp.finditoo.foxcraft.digital`, `osgar.datahub.foxcraft.digital`, …); otherwise strip a trailing `-dev` / `-db` / `-ssh` / `-queue` / `-scheduler`.
 
 Tiles show **project counts**, not containers. A project is up only if every container in it is ok. The uptime tables group rows by that project name under the stack heading. Unknown `type` values get their own tile (after Dotnet / Laravel / WordPress, before Other).
 
-**Verified 2026-11-07 22:15 UTC (atlas.dev, before the Atlas fallback change):** 30 containers all `up`. Under Other: `edison.dev.*` (5), `hypershape.*` (3), `media-api`, `stack-api`. `admiring_goodall` gone (was missing 2026-11-05 17:40 UTC–2026-11-07 22:10 UTC). Live health-api payload has **no** `type`/`group` keys yet — rebuild health-api if the code is on disk. Atlas code now uses those fields when they appear, and the name-prefix fallback so edison/hypershape/media-api/stack-api no longer sit in Other.
+**Verified 2026-11-07 22:25 UTC (atlas.dev, after Atlas + health-api):** 30 containers all `up`. Services tile includes `media-api` and `stack-api` (`type=service`). Laravel includes `edison.dev.*`. WordPress includes `hypershape.*`. No Other apps. `admiring_goodall` gone (was missing 2026-11-05 17:40 UTC–2026-11-07 22:10 UTC). `type`/`group` present from 22:20 UTC.
 
 **Latest verified check (2026-10-10):** 20 containers, 7 certs. See [`../stella-server/health-api.md`](../stella-server/health-api.md).
 

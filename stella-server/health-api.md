@@ -202,7 +202,7 @@ health-api no longer uses a hardcoded container list for the whole host.
 | `media-api` | `media-api` |
 | `stack-api` | `stack-api` |
 
-**OPEN (2026-11-07):** whether `health-api` / `media-api` / `stack-api` are actually in the running `CORE_CONTAINERS` list was not confirmed by reading `health.py` (atlas.dev-ssh has no host/`docker` access). They **are** in the live payload as `up` containers (signed check 2026-11-07 22:15 UTC, 30 containers). Atlas still classifies `media-api` and `stack-api` as hosted apps (Other) until it reads the new `type`/`group` fields — [`../atlas/monitoring.md`](../atlas/monitoring.md).
+**Verified 2026-11-07 22:20 UTC:** every `/opt/services` container in the payload has `type=service`, `group=stella`, including `health-api`, `media-api`, and `stack-api` (all `up`). Whether those three names are also in the `CORE_CONTAINERS` Python list is **OPEN** (`health.py` not read from atlas.dev-ssh). Atlas treats `type=service` as the Services tile.
 
 Every other container is discovered via `docker ps -a`. Opt out with the label `health.enable=false`. Optional labels:
 
@@ -237,13 +237,13 @@ health-api's `discover_all()` used `docker ps -a`, saw it during that window, wr
 | `up` rows | 0 / 631 |
 | 22:15 UTC payload | 30 containers, all `up`; `admiring_goodall` **gone**; no other `missing` containers in the last 3 days |
 
-The 22:10 → 22:15 drop means `seen.json` was reset and/or an AutoRemove skip started applying. **OPEN:** `health.py` source, `state/seen.json`, and `state/meta.json` were not read from this checkout (atlas.dev-ssh has no `/opt/services` or `docker`). A host check that no unknown containers/images remain is also **OPEN**.
+The 22:10 → 22:15 drop means `seen.json` was reset and/or an AutoRemove skip started applying. **OPEN:** `health.py` source, `state/seen.json`, and `state/meta.json` were not read from this checkout (atlas.dev-ssh has no `/opt/services` or `docker`). A host check that no unknown containers/images remain is also **OPEN**. `type`/`group` landed in the live payload at **22:20 UTC** (absent at 22:15), so a health-api rebuild happened in that window.
 
 ### `--rm` / AutoRemove filter (2026-11-07)
 
 **Intended:** `discover_all()` runs `docker inspect` on discovered containers and skips any with `HostConfig.AutoRemove=true`. Throwaway `docker run --rm` tasks (deploy builds, one-offs) are not monitored. Real services (no `--rm`) still are, and still report `missing` if they disappear.
 
-**OPEN:** not confirmed in `health.py`. Corroboration is only that `admiring_goodall` disappeared from the 22:15 UTC payload — that is also explained by deleting its `seen.json` entry.
+**OPEN:** not confirmed by reading `health.py`. Corroboration: `admiring_goodall` disappeared from the 22:15 UTC payload (also explained by deleting its `seen.json` entry) and type/group shipped in the same 22:20 rebuild.
 
 ### Type and group per container (2026-11-07)
 
@@ -258,13 +258,15 @@ The 22:10 → 22:15 drop means `seen.json` was reset and/or an AutoRemove skip s
 
 `/state/meta.json` (new) stores the last known type/group per container so a missing container stays in its group instead of falling into Other.
 
-**OPEN:** the live signed payload at 2026-11-07 22:15 UTC still has only `status`, `started_at`, `restart_count` on every container — **no `type` / `group`**. Either the code is not in the running image, or the container was not rebuilt. health-api bakes `health.py` into the image (only `state/` and `allowed_signers` are mounted), so a code change needs:
+**Verified 2026-11-07 22:20 UTC** (absent at 22:15, present from 22:20): every container in the signed payload has `type` and `group`. Samples: `caddy`/`media-api`/`stack-api` → `service`/`stella`; `advoapp-dev` → `dotnet`/`advoapp.finditoo.foxcraft.digital`; `edison.dev.foxcraft.digital` → `laravel`/`edison.dev.foxcraft.digital`; `hypershape.foxcraft.digital` → `wordpress`/`hypershape.foxcraft.digital`. `/state/meta.json` itself was not read (**OPEN**).
+
+health-api bakes `health.py` into the image (only `state/` and `allowed_signers` are mounted), so a code change needs:
 
 ```bash
 cd /opt/services && docker compose up -d --build health-api
 ```
 
-Until the payload grows those keys, Atlas uses name-prefix fallback (`edison.dev.*` → laravel, `hypershape.*` → wordpress, `media-api`/`stack-api` → Services). When the keys appear, Atlas prefers them. See [`../atlas/monitoring.md`](../atlas/monitoring.md).
+Atlas prefers these keys; name prefixes remain as fallback. See [`../atlas/monitoring.md`](../atlas/monitoring.md).
 
 ### Certs — parsed from the live Caddyfile (2026-10-10)
 
@@ -338,7 +340,7 @@ Possible `backup.status` values: `ok`, `warning`, `failed`, `stale` (last succes
 
 `status` fields are one of `up`/`down`/`degraded`/`missing`/`error`/`ok`/`warning`/`incomplete` depending on the check — Atlas's rendering layer should treat anything other than `up`/`ok` as needing attention.
 
-**Intended extra keys on each container (OPEN — not in the 2026-11-07 22:15 UTC payload):** `"type": "dotnet"|"laravel"|"wordpress"|"service"|"other"|…`, `"group": "<project or stella or container name>"`. See Type and group above.
+**Extra keys on each container (verified 2026-11-07 22:20 UTC):** `"type": "dotnet"|"laravel"|"wordpress"|"service"|"other"|…`, `"group": "<project or stella or container name>"`. See Type and group above.
 
 ---
 
