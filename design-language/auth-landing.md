@@ -89,7 +89,7 @@ Uses Technical Precision layers, then **Atlas identity pink as chrome**. That br
 | Input / checkbox / OTP rest border | `outline` `#8e9192` | WCAG 1.4.11; not `tech-border-bright` `#3F3F46` (~2:1) |
 | Input / OTP focus | 1px `#f472b6` border + 3px halo `rgba(244, 114, 182, 0.2)` | The 1px border is the 1.4.11 indicator (~7:1). Do not add a second solid ring. |
 | CTA / checkbox focus | `0 0 0 2px #0C0C0E, 0 0 0 4px #ffffff` | Double ring: white is adjacent to the dark gap, not to the pink fill |
-| Error | `error` `#ffb4ab` | Text + border |
+| Error | `status-danger` `#f87171` | Label + 1px border + helper. Halo `rgba(248, 113, 113, 0.22)`. Not Atlas pink, not MD3 `#ffb4ab` (that peach reads as faded brand on this card). |
 | Text | `primary` / `on-surface` / `on-surface-variant` | Same as SPEC §2.2 |
 
 CTA hover is a **deeper pink + soft pink glow**, not a white flash (that flash broke the button). Active stays `#ec4899` so 13px text stays ≥ 4.5:1.
@@ -108,7 +108,9 @@ SPEC scale, with two auth exceptions.
 | Step `01 / 02 · Credentials` | `label-xs` 12px, uppercase, tracking `0.18em`, `text-atlas` | |
 | Card title | **22px / 600 / leading 28px** | Larger than `h1` 18px — landing only |
 | Description, Remember me, links, CTA label | `body-sm` 13px | |
-| Field labels, errors, version | `label-xs` / `mono-sm` 12px | |
+| Field labels | `label-xs` 12px Inter. `text-error` when invalid | |
+| Field errors | `mono-sm` 12px JetBrains Mono, `text-error` | Same as SPEC field errors — not Inter body |
+| Version | `mono-sm` 12px | |
 | Field values | `body-sm` 13px | WCAG has no minimum size; iOS will zoom fields under 16px |
 | OTP digits | 18px JetBrains Mono, 44px boxes | Prevents iOS zoom |
 | `©` | 11px, 3px gap, nudged 1px down | Optical alignment with `foxcraft.digital` |
@@ -130,8 +132,9 @@ WCAG 2.1 AA does **not** require a minimum font size. 12px/13px is allowed if co
 
 - Height 40px, radius 8px, horizontal padding 12px.
 - Visible `<label>` + `htmlFor`.
-- `autocomplete="email"` / `current-password` / `new-password` / `one-time-code` (WCAG 1.3.5).
+- `autocomplete="email"` / `current-password` / `new-password` (WCAG 1.3.5). OTP boxes: `autocomplete="off"` — see OTP.
 - Native checkbox is visually hidden; 14px custom box. Hit area includes the “Remember me” label.
+- Submit stays **disabled** (opacity 40%) until the required values are present. Do not show a “required” banner.
 
 ### CTA
 
@@ -147,7 +150,23 @@ WCAG 2.1 AA does **not** require a minimum font size. 12px/13px is allowed if co
 
 ### OTP
 
-Six 44px mono boxes, one digit each. Group labelled “Code”. Paste fills from the focused index. Arrow keys move. Backspace clears then moves left. `onComplete` submits when 6 digits are in. Recovery-code path is a normal `TextField` plus “Use a recovery code” / “Use authenticator code”.
+Six **visual** 44px mono boxes (buttons, not inputs) plus one off-screen collector `<input>`. Safari treats six adjacent text inputs as a password-manager target even with `autocomplete="off"`; iCloud Passwords then covers the error. Click a box / type / paste into the collector. Arrow keys move the caret. `onComplete` submits at 6 digits. Recovery-code path is a normal `TextField` plus “Use a recovery code” / “Use authenticator code”. Form `autocomplete="off"`.
+
+### Errors
+
+Follow SPEC **Field errors**. Landing-only notes:
+
+| Rule | Landing |
+|------|---------|
+| Colour | Landing exception: `status-danger` `#f87171` on label, border, helper. Error focus = 1px `#f87171` + 3px halo `rgba(248, 113, 113, 0.22)`. Signed-in forms keep SPEC `error` `#ffb4ab`. |
+| Type | Helper is `mono-sm`, not `body-sm`. Inter is for titles, descriptions, links. |
+| Where | After the fields (credentials / new password) or under the OTP row (`mt-sm`, 8px). Never between the card title and the first field. |
+| Empty form | Disabled CTA. No “Email and password are required.” |
+| Copy | Human API / field text: `Invalid credentials.`, `Invalid authentication code.`, `This sign-in step expired. Start again.` Never `Validation failed.` |
+| Toast | Auth form posts use `skipErrorToast`. Inline helper only. |
+| OTP vs text | 44px boxes + 3px halo need `sm` (8px) under the row; 40px text fields keep `xs` (4px). |
+
+Code: `AuthError`, `TextField` `error` / `invalid`, `OtpInput` `error`. API `message` is the first flattened field error (`bootstrap/app.php`).
 
 ### 2FA enroll QR
 
@@ -172,7 +191,7 @@ Audit was code-based (this conversation, 2026-11-07). Target: **WCAG 2.1 Level A
 | **1.4.11** CTA focus | `box-shadow: 0 0 0 3px rgba(244,114,182,0.35)` ≈ 2:1 vs the page. A solid pink or white ring cannot hit 3:1 against **both** `#f472b6` and `#09090B`. | Dark 2px gap + outer 2px white ring (GDS-style offset indicator). Same on the checkbox. |
 | **1.4.3** CTA `:active` | `#09090B` on `#db2777` ≈ 4.4:1 at 13px. | Active = hover `#ec4899` (~5.8:1). |
 | **1.4.3** Footer version | `on-surface-variant/70` on the bottom-left pink glow could drop to ~3:1. | Full `on-surface-variant`. |
-| **1.3.1 / 4.1.2 / 4.1.3** Errors | Extra `<p>` under the password field only. No `aria-invalid`, no `aria-describedby`, no live region. | `AuthError` `role="alert"` `id="auth-error"`. Both credential fields `aria-invalid` + `aria-describedby`. `TextField` / `OtpInput` do the same when they own the message. Forgot/reset success: `role="status"`. |
+| **1.3.1 / 4.1.2 / 4.1.3** Errors | Extra `<p>` under the password field only. No `aria-invalid`, no `aria-describedby`, no live region. Form-level copy sat under the title. | `AuthError` `role="alert"`. Invalid controls `aria-invalid` + `aria-describedby`. Helper under the fields / OTP row, not under the title. `TextField` / `OtpInput` own per-field messages. Forgot/reset success: `role="status"`. |
 | **2.4.2** Page titled | Blade `<title>Atlas</title>` never changed. | `AuthShell` sets `document.title` to `{title} · Atlas`. |
 | **1.4.10 / 1.4.4** Reflow | `overflow-hidden` + absolutely centered main **clipped** the card at 200% / 320px / 2FA+QR. | In-flow flex column; vertical scroll allowed. |
 | **1.4.1** Use of colour | “Forgot password” was the same 13px muted colour as the description, no underline. | Underline + focus ring. |
@@ -182,7 +201,7 @@ Audit was code-based (this conversation, 2026-11-07). Target: **WCAG 2.1 Level A
 ### Already passing (left as-is)
 
 - **1.4.3** text on the card: white, `#c4c7c8`, `#f472b6`, `#ffb4ab` on `#0C0C0E` are all ≥ 4.5:1 (pink on near-black is ~7:1).
-- **1.3.5** autocomplete on email / password / OTP.
+- **1.3.5** autocomplete on email / password. OTP digits are `off` on purpose (Safari iCloud Passwords vs `one-time-code`).
 - **3.3.2 / 2.5.3** visible labels match accessible names.
 - **2.1.1** native form, link, submit, checkbox.
 - **3.1.1** `html lang`.
@@ -201,7 +220,7 @@ AA has no minimum px size. 12px labels and 13px body are legal here because cont
 
 1. Control edges ≥ 3:1 against the adjacent fill (`outline` `#8e9192` on this dark card works; `#3F3F46` does not).
 2. Focus indicator ≥ 3:1 against **both** the control and the background. Fields: 1px pink border is enough; keep the halo soft. CTA: two-colour offset ring (pink-on-black cannot do both with one colour).
-3. Associate errors (`aria-invalid`, `aria-describedby`, `role="alert"`). Do not hang a form-level failure only on Password.
+3. Associate errors (`aria-invalid`, `aria-describedby`, `role="alert"`). Put the helper under the fields, not under the title. Do not hang a form-level failure only on Password. Helper is `mono-sm`. On this landing use `status-danger` `#f87171`, not Atlas pink and not peach `#ffb4ab`.
 4. Change `document.title` per step.
 5. Never `overflow: hidden` a centered auth card; the page must be able to scroll at 320px CSS width.
 6. Links in body-sized muted text need an underline (or 3:1 vs surrounding text).
@@ -213,12 +232,13 @@ AA has no minimum px size. 12px labels and 13px body are legal here because cont
 
 | Piece | Where |
 |-------|--------|
-| Shell, title, error live region, link classes | `resources/js/domains/auth/AuthShell.tsx` |
+| Shell, title, error live region, link classes | `resources/js/domains/auth/AuthShell.tsx` (`AuthError` = `mono-sm` `text-error`) |
 | Steps, QR, recovery codes list | `resources/js/domains/auth/LoginPage.tsx` |
 | Digit boxes | `resources/js/domains/auth/OtpInput.tsx` |
 | Field `aria-*` | `resources/js/components/TextField.tsx` (`invalid`, `role="alert"` on the message) |
 | Busy spinner | `resources/js/components/Button.tsx` |
-| Pink landing CSS | `resources/css/app.css` `.auth-form`, `.auth-cta`, `.otp-input` |
+| Pink landing CSS | `resources/css/app.css` `.auth-form`, `.auth-cta`, `.otp-input` (error border must beat the rest-border `:not()` rule) |
+| 422 `message` | `bootstrap/app.php` — first flattened field error, not `Validation failed.` |
 | Version into the DOM | `resources/views/app.blade.php` `data-version`, `config/app.php` `version` |
 | AA regression | `resources/js/domains/auth/auth-a11y.test.tsx` |
 

@@ -111,7 +111,7 @@ Track is transparent. App chrome 6px; terminal 4px.
 Two families only.
 
 - **Inter** — UI, nav, body
-- **JetBrains Mono** — SHAs, IPs, logs, JSON, latency, IDs
+- **JetBrains Mono** — SHAs, IPs, logs, JSON, latency, IDs, field-error helpers
 
 | Role | Family | Size | Weight | Line | Tracking | Use |
 |------|--------|------|--------|------|----------|-----|
@@ -121,7 +121,7 @@ Two families only.
 | `body-sm` | Inter | 13px | 400 | 18px | — | Buttons, table primary cell, form text |
 | `label-xs` | Inter | 12px | 500 | 16px | wider | Table headers, sidebar groups, chips |
 | `mono-base` | JetBrains Mono | 13px | 400 | 20px | — | Code in content |
-| `mono-sm` | JetBrains Mono | 12px | 400 | 16px | — | Logs, numeric columns, chips |
+| `mono-sm` | JetBrains Mono | 12px | 400 | 16px | — | Logs, numeric columns, chips, field-error helpers |
 
 Rules:
 
@@ -215,9 +215,26 @@ No glow. No shadow. Do not use leftover Breeze buttons (gray/indigo, uppercase t
 - Text: `body-sm` + `primary` or `on-surface`
 - Placeholder: `on-surface-variant` at ~70%
 - Focus: **1px `primary` border, no glow, no ring offset**
-- Error: `error` `#ffb4ab` border + helper text
 - Select: custom chevron (no native arrow), right padding 36px
 - Technical values (tokens, JSON): `mono-sm` on a near-black fill
+
+### Field errors
+
+Do not invent a second type style (no Inter body, no banner, no icon, no filled error container). Signed-in uses peach `error` `#ffb4ab`. Auth landing uses `status-danger` `#f87171` so the helper does not look like faded Atlas pink.
+
+| Part | Treatment |
+|------|-----------|
+| Colour | Token `error` `#ffb4ab` on label, 1px control border, and helper. Not `status-danger` (`#f87171`) — that is toast / status-icon red. |
+| Label | `label-xs` Inter 12px / 500. Turns `text-error` when the field is invalid. |
+| Control | 1px error border. Signed-in: `error` `#ffb4ab`, no extra glow. Auth landing: `status-danger` `#f87171` (peach `#ffb4ab` reads as faded pink next to the CTA) + **3px halo** `rgba(248, 113, 113, 0.22)` on error focus. |
+| Helper | `mono-sm` JetBrains Mono 12px / 16px, `text-error`, `role="alert"`. A sentence still uses mono — it is a system message, not body copy. |
+| Placement | Directly under the control, or under the last field of a group (`Invalid credentials.`). Never under the page title or description. |
+| Gap | `xs` (4px) under a 40px text field. `sm` (8px) under 44px OTP boxes so the 3px error halo does not sit on the text. |
+| Empty required | Disable submit. Do not flash “Email and password are required.” |
+| Copy | First real field / API message (`Invalid credentials.`, `Invalid authentication code.`). Never Laravel’s wrapper `Validation failed.` |
+| Duplicate UI | If the form shows the helper, do not also toast the same string. |
+
+A11y: `aria-invalid` on every invalid control, `aria-describedby` → helper `id`, helper `role="alert"`. Auth landing details (OTP autofill, CTA disable): [auth-landing.md](auth-landing.md).
 
 Checkbox / switch (Atlas pattern):
 
@@ -354,4 +371,4 @@ Material Symbols Outlined (FILL 0, wght 300)
 
 Unauthenticated Atlas screens (`/login`, `/forgot-password`, `/reset-password`) shipped 2026-11-07 as a **pink branded landing**, not as Technical Precision chrome. That landing is the seed of a possible later app-wide language (pink as chrome, glow, 8–12px radius, 1px pink focus + soft halo). Full snapshot, comparison table, tokens, WCAG 2.1 AA: [auth-landing.md](auth-landing.md).
 
-Until a redesign lands, copy from SPEC for signed-in UI and from `auth-landing.md` only when touching those three routes — or when the user asks to extend the new language.
+Until a redesign lands, copy from SPEC for signed-in UI and from `auth-landing.md` only when touching those three routes — or when the user asks to extend the new language. **Field errors** stay `mono-sm` with a coral/red label + border. Signed-in: `error` `#ffb4ab`. Auth landing: `status-danger` `#f87171`. Do not use Inter body or Atlas pink for helpers.
