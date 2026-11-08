@@ -170,7 +170,19 @@ iptables -A DOCKER-USER -i $WAN_IF -p tcp --dport 22XX -j DROP
 | 2206 | hypershape.foxcraft.digital (WP staging) | `hypershape.foxcraft.digital-ssh` — shared image `stella/ssh-php:8.5` since 2026-11-04 ([`wordpress-staging.md`](wordpress-staging.md#ssh-container-shared-image)). `DOCKER-USER` source IPs still not documented |
 | 2207 | edison.dev.foxcraft.digital (Edison Laravel) | `ssh` service in `/opt/apps/laravel/edison.dev.foxcraft.digital/` — [`../edison/dev-instance.md`](../edison/dev-instance.md) |
 
-Next free port: **2208**. Update the table above when adding one, and check `docker ps` first — this line has drifted before.
+Next free **manual** port: **2208**. Manual SSH ports stay **2201–2207** (per-port `DOCKER-USER` rules). Update the table above when adding one, and check `docker ps` first — this line has drifted before.
+
+**stack-api managed stacks** use **22100–22199**, not 2208+. Lowest free in that range; a port freed by a deleted stack can be reused. One range rule in `/usr/local/bin/docker-user-firewall.sh` (applied and verified 2026-11-08, iptables lines 50–54):
+
+```bash
+iptables -A DOCKER-USER -i $WAN_IF -s 194.126.177.181 -p tcp --dport 22100:22199 -j ACCEPT
+iptables -A DOCKER-USER -i $WAN_IF -s 78.47.218.190 -p tcp --dport 22100:22199 -j ACCEPT  # york
+iptables -A DOCKER-USER -i $WAN_IF -s 23.88.90.12 -p tcp --dport 22100:22199 -j ACCEPT
+iptables -A DOCKER-USER -i $WAN_IF -s 178.105.203.54 -p tcp --dport 22100:22199 -j ACCEPT  # Edison
+iptables -A DOCKER-USER -i $WAN_IF -p tcp --dport 22100:22199 -j DROP
+```
+
+Gotcha: replacing the script via `rm` + nano drops the execute bit → `chmod 755` before running it. Backup: `/usr/local/bin/docker-user-firewall.sh.bak-20261108`.
 
 **Verified active** via `iptables -L DOCKER-USER -n -v --line-numbers` — both ACCEPT rules for the two whitelisted IPs, DROP for everyone else, correct order (ACCEPT before DROP, per the three-iteration lesson already documented in [`infrastructure.md`](infrastructure.md)).
 

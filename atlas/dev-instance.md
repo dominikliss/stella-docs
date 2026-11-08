@@ -149,7 +149,7 @@ Verified 2026-11-07 through york: `ssh atlas.dev.foxcraft.digital 'echo OK'` →
 
 ## Stacks UI (2026-11-04)
 
-Enabled on this instance. Keys live in `src/.env` (see table above). Migration `2026_11_04_020000_create_stack_actions_table` run. Signs as principal `atlas-dev` — stack-api returns only the sandbox stack `dominikliss`. Prod stays off. Contract: [`../stella-server/stack-api.md`](../stella-server/stack-api.md). Logs, async restart, and jobs are available in the Atlas UI; a sandbox principal still cannot see `hypershape`.
+Enabled on this instance. Keys live in `src/.env` (see table above). Migration `2026_11_04_020000_create_stack_actions_table` run. Signs as principal `atlas-dev` — stack-api returns only the sandbox stack `dominikliss`. Prod stays off. Contract: [`../stella-server/stack-api.md`](../stella-server/stack-api.md). Logs, async restart, jobs, and **New stack** (`plan` dry-run) are available in the Atlas UI; apply is not built. A sandbox principal still cannot see `hypershape`.
 
 A container on `edge` calling `https://stella-stack-api.foxcraft.digital` is seen by Caddy as `172.20.0.1`, not `95.217.144.93`. Test that path from **inside** the app container. See [`../stella-server/stack-api.md`](../stella-server/stack-api.md).
 
