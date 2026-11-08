@@ -34,7 +34,7 @@ It is **not** the business dashboard. Clients, invoices, and mail live in **ddas
 | **Dashboard** | `/dashboard` | Home + Stella status summary |
 | **Deployments** | `/deployments` | SSH rsync deploys and Stella deploy-api deploys |
 | **WP Sites** | `/wp-sites` | Register sites, 5-min uptime, Atlas Connect login, start/list/explore backups; browser decrypt (`/backup-decrypt`); daily + manual infection scans with verdict, report, allowlist, trusted baseline; build a Stella staging site from a completed full backup (planned via stack-api `create` + `restore`; `wp-staging-api` will not be deployed); download a fresh installable Atlas Connect zip |
-| **Stacks** | `/stacks` | Stella compose stacks via stack-api (`list` / `get` / `restart` / `logs` / jobs / `plan`). Flag-gated, admin only. Live on atlas.dev (sandbox `dominikliss.foxcraft.digital` only); prod off. Contract: [`../stella-server/stack-api.md`](../stella-server/stack-api.md) |
+| **Stacks** | `/stacks` | Stella compose stacks via stack-api (`list` / `get` / `restart` / `logs` / jobs / `plan` / `apply` / `fix-permissions` / people). Flag-gated, admin only. Live on atlas.dev (sandbox `dominikliss.foxcraft.digital` + `sandbox.staging.foxcraft.digital`); prod off. Contract: [`../stella-server/stack-api.md`](../stella-server/stack-api.md) |
 | **Monitoring** | `/monitoring`, `/monitoring/stella`, `/monitoring/atlas`, `/monitoring/edison`, `/monitoring/york` | Stella / Atlas / Edison host health + york Cloud-only status |
 | **Tools → IMAP Migration** | `/tools/imap-migration` | Trigger / poll `imapsync` jobs on Stella |
 | **Tools → TrackingTime Import** | `/tools/tracking-time-import` | Full one-way import of selected TrackingTime projects into Atlas MySQL |
@@ -73,7 +73,7 @@ Browser (IP-allowlisted)
         → ddashboard          business APIs (clients / TrackingTime ids; service token)
         → Stella deploy-api   signed .NET / Docker deploys
         → Stella health-api   signed dynamic container / Caddyfile-cert / disk / backup snapshot
-        → Stella stack-api    IP + token + signed list/get/restart/logs/jobs/plan (create/apply/delete not built)
+        → Stella stack-api    IP + token + signed list/get/restart/logs/jobs/plan/apply/fix-permissions/people (update/delete/restore not built)
         → Stella imap-sync    mailbox copy (no HTTP auth)
         → GitHub + SSH hosts  ssh_rsync deploys
         → WP sites            HEAD uptime + Atlas Connect login / backup / scan driver
@@ -304,9 +304,14 @@ Admin only. All of these return 404 when `STELLA_STACK_API_ENABLED` is off.
 | `GET` | `/api/stacks/{name}` | One stack plus Atlas `stack_actions` history |
 | `GET` | `/api/stacks/{name}/logs` | Last N log lines for a service (`service`, `lines` 1–1000, default 200) |
 | `POST` | `/api/stacks/{name}/restart` | Restart a service or the whole stack (`{"service"?, "async"?}`). `async: true` queues a job and records `stack_actions` as `queued` with the job id |
+| `POST` | `/api/stacks/{name}/fix-permissions` | WordPress only. Queues a job and records `stack_actions` as `fix-permissions` / `queued` with the job id |
 | `GET` | `/api/stack-jobs` | Recent stack-api jobs (`name?`, `limit` 1–100, default 20) |
 | `GET` | `/api/stack-jobs/{id}` | One stack-api job |
-| `POST` | `/api/stack-plan` | Dry-run a new stack spec (`type`, `name`, `php`, `ssh_users`?, `php_ini`?). No `stack_actions` row. Apply is not built. |
+| `GET` | `/api/stack-people` | SSH people list (`[{name, uid}]`, no keys) |
+| `POST` | `/api/stack-plan` | Dry-run a new stack spec (`type`, `name`, `php`, `ssh_users` min 1, `php_ini`?). No `stack_actions` row |
+| `POST` | `/api/stack-apply` | Create a stack from a spec. Records `stack_actions` as `apply` / `queued` with the job id |
+
+UI: stack detail (logs panel, restart incl. async, fix permissions for WordPress, recent jobs, history); New stack form (label + fixed suffix `.staging.foxcraft.digital`, PHP, people, PHP settings, Plan → Create with job polling). `stack_actions` rows for restart, apply, and fix-permissions. Queued rows settle to `ok` / `error` when the job finishes.
 
 See [`../stella-server/stack-api.md`](../stella-server/stack-api.md).
 

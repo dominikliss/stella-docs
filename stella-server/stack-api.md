@@ -1,6 +1,6 @@
 # stack-api (container management for Atlas)
 
-**Status:** live since 2026-11-04. Docker access via the Engine API (httpx over the Unix socket — no compose CLI in the image). Signed `list` / `get` / `restart` / `logs` / `plan`, job table, append-only SQLite audit log. Plan is a dry run; still no `apply`.
+**Status:** live since 2026-11-04. As of 2026-11-08: signed `list` / `get` / `restart` (sync + async) / `logs` / `plan` / `apply` / `fix-permissions` / people list, job table with per-stack locks, append-only audit log. First stack created end to end from Atlas on 2026-11-08: `sandbox.staging.foxcraft.digital`. Not yet: update of existing stacks, delete, restore, Laravel/.NET blueprints.
 
 **URL:** `https://stella-stack-api.foxcraft.digital`
 
@@ -16,25 +16,30 @@ Infra: [`infrastructure.md`](infrastructure.md). System map: [`../integration/sy
 
 ```
 /opt/services/stack-api/
-  ├── Dockerfile          ← python:3.13-slim + openssh-client
+  ├── Dockerfile          ← multi-stage: docker CLI from docker:cli, compose plugin from docker/compose-bin:latest (→ /usr/libexec/docker/cli-plugins/docker-compose), python:3.13-slim + openssh-client + acl, ENV DOCKER_CONFIG=/tmp/docker (container is read-only), COPY people/ and COPY app/. Compose in the container: v5.7.0
   ├── requirements.txt    ← fastapi, uvicorn, httpx, pyyaml
   ├── .dockerignore       ← .env, allowed_signers, data, images
-  ├── .env                ← chmod 600; STACK_API_TOKEN, STACK_API_ALLOWED_IPS, STACK_API_SANDBOX_STACKS, STACK_API_SITE_ALLOW_IPS, STACK_API_DOMAINS, STACK_API_HEAVY_JOBS
+  ├── .env                ← chmod 600; see keys below
   ├── allowed_signers     ← mounted read-only, not baked into the image; atlas-prod + atlas-dev, both namespaces="stack"
   ├── data/               ← host dir; SQLite at /data/stack-api.sqlite in the container (code default; STACK_API_DB is not in .env)
-  ├── app/main.py
-  ├── app/stackspec.py    ← validate_spec, render_wordpress, render_caddy, policy, dump_compose
+  ├── people/
+  │     ├── users.conf    ← central SSH people list (public keys only)
+  │     └── keys/<name>.pub
+  ├── app/main.py         ← API, auth, jobs, apply, rollback, permissions
+  ├── app/stackspec.py    ← spec validation, people loader, WordPress blueprint, Caddy block, policy, YAML dump
   └── images/ssh-php/     ← shared SSH image (not in the API container)
         ├── Dockerfile
         ├── atlas-sync-users
         └── entrypoint.sh
 ```
 
-Never write the token value into docs. Backups on Stella: `/opt/services/stack-api/app/main.py.bak-20261108`, `app/main.py.bak-20261108b`, `app/stackspec.py.bak-20261108`, `app/stackspec.py.bak-20261108b`.
+Never write the token value into docs. Backups on Stella: `app/main.py.bak-20261108`, `-20261108b`, `-20261108c`, `-20261108d`; `app/stackspec.py.bak-20261108`, `-20261108b`, `-20261108c`; `Dockerfile.bak-20261108`.
 
-`.env` keys (no values): `STACK_API_TOKEN`, `STACK_API_ALLOWED_IPS`, `STACK_API_SANDBOX_STACKS`, `STACK_API_SITE_ALLOW_IPS`, `STACK_API_DOMAINS`. `STACK_API_DB` is **not** in `.env` — the code default `/data/stack-api.sqlite` is used.
+`.env` keys (no values): `STACK_API_TOKEN`, `STACK_API_ALLOWED_IPS`, `STACK_API_SANDBOX_STACKS`, `STACK_API_SITE_ALLOW_IPS`, `STACK_API_DOMAINS`. `STACK_API_DB` is **not** in `.env` — the code default `/data/stack-api.sqlite` is used. Optional with defaults: `STACK_API_PHP_VERSIONS` (`8.5`), `STACK_API_HEAVY_JOBS` (`1`), `STACK_API_CADDY_CONTAINER` (`services-caddy-1`), `STACK_API_CADDY_SITES` (`/caddy-sites`), `STACK_API_PEOPLE` (`/app/people`).
 
-Values: `STACK_API_SANDBOX_STACKS` = `dominikliss.foxcraft.digital,sandbox.staging.foxcraft.digital` (the latter does not exist yet; test name for plan/apply). `STACK_API_SITE_ALLOW_IPS` = `194.126.177.181` (Proton), `78.47.218.190` (york), `2.31.42.13` (Atlas prod), decided 2026-11-08. `STACK_API_DOMAINS` = `staging.foxcraft.digital`.
+`people/users.conf` + `people/keys/<name>.pub` are baked into the image. Current: `dominik` 1000, `pawel` 1001, `edison` 1002 (copied from hypershape 2026-11-08). Changing a key = edit `people/` + `docker compose up -d --build stack-api`. Existing stacks are not updated automatically yet.
+
+Values: `STACK_API_SANDBOX_STACKS` = `dominikliss.foxcraft.digital,sandbox.staging.foxcraft.digital`. `STACK_API_SITE_ALLOW_IPS` = `194.126.177.181` (Proton), `78.47.218.190` (york), `2.31.42.13` (Atlas prod), decided 2026-11-08. `STACK_API_DOMAINS` = `staging.foxcraft.digital`.
 
 ---
 
@@ -50,6 +55,8 @@ Values: `STACK_API_SANDBOX_STACKS` = `dominikliss.foxcraft.digital,sandbox.stagi
       - ./stack-api/allowed_signers:/app/allowed_signers:ro
       - ./stack-api/data:/data
       - /var/run/docker.sock:/var/run/docker.sock
+      - /opt/apps/wordpress:/opt/apps/wordpress
+      - ./caddy/sites:/caddy-sites
     read_only: true
     tmpfs:
       - /tmp
@@ -58,11 +65,13 @@ Values: `STACK_API_SANDBOX_STACKS` = `dominikliss.foxcraft.digital,sandbox.stagi
     restart: unless-stopped
 ```
 
+`/opt/apps/wordpress` is the same path inside and outside — required: compose resolves `./` paths in the container, the daemon mounts them on the host, and the working_dir label must match stack discovery.
+
 Top-level network `stack` (Docker name `services_stack`). **Only `stack-api` and `services-caddy-1` are on it.** stack-api is deliberately **not** on `edge`: any container on `edge` could otherwise reach it directly and fake `X-Forwarded-For`. `caddy` has `default`, `edge`, and `stack`.
 
 No published ports.
 
-With the socket mounted, stack-api is **root-equivalent** on Stella. Until `apply` exists it can list, restart, read logs, plan, and run jobs.
+With the socket mounted, stack-api is **root-equivalent** on Stella.
 
 ---
 
@@ -102,9 +111,9 @@ POST body = {"payload": …, "signature": …, "request": "<JSON string>"}
 
 `PRINCIPAL_SCOPES = {"atlas-prod": "all", "atlas-dev": "sandbox"}`. `allowed_signers` has both lines, both `namespaces="stack"`. The shared Atlas prod deploy key (`/home/atlas/.ssh/id_ed25519`, principal `ddashboard`) is **not** trusted by stack-api.
 
-`STACK_API_SANDBOX_STACKS` in stack-api `.env` is the sandbox allowlist — currently `dominikliss.foxcraft.digital,sandbox.staging.foxcraft.digital` (the stack name is the folder name, not `dominikliss`). `sandbox.staging.foxcraft.digital` is a test name for plan/apply; it does not exist yet. `atlas-dev` sees only those stacks; any other name is `404`. A sandbox principal may only **plan** names in that list. `list` / `get` include `"sandbox"` on each stack; `ping` includes `"scope"`.
+`STACK_API_SANDBOX_STACKS` in stack-api `.env` is the sandbox allowlist — currently `dominikliss.foxcraft.digital,sandbox.staging.foxcraft.digital` (the stack name is the folder name, not `dominikliss`). `atlas-dev` sees only those stacks; any other name is `404`. A sandbox principal may only **plan** / **apply** names in that list. `list` / `get` include `"sandbox"` on each stack; `ping` includes `"scope"`.
 
-**Decision (2026-11-04):** `dominikliss.foxcraft.digital` is the sandbox. Re-decide before `apply` / `delete`. **2026-11-08:** `sandbox.staging.foxcraft.digital` added as the plan/apply test name. New stacks are `<label>.staging.foxcraft.digital`.
+**Decision (2026-11-04):** `dominikliss.foxcraft.digital` is the sandbox. Re-decide before `delete`. **2026-11-08:** first stack created end to end from Atlas: `sandbox.staging.foxcraft.digital`. New stacks are `<label>.staging.foxcraft.digital`.
 
 **Incident 00:51 (2026-11-04):** the `atlas-dev` signer was added to `allowed_signers` before the sandbox-restricting code was in the running container. atlas.dev then restarted the whole `osgar` stack (audit row 11). No damage. **Rule:** never add a principal before the restricting code is verified in the running container.
 
@@ -117,18 +126,18 @@ STELLA_STACK_API_ENABLED=false
 STELLA_STACK_API_KEY_PATH=
 ```
 
-Atlas client (2026-11-04, logs/jobs/nonce 2026-11-08, plan 2026-11-08): `app/Domain/Stacks/StackApiClient.php`. Flag default **false** — `/api/stacks` is 404 and the nav item is hidden. Setting `stack_api_ssh_key_path` (Settings → GitHub, next to the deploy key path) overrides `STELLA_STACK_API_KEY_PATH`.
+Atlas client (2026-11-04, logs/jobs/nonce/plan/apply/people/fix-permissions 2026-11-08): `app/Domain/Stacks/StackApiClient.php`. Flag default **false** — `/api/stacks` is 404 and the nav item is hidden. Setting `stack_api_ssh_key_path` (Settings → GitHub, next to the deploy key path) overrides `STELLA_STACK_API_KEY_PATH`.
 
 | Instance | Enable | Key path |
 |---|---|---|
 | atlas.dev | **on** 2026-11-04 (`STELLA_STACK_API_ENABLED=true` in `src/.env`) | `/var/www/.ssh/id_ed25519` |
 | Atlas prod | **off** (flag stays false) | `/home/atlas/.ssh/atlas-stack-api` when enabled |
 
-Admin role only. Atlas records restarts in `stack_actions` (`user_id`, stack, service, result, detail, created_at`). stack-api keeps its own audit log.
+Admin role only. Atlas records restarts, apply, and fix-permissions in `stack_actions` (`user_id`, stack, service, result, detail, created_at`). Queued rows store the job id in `detail` and settle to `ok` / `error` when the job is fetched. stack-api keeps its own audit log.
 
 ### Atlas client
 
-`StellaSshSigner::sign($payload, 'stack', $keyPath)` — namespace **`stack`**, not `deploy`. Payload `<action>:<unix_ts>:<sha256(request_json)>`. POST `{payload, signature, request}` where `request` is the exact JSON string that was hashed (encoded once; integers stay integers, booleans stay booleans). Header `X-Stack-Token`. Restart timeout 65 s (15 s when `async`). Logs timeout 30 s. Plan timeout 30 s. A random `nonce` is sent on every request. Empty `spec` / `php_ini` are JSON objects (`{}`), never `[]`.
+`StellaSshSigner::sign($payload, 'stack', $keyPath)` — namespace **`stack`**, not `deploy`. Payload `<action>:<unix_ts>:<sha256(request_json)>`. POST `{payload, signature, request}` where `request` is the exact JSON string that was hashed (encoded once; integers stay integers, booleans stay booleans). Header `X-Stack-Token`. Restart timeout 65 s (15 s when `async`). Logs timeout 30 s. Plan timeout 30 s. Apply timeout 30 s. People list and fix-permissions 15 s. A random `nonce` is sent on every request. Empty `spec` / `php_ini` are JSON objects (`{}`), never `[]`.
 
 | Atlas | stack-api |
 |---|---|
@@ -136,11 +145,14 @@ Admin role only. Atlas records restarts in `stack_actions` (`user_id`, stack, se
 | `GET /api/stacks/{name}` | `POST /stacks/get` action `stack-get` request `{"name", nonce}` |
 | `GET /api/stacks/{name}/logs` | `POST /stacks/logs` action `stack-logs` request `{"name","service","lines"?, nonce}` (`lines` 1–1000, default 200) |
 | `POST /api/stacks/{name}/restart` | `POST /stacks/restart` action `stack-restart` request `{"name", "service"?, "async"?, nonce}` — `async` only when true |
+| `POST /api/stacks/{name}/fix-permissions` | `POST /stacks/fix-permissions` action `stack-fix-permissions` request `{"name", nonce}` |
 | `GET /api/stack-jobs` | `POST /jobs/list` action `job-list` request `{"name"?, "limit"?, nonce}` (`limit` 1–100, default 20) |
 | `GET /api/stack-jobs/{id}` | `POST /jobs/get` action `job-get` request `{"id", nonce}` |
+| `GET /api/stack-people` | `POST /people/list` action `people-list` request `{nonce}` |
 | `POST /api/stack-plan` | `POST /stacks/plan` action `stack-plan` request `{"spec", nonce}` (dry-run; no `stack_actions` row) |
+| `POST /api/stack-apply` | `POST /stacks/apply` action `stack-apply` request `{"spec", nonce}` |
 
-Use `/api/stack-jobs`, not `/api/stacks/jobs` — `jobs` would match `{name}`. Use `/api/stack-plan`, not `/api/stacks/plan`. Name `^[a-z0-9][a-z0-9.-]{0,252}$`, service `^[a-z0-9][a-z0-9_-]{0,62}$`, job id `^[0-9a-f]{32}$`, lines 1–1000, limit 1–100 — validated in Atlas before the call. Plan names are not pre-validated so stack-api can return sandbox / reserved-name errors. Mapped errors: 401/403 → `stack-api rejected the request`; 404 detail passed through; 400 → `invalid input`; 409 → `stack busy`; 502 → `docker error` (results passed through); connection → `stack-api unreachable`. A handled plan is always HTTP 200 (`ok` + `errors`; `ok` can be false with a rendered compose). Never log the token, signature, key contents, log lines, spec keys, or response files. Async restart records `stack_actions` with result `queued` and the job id in `detail`. `plan` does not write `stack_actions`.
+Use `/api/stack-jobs`, not `/api/stacks/jobs` — `jobs` would match `{name}`. Use `/api/stack-plan` / `/api/stack-people` / `/api/stack-apply`, not `/api/stacks/plan` and so on. Name `^[a-z0-9][a-z0-9.-]{0,252}$`, service `^[a-z0-9][a-z0-9_-]{0,62}$`, job id `^[0-9a-f]{32}$`, lines 1–1000, limit 1–100 — validated in Atlas before the call. Plan names are not pre-validated so stack-api can return sandbox / reserved-name errors. Mapped errors: 401/403 → `stack-api rejected the request`; 404 detail passed through; 400 detail passed through (`invalid input` when there is no detail); 409 → `stack busy`; 502 → `docker error` (results passed through); connection → `stack-api unreachable`. A handled plan or apply rejection is always HTTP 200 (`ok` + `errors`; `ok` can be false with a rendered compose). Never log the token, signature, key contents, log lines, spec keys, or response files. Async restart, apply, and fix-permissions record `stack_actions` with result `queued` and the job id in `detail` (`service` is the action for apply / fix-permissions). `plan` and `people` do not write `stack_actions`. Atlas `ssh_users` is a required list of person names (min 1).
 
 ---
 
@@ -162,7 +174,12 @@ Signed endpoints: action = payload prefix. Auth is IP + token + signature unless
 | `POST /stacks/logs` | `stack-logs` | `{name, service, lines?, nonce}` (`lines` 1–1000, default 200) | `{name, service, containers:[{name, state, truncated, lines:[{ts, stream, text}]}]}`. Container stdout/stderr via the Docker logs API (demuxed, timestamps on), max 2 MB per container, each line cut to 4000 chars. Log content is never written to the audit log (detail is only `lines=N`). `404` `service not found` |
 | `POST /jobs/get` | `job-get` | `{id, nonce}` (32 lowercase hex) | `{id, action, stack, service, principal, state (queued / running / ok / error), created_at, started_at, finished_at, result, detail}`. `404` `job not found`, also when the job's stack is not visible to the principal |
 | `POST /jobs/list` | `job-list` | `{name?, limit?, nonce}` (`limit` 1–100, default 20; omit `name` when null) | `{jobs:[job, …]}` newest first, filtered by principal scope |
-| `POST /stacks/plan` | `stack-plan` | `{spec, nonce}` | Always 200 for a handled plan. Writes nothing. Rejected: `{ok:false, errors:[string]}`. Planned: `{ok, errors, mode:"create", name, type, path, ssh_port, compose (YAML, multi-line strings as `\|` blocks), files, caddy, notes}`. `ok` can be false with a rendered result when policy fails. Existing stacks are refused (`update is not supported yet`). Sandbox principal may only plan names in `STACK_API_SANDBOX_STACKS`. |
+| `POST /people/list` | `people-list` | `{nonce}` | `{people:[{name, uid}]}` — no keys |
+| `POST /stacks/plan` | `stack-plan` | `{spec, nonce}` | Always 200 for a handled plan. Writes nothing. Rejected: `{ok:false, errors:[string]}`. Planned: `{ok, errors, mode:"create", name, type, path, ssh_port (null without users), ssh_users, compose (YAML, multi-line strings as `\|` blocks), files, caddy, notes}`. `ok` can be false with a rendered result when policy fails |
+| `POST /stacks/apply` | `stack-apply` | `{spec, nonce}` | Rejected: `{ok:false, errors:[string]}` (HTTP 200). Accepted: `{ok:true, job, state:"queued", name}`. Heavy job |
+| `POST /stacks/fix-permissions` | `stack-fix-permissions` | `{name, nonce}` | `{job, state}`. WordPress stacks under `/opt/apps/wordpress` only; `400` `"only wordpress stacks"` / `"stack folder not available"`. Heavy job |
+
+Both `plan` and `apply` refuse: names not visible to the principal (sandbox), existing stacks (`update is not supported yet`), existing folder, existing Caddy site file. Sandbox principal may only plan/apply names in `STACK_API_SANDBOX_STACKS`.
 
 Docker errors → `502` `"docker error"`.
 
@@ -172,23 +189,31 @@ FastAPI docs (`/docs`, `/redoc`, `/openapi.json`) are disabled.
 
 ## Spec (WordPress, v1)
 
-Code: `app/stackspec.py` (`validate_spec`, `render_wordpress`, `render_caddy`, `policy`, `dump_compose`). `pyyaml` is in `requirements.txt`. Empty `php_ini` is a JSON object (`{}`), never `[]`.
+Code: `app/stackspec.py` (`validate_spec`, people loader, `render_wordpress`, `render_caddy`, `policy`, `dump_compose`). `pyyaml` is in `requirements.txt`. Empty `php_ini` is a JSON object (`{}`), never `[]`.
 
 | Key | Rule |
 |---|---|
 | `type` | only `"wordpress"` |
-| `name` | exactly one label + `.staging.foxcraft.digital` (`STACK_API_DOMAINS`). Label not in `atlas` / `api` / `stella` / `edison` / `york` / `www` / `mail`, not `stella-*` |
+| `name` | exactly one label + `.staging.foxcraft.digital` (`STACK_API_DOMAINS`, wildcard cert covers one level). Label `^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$`, not `atlas` / `api` / `stella` / `edison` / `york` / `www` / `mail`, not `stella-*` |
 | `php` | `STACK_API_PHP_VERSIONS` (default `8.5`) |
-| `ssh_users` | list of `{name, key}`, max 20. `name` `^[a-z][a-z0-9_-]{0,31}$`. `key` = OpenSSH public key. UIDs 1000+ in list order |
+| `ssh_users` | list of person names from `people/` (max 20, unique; unknown → error). uid + key come from `people/`. Atlas requires at least one |
 | `php_ini` | whitelist only; each value validated: `memory_limit`, `upload_max_filesize`, `post_max_size`, `max_execution_time`, `max_input_time`, `max_input_vars`, `display_errors`, `date.timezone`, `session.gc_maxlifetime`, `opcache.enable`, `opcache.memory_consumption`, `opcache.max_accelerated_files`, `opcache.validate_timestamps`, `opcache.revalidate_freq` |
 
 ## Policy (allowlist)
 
-Checked on every rendered compose (plan today; `up` later). Top-level keys only `services` / `networks` / `volumes`. Networks only `edge` (external) and `internal`. Named volumes without options. Service keys only `image`, `container_name`, `environment`, `volumes`, `depends_on`, `networks`, `ports`, `restart`, `pull_policy`. Images: `wordpress:php8.x-apache`, `mariadb:11`, `stella/ssh-php:8.x` (`pull_policy: never` only for `stella/`). `container_name` = `<name>` for `wp`, `<name>-<service>` otherwise. `restart: unless-stopped`. Only `wp` on `edge`. Only `ssh` publishes ports, `22100–22199:22`. Bind mounts only `./` paths without `..`. Env values are strings; newlines only in `WORDPRESS_CONFIG_EXTRA`.
+Checked on every rendered compose (plan and apply). Top-level keys only `services` / `networks` / `volumes`. Networks only `edge` (external) and `internal`. Named volumes without options. Service keys only `image`, `container_name`, `environment`, `volumes`, `depends_on`, `networks`, `ports`, `restart`, `pull_policy`. Images: `wordpress:php8.x-apache`, `mariadb:11`, `stella/ssh-php:8.x` (`pull_policy: never` only for `stella/`). `container_name` = `<name>` for `wp`, `<name>-<service>` otherwise. `restart: unless-stopped`. Only `wp` on `edge`. Only `ssh` publishes ports, `22100–22199:22`. Bind mounts only `./` paths without `..`. Env values are strings; newlines only in `WORDPRESS_CONFIG_EXTRA`.
 
 ## WordPress blueprint
 
-Same as hypershape, plus `./php/zz-atlas.ini` mounted read-only into `/usr/local/etc/php/conf.d/` in `wp` and `ssh`; per-user `./html:/home/<user>/app` mounts. Caddy site block has **no `tls` section** (wildcard cert); only `@blocked not remote_ip` from `STACK_API_SITE_ALLOW_IPS` and `reverse_proxy <name>:80`.
+Like hypershape:
+
+| Service | Image | Networks | Notes |
+|---|---|---|---|
+| `wp` | `wordpress:php<v>-apache` | `edge` + `internal` | `WORDPRESS_CONFIG_EXTRA` with `$$`-escaped HTTPS fix + `WP_HOME` / `WP_SITEURL` |
+| `db` | `mariadb:11` | `internal` | named volume `db-data` |
+| `ssh` | `stella/ssh-php:<v>` | `internal` | `pull_policy: never`, port `221xx:22`, `./atlas:/etc/atlas:ro`, `home` + `ssh-keys` volumes, `./html:/home/<user>/app` per user |
+
+`./php/zz-atlas.ini` is mounted read-only into `/usr/local/etc/php/conf.d/` in `wp` and `ssh`. No ssh users → no ssh service, no port, no `atlas/` files. Caddy site block has **no `tls` section** (wildcard cert); only `@blocked not remote_ip` from `STACK_API_SITE_ALLOW_IPS` and `reverse_proxy <name>:80`.
 
 **Site allowlist for new stacks (decided 2026-11-08):** `194.126.177.181` (Proton), `78.47.218.190` (york), `2.31.42.13` (Atlas prod).
 
@@ -196,7 +221,24 @@ SSH ports for stack-api managed stacks: **22100–22199**, lowest free; a port f
 
 ## Jobs
 
-SQLite table `jobs` (`id`, `created_at`, `started_at`, `finished_at`, `principal`, `action`, `stack`, `service`, `state` `queued`/`running`/`ok`/`error`, `result` JSON, `detail`). One in-memory asyncio lock per stack: a second action on a busy stack (sync restart or any job) gets `409` `stack busy`. Heavy-job semaphore `STACK_API_HEAVY_JOBS` (default 1, unused until `apply`). On startup, queued/running jobs are set to `error` `interrupted by stack-api restart`. Job completion writes a second audit row `job=<id> done …`. Locks and the replay cache require a single uvicorn worker.
+SQLite table `jobs` (`id`, `created_at`, `started_at`, `finished_at`, `principal`, `action`, `stack`, `service`, `state` `queued`/`running`/`ok`/`error`, `result` JSON, `detail`). One in-memory asyncio lock per stack: a second action on a busy stack (sync restart or any job) gets `409` `stack busy`. Heavy-job semaphore `STACK_API_HEAVY_JOBS` (default 1) — `apply` and `fix-permissions`. On startup, queued/running jobs are set to `error` `interrupted by stack-api restart`. Job completion writes a second audit row `job=<id> done …`. Locks and the replay cache require a single uvicorn worker.
+
+## Apply job
+
+Order:
+
+1. Pick SSH port (lowest free in 22100–22199, inside the heavy-job slot so two applies cannot race), render, policy.
+2. Files: `mkdir /opt/apps/wordpress/<name>` (fails if it exists), `html/`, `.env` (`chmod 600`, `DB_PASSWORD` + `DB_ROOT_PASSWORD` random hex, never returned/logged), `php/zz-atlas.ini`, `atlas/users.conf` + keys, `docker-compose.yml`.
+3. `docker compose up -d --quiet-pull` in the folder (project name from folder).
+4. Write `/caddy-sites/<name>.caddy`, `docker exec services-caddy-1 caddy reload --config /etc/caddy/Caddyfile --adapter caddyfile` (a bad site file fails the reload; old config keeps running).
+5. Wait up to 180 s for 200/301/302 from `curl http://localhost/` inside the wp container.
+6. Fix permissions (below).
+
+On any failure: remove the site file + reload Caddy, `compose down -v --remove-orphans`, delete the folder (only if this job created it). Job result on error: `{step, output, done, rollback}`. Success result: `{name, path, url, ssh_port, ssh_users, steps}`.
+
+## Permissions (apply step + `fix-permissions` action)
+
+On `html/`: `chown -R 33:33` (www-data), `chmod -R g+rwX`, SetGID on all dirs, `setfacl -R -m g:33:rwX,d:g:33:rwX`. SSH users are in www-data (`atlas-sync-users`), so they can write, and files WordPress creates later stay group-writable. Verified 2026-11-08: `dominik` on sandbox port 22100 → `drwxrwsr-x+`, write OK.
 
 ## Audit log
 
@@ -313,13 +355,18 @@ sudo -u atlas rm -rf "$TMP"; unset STACK_TOKEN
 
 ## Verification (2026-11-08)
 
-atlas.dev, principal `atlas-dev`, stack `dominikliss.foxcraft.digital`. Backups on Stella: `/opt/services/stack-api/app/main.py.bak-20261108`, `app/main.py.bak-20261108b`, `app/stackspec.py.bak-20261108`, `app/stackspec.py.bak-20261108b`.
+atlas.dev, principal `atlas-dev`. First created stack: `sandbox.staging.foxcraft.digital`. Backups on Stella: `app/main.py.bak-20261108`, `-20261108b`, `-20261108c`, `-20261108d`; `app/stackspec.py.bak-20261108`, `-20261108b`, `-20261108c`; `Dockerfile.bak-20261108`.
 
 | Test | From | Result |
 |---|---|---|
 | Two `list` / `get` calls in the same second | atlas.dev | both ok (nonce) |
 | `stack-logs` `wp` / `db` / `ssh` `lines=200` | atlas.dev | ok |
 | Async restart of `ssh` | atlas.dev | job `ok` |
+| plan for `sandbox.staging.foxcraft.digital` | atlas.dev | ok, port 22100, compose wp/db/ssh, Caddy without tls |
+| plan for `sandbox.foxcraft.digital` | atlas.dev | name error |
+| plan for `dominikliss.foxcraft.digital` | atlas.dev | `stack exists` |
+| apply `sandbox.staging.foxcraft.digital` (`dominik`, `pawel`, `edison`) | atlas.dev | job `ok`; `https://sandbox.staging.foxcraft.digital` shows the WP installer (only from allowlisted IPs) |
+| SSH `dominik@95.217.144.93:22100` | MacBook | uid 1000, groups www-data + atlasusers; write OK after fix-permissions |
 
 ---
 
@@ -372,24 +419,28 @@ Single list. Do not duplicate it in [`../open-gaps.md`](../open-gaps.md).
 - [x] Job table in SQLite for long-running actions (one lock per stack, limit for heavy jobs) (2026-11-08)
 - [x] `logs` endpoint (last N lines per service) (2026-11-08)
 - [x] `plan` dry-run (render compose / files / Caddy; no apply) (2026-11-08)
+- [x] `apply` create job (2026-11-08) — first stack `sandbox.staging.foxcraft.digital`
+- [x] people list (`people/` baked into the image; spec takes person names)
+- [x] `fix-permissions` action (2026-11-08)
 
-### apply (create/change from a spec) — needs the safeguards first
+### apply (create/change from a spec)
 
-- [x] Spec schema with strict validation (names, PHP versions from a list, whitelisted ini keys, no newlines; paths must resolve under `/opt/apps/<type>/<name>/`) (2026-11-08, used by plan)
-- [x] Policy check on every rendered compose before `up` (refuse `privileged`, `cap_add`, `network_mode: host`, `pid: host`, bind mounts outside the app folder, `docker.sock`, `edge` on `ssh`/`db`/`adminer`, images outside the allowlist) (2026-11-08, used by plan)
-- [ ] WordPress blueprint (template of the hypershape compose; `ssh` on `internal`)
-- [ ] SSH users and keys via spec (`users.conf` + `keys/`, then `atlas-sync-users`)
+- [x] Spec schema with strict validation (names, PHP versions from a list, whitelisted ini keys, no newlines; paths must resolve under `/opt/apps/<type>/<name>/`) (2026-11-08)
+- [x] Policy check on every rendered compose before `up` (refuse `privileged`, `cap_add`, `network_mode: host`, `pid: host`, bind mounts outside the app folder, `docker.sock`, `edge` on `ssh`/`db`/`adminer`, images outside the allowlist) (2026-11-08)
+- [x] WordPress blueprint (template of the hypershape compose; `ssh` on `internal`) (2026-11-08)
+- [x] SSH users via spec (now via `people/`; uid + key from the baked list, then `atlas-sync-users`) (2026-11-08)
+- [ ] People sync to existing stacks (a key change in `people/` does not update running stacks)
 - [ ] Outbound SSH key per user (`ssh-keys/generate`, returns only the `.pub`, for GitHub deploy keys)
 - [ ] PHP version change as a job (DB dump first, `wp` + `ssh` image together, verify `php -v` / HTTP / fatals / ACL, revert)
 - [ ] PHP settings: `PHP_INI_SCAN_DIR` with shared `php-defaults.ini` + per-site `zz-atlas.ini`, whitelisted keys (`memory_limit`, `upload_max_filesize`, `post_max_size`, `max_execution_time`, `max_input_time`, `max_input_vars`, `display_errors`, `date.timezone`, `session.gc_maxlifetime`, selected `opcache.*`); never `auto_prepend_file`, `disable_functions`, `open_basedir`, `extension`; return effective values via `php -i`
-- [x] wildcard DNS + wildcard cert for `*.staging.foxcraft.digital` (2026-11-08); apply still needs to write the per-site Caddy block (`sites/*.caddy` import or equivalent) and restart/reload Caddy
+- [x] wildcard DNS + wildcard cert for `*.staging.foxcraft.digital` (2026-11-08); apply writes `/caddy-sites/<name>.caddy` and reloads Caddy
 - [x] stack-api SSH ports 22100–22199, lowest free, one `DOCKER-USER` range rule (2026-11-08). A port freed by a deleted stack can be reused.
 - [ ] Drift detection (hash of rendered files; mismatch blocks apply until "reconcile")
-- [ ] Adopt existing stacks: hypershape (done by hand) → `dominikliss.foxcraft.digital` → `osgar`, `advoapp` (need .NET blueprint) → `atlas.dev`, `edison.dev` (need Laravel blueprint)
+- [ ] Adopt / update existing stacks: hypershape (done by hand) → `dominikliss.foxcraft.digital` → `osgar`, `advoapp` (need .NET blueprint) → `atlas.dev`, `edison.dev` (need Laravel blueprint)
 
 ### WordPress extras
 
-- [ ] `fix-permissions` action (chmod/SetGID/setfacl after first start or updates)
+- [x] `fix-permissions` action (chmod/SetGID/setfacl after first start or updates) (2026-11-08)
 - [ ] Staging guard toggle (mu-plugin: no outgoing mail, noindex, `blog_public=0`)
 - [ ] Real cron (`DISABLE_WP_CRON` + scheduled `wp cron event run`)
 - [ ] DB dump / import / safe search-replace via WP-CLI
@@ -400,7 +451,7 @@ Single list. Do not duplicate it in [`../open-gaps.md`](../open-gaps.md).
 ### restore / delete / databases
 
 - [ ] `restore`: staging from an Atlas backup as create + restore job (reuse the wp-staging-api code: manifest check, streaming decrypt, collation mapping, search-replace, deactivate mail plugins); also "refresh from newer backup"
-- [ ] `delete`: soft delete to `/opt/apps/.trash/<name>-<ts>`, volumes kept 7 days, optional final DB dump
+- [ ] `delete`: soft delete to `/opt/apps/.trash/<name>-<ts>` incl. Caddy site, volumes kept 7 days, optional final DB dump
 - [ ] Adminer on demand per stack (internal network only, one-time auto-login URL, TTL ~30 min, read-only DB user by default on non-sandbox stacks, dump before write access)
 
 ### Other stack types

@@ -8,6 +8,10 @@ Established 2026-10-03 with `dominikliss.foxcraft.digital` as the first implemen
 
 **Rule (decided 2026-11-04):** stacks under `/opt/apps/` are not edited by hand. Changes go through Atlas → stack-api. Blueprint changes go through the templates in the repo.
 
+## Managed staging sites (stack-api)
+
+New WordPress staging sites are created from Atlas (Stacks → New stack → Plan → Create) as `<label>.staging.foxcraft.digital`; never by hand under `/opt/apps` (rule from 2026-11-04). Details: [`stack-api.md`](stack-api.md). Existing manual sites (`dominikliss`, `hypershape`) stay as they are until adopted.
+
 **Two SSH variants**
 
 | Variant | Who | Image | How users are defined |
@@ -364,7 +368,7 @@ DNS-01 / staging-fallback notes for this site: [`infrastructure.md`](infrastruct
 
 ## Order of steps for a new WP staging site
 
-Once stack-api has `apply`, new sites are created from Atlas only. Until then, by hand:
+New sites are created from Atlas only (Stacks → New stack). The checklist below is the old hand-built procedure for sites that predate stack-api:
 
 1. Folder + `.env` (`chmod 600`, passwords via `openssl rand -hex 16`).
 2. `docker-compose.yml` from the [shared-image template](#ssh-container-shared-image) + `atlas/users.conf` + `atlas/keys/<name>.pub`. Do **not** add `Dockerfile.ssh` or `authorized_keys`. Include the shared `uploads.ini` mount unless there is a reason not to (`hypershape` has none).

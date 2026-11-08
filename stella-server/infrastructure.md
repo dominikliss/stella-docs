@@ -45,7 +45,7 @@ Core Docker-managed services live at `/opt/services/docker-compose.yml`. Dev/sta
 | `ollama` | Docker (`edge` network) | 11434 (published to `127.0.0.1` only) | LLM inference — containerized 2026-08-10, see below |
 | `health-api` | Docker (`edge` network) | 443 via Caddy (`stella-health-api.foxcraft.digital`) | System status endpoint for Atlas — [`health-api.md`](health-api.md) |
 | `media-api` | Docker (`edge` network) | 443 via Caddy (`stella-media-api.foxcraft.digital`) | RAW/HEIC/JPEG/video-poster decode for Foxx Cloud (HMAC; RawTherapee + Adobe DCPs for `master` on RAW). `/convert-remote` pulls from / writes to Storage Box (ro mounts `profiles/`, `ssh/`; outbound port 23 verified). [`media-api.md`](media-api.md). No published ports. cpuset `6-11` |
-| `stack-api` | Docker (`stack` network only, no host port; Docker socket mounted) | 443 via Caddy (`stella-stack-api.foxcraft.digital`) | Container management API for Atlas — [`stack-api.md`](stack-api.md). `list` / `get` / `restart` / `logs` / jobs + append-only audit log. No `apply` yet |
+| `stack-api` | Docker (`stack` network only, no host port; Docker socket mounted) | 443 via Caddy (`stella-stack-api.foxcraft.digital`) | Container management API for Atlas — [`stack-api.md`](stack-api.md). `list` / `get` / `restart` / `logs` / `plan` / `apply` / `fix-permissions` / people + jobs + append-only audit log. First created stack 2026-11-08: `sandbox.staging.foxcraft.digital` |
 | `backup` | Docker (`edge` network, no host port) | — | Nightly restic backup to Hetzner Storage Box — see [`backup.md`](backup.md) |
 | `osgar-datahub-dev` | Docker (.NET dev, hot-reload) | 5081→8080 (localhost) | `.NET` app, same pattern as `advoapp-dev` — `Dockerfile.dev` + bind-mounted `src`; compose file at `/opt/apps/dotnet/osgar.datahub.foxcraft.digital/docker-compose.dev.yml` |
 | `osgar-datahub-db` | Docker (MSSQL 2022) | — (internal only) | `mcr.microsoft.com/mssql/server:2022-latest`, data volume `osgar-datahub-mssql-data`; same compose file as `osgar-datahub-dev` |
@@ -322,7 +322,9 @@ Each new subdomain gets its own block at the bottom, reverse-proxying to a conta
 
 ### Wildcard `*.staging.foxcraft.digital` (2026-11-08)
 
-Caddy **2.11.4**. Catch-all block for unknown names under the wildcard, DNS-01 (Hetzner, `propagation_delay 45s` / `propagation_timeout 3m`), `respond 404`. Cert obtained 2026-11-08 (Let's Encrypt, issuer YE1). Since Caddy 2.10, subdomains covered by a managed wildcard use it automatically; `auto_https prefer_wildcard` no longer exists (validate fails with it). Per-site blocks under `*.staging` have **no `tls` section**. Why: no per-site ACME wait, and site names don't show up in Certificate Transparency logs.
+Caddy **2.11.4** (custom build with `caddy-dns/hetzner/v2`). Catch-all block for unknown names under the wildcard, DNS-01 (Hetzner, `propagation_delay 45s` / `propagation_timeout 3m`), `respond 404`. Wildcard cert issued 2026-11-08 (Let's Encrypt YE1). Since Caddy 2.10, subdomains covered by a managed wildcard use it automatically; `auto_https prefer_wildcard` no longer exists (validate fails with it). Per-site blocks under `*.staging` have **no `tls` section**. Why: no per-site ACME wait, and site names don't show up in Certificate Transparency logs.
+
+Last line of the Caddyfile: `import sites/*.caddy`. `/opt/services/caddy/sites/` is mounted read-only into Caddy at `/etc/caddy/sites` (directory mount, so new files are visible without restart) and writable into stack-api at `/caddy-sites`. `_placeholder.caddy` keeps the glob non-empty. stack-api reloads Caddy via `docker exec`.
 
 ```caddyfile
 *.staging.foxcraft.digital {
@@ -339,14 +341,17 @@ Caddy **2.11.4**. Catch-all block for unknown names under the wildcard, DNS-01 (
 }
 
 # Per-site blocks under *.staging — no tls section (wildcard cert).
+# Written by stack-api into /etc/caddy/sites/<name>.caddy
 # <label>.staging.foxcraft.digital {
 #     @blocked not remote_ip 194.126.177.181 78.47.218.190 2.31.42.13
 #     respond @blocked 403
 #     reverse_proxy <label>.staging.foxcraft.digital:80
 # }
+
+import sites/*.caddy
 ```
 
-Procedure that worked: back up, `rm` + nano the Caddyfile, validate in a throwaway container (`docker compose run --rm --no-deps caddy caddy validate --config /etc/caddy/Caddyfile --adapter caddyfile`), then `docker compose restart caddy` (single-file bind mount: reload would still see the old inode). Duplicate `propagation_*` lines in `stella-media-api` removed. Backup `/opt/services/caddy/Caddyfile.bak-20261108`. Gotcha: replacing a script or the Caddyfile via `rm` + nano drops the execute bit on scripts → `chmod 755` before running them.
+Procedure that worked: back up, `rm` + nano the Caddyfile, validate in a throwaway container (`docker compose run --rm --no-deps caddy caddy validate --config /etc/caddy/Caddyfile --adapter caddyfile`), then restart or recreate Caddy. Gotcha: the Caddyfile is a single-file bind mount — after `rm` + nano the running container still sees the old inode; `caddy reload` is not enough, restart/recreate is. health-api mounts the Caddyfile the same way → recreate it too after replacing the Caddyfile. Recreate Caddy **without** `--build` (`docker compose up -d caddy`) — a rebuild runs xcaddy and may change the version. Duplicate `propagation_*` lines in `stella-media-api` removed 2026-11-08. Backups: `caddy/Caddyfile.bak-20261108`, `Caddyfile.bak-20261108b`; `docker-compose.yml.bak-20261108`. Gotcha: replacing a script via `rm` + nano drops the execute bit → `chmod 755`.
 
 **`caddy-data` volume (added 2026-09-01):** Caddy stores ACME certificates under `/data`. Before this volume existed, every `docker compose up -d --force-recreate caddy` (or `down`/`up`) wiped all certs and forced a full re-issuance across every domain. That is what happened when the leftover `8080`/`3001` port publishes were removed — a multi-domain recert storm, including a transient Let's Encrypt staging fallback on `stella-deployment-api.foxcraft.digital` (resolved after clearing one stale `_acme-challenge` TXT record and waiting out normal DNS-01 retries — same Issue 2/3 pattern, no new failure mode). The named volume is declared next to `ollama-models` under the top-level `volumes:` key. **This should prevent the whole-fleet-recert issue from recurring on any future Caddy recreate.** The volume lives outside `/opt/services` as `services_caddy-data`. As of 2026-10-10 restic includes every volume used by a container (except `ollama-models` and dumped DB volumes), so **`caddy-data` is backed up** — a restore should not force a recert storm. See [`backup.md`](backup.md).
 
@@ -815,6 +820,7 @@ services:
       - "443:443"
     volumes:
       - ./caddy/Caddyfile:/etc/caddy/Caddyfile
+      - ./caddy/sites:/etc/caddy/sites:ro
       - caddy-data:/data
     extra_hosts:
       - "host.docker.internal:host-gateway"
@@ -944,6 +950,8 @@ services:
       - ./stack-api/allowed_signers:/app/allowed_signers:ro
       - ./stack-api/data:/data
       - /var/run/docker.sock:/var/run/docker.sock
+      - /opt/apps/wordpress:/opt/apps/wordpress
+      - ./caddy/sites:/caddy-sites
     read_only: true
     tmpfs:
       - /tmp

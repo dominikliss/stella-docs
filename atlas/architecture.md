@@ -35,7 +35,7 @@ Business code lives under `app/Domain/{Name}/` (controllers, models, jobs, servi
 | `Tools` | IMAP migration proxy to Stella `imap-sync`; TrackingTime import / open-task sync (ddashboard [`../stella-dashboard/atlas-client-lookup.md`](../stella-dashboard/atlas-client-lookup.md) for client stubs) |
 | `Projects` | Imported customers/projects/tasks; project metadata edit; attachment download; one-way Trello push ([`projects.md`](projects.md)) |
 | `Notifications` | Rules, Slack webhooks, in-app inbox, weekly hour-budget checker ([`notifications.md`](notifications.md)) |
-| `Stacks` | Stella stack-api client: list / get / restart app stacks. Admin only. Hidden unless `STELLA_STACK_API_ENABLED`. Local `stack_actions` history. **On** atlas.dev 2026-11-04; **off** on prod |
+| `Stacks` | Stella stack-api client: list / get / restart / logs / jobs / plan / apply / people / fix-permissions. Admin only. Hidden unless `STELLA_STACK_API_ENABLED`. Local `stack_actions` history. **On** atlas.dev 2026-11-04; **off** on prod |
 | `Settings` | `app_settings` key/value (SSH path, stack-api SSH path, Brevo, Hetzner Cloud token, backup S3 + X25519 vault, TrackingTime, Trello, ddashboard service token) |
 
 `App\Providers\AtlasServiceProvider` binds `TokenAuthDriver` for the leftover ddashboard-bearer fallback. With `ATLAS_DEMO_MODE=true` it binds `FakeTokenAuthDriver`. Live login uses local passwords and `AuthTokenService`.
@@ -57,8 +57,8 @@ Entry: `resources/views/app.blade.php` → Vite → `resources/js/routes/index.t
 | `/dashboard` | `domains/dashboard/DashboardPage` (+ `StellaServerStatus`, `AtlasServerStatus`, `EdisonServerStatus`) |
 | `/deployments` | `domains/deployments/DeploymentsPage` (+ `ConfirmDeployModal` before each run) |
 | `/wp-sites` | `domains/wp-sites/WpSitesPage` |
-| `/stacks` | `domains/stacks/StacksPage` (nav hidden unless `STELLA_STACK_API_ENABLED`) |
-| `/stacks/$name` | `domains/stacks/StackDetailPage` |
+| `/stacks` | `domains/stacks/StacksPage` (nav hidden unless `STELLA_STACK_API_ENABLED`; New stack: Plan → Create) |
+| `/stacks/$name` | `domains/stacks/StackDetailPage` (logs, async restart, WordPress fix-permissions, recent jobs, history) |
 | `/monitoring/stella` | `domains/monitoring/StellaDetailPage` |
 | `/monitoring/atlas` | `domains/monitoring/AtlasDetailPage` |
 | `/monitoring/edison` | `domains/monitoring/EdisonDetailPage` |
@@ -108,7 +108,7 @@ Login / refresh / logout / forgot / reset skip token middleware (still IP-filter
 | `wp_site_backups` | Atlas Connect backup jobs, progress, manifest hash |
 | `wp_site_scans`, `wp_site_scan_files`, `wp_site_scan_allowlist_entries` | Infection-scan jobs, inventory, allowlist |
 | `wp_site_stagings` | Stella staging builds from a full backup |
-| `stack_actions` | Atlas-side restart history (`user_id`, stack, service, result, detail, created_at). stack-api has its own audit log |
+| `stack_actions` | Atlas-side history for restart, apply, and fix-permissions (`user_id`, stack, service, result, detail, created_at). Queued rows store the job id in `detail` and settle to `ok` / `error`. stack-api has its own audit log |
 | `imap_migration_jobs` | Atlas-side IMAP history (hosts/users only — **no passwords**) |
 | `customers`, `projects`, `task_lists`, `tasks`, `task_checklist_items`, `task_comments`, `time_entries`, `attachments` | TrackingTime import (one-way). Trello ids live on projects/tasks/check items/attachments. `projects.max_hours_per_week` / `trello_pushed_hash` and `tasks.skip_trello` are Atlas-local |
 | `slack_destinations`, `notification_rules`, `notification_rule_channels`, `notification_rule_projects`, `notification_bindings`, `notification_events`, `notification_deliveries` | Notification rules, Slack webhooks (encrypted), fires + per-channel deliveries |
@@ -147,9 +147,9 @@ signature = ssh-keygen -Y sign -f {key} -n {namespace}  {payload}
 | `StellaDeployApiService::listApps` | `list-apps:` | `deploy` | `deploy_ssh_key_path` |
 | `StellaDeployApiService::trigger` | `deploy-{app}:` | `deploy` | `deploy_ssh_key_path` |
 | `StellaHealthApiClient::fetchSystemHealth` | `system-health:` | `deploy` | `deploy_ssh_key_path` |
-| `StackApiClient` | `stack-ping` / `stack-list` / `stack-get` / `stack-restart` | `stack` | `stack_api_ssh_key_path` (fallback `STELLA_STACK_API_KEY_PATH`) |
+| `StackApiClient` | `stack-ping` / `stack-list` / `stack-get` / `stack-restart` / `stack-logs` / `job-get` / `job-list` / `stack-plan` / `stack-apply` / `people-list` / `stack-fix-permissions` | `stack` | `stack_api_ssh_key_path` (fallback `STELLA_STACK_API_KEY_PATH`) |
 
-stack-api POST body is `{payload, signature, request}` with header `X-Stack-Token`. Never log the token, signature, or key contents. Stella verifies stack-api with namespace `stack`. Prod principal `atlas-prod` (`/home/atlas/.ssh/atlas-stack-api`, flag still off). atlas.dev principal `atlas-dev` (`/var/www/.ssh/id_ed25519`) — sandbox stacks only (`dominikliss`). Replay window is 60 seconds on Stella. Every request JSON needs a random `nonce` (Ed25519 signatures are deterministic; `StackApiClient` does not send one yet).
+stack-api POST body is `{payload, signature, request}` with header `X-Stack-Token`. Never log the token, signature, or key contents. Stella verifies stack-api with namespace `stack`. Prod principal `atlas-prod` (`/home/atlas/.ssh/atlas-stack-api`, flag still off). atlas.dev principal `atlas-dev` (`/var/www/.ssh/id_ed25519`) — sandbox stacks only (`dominikliss.foxcraft.digital`, `sandbox.staging.foxcraft.digital`). Replay window is 60 seconds on Stella. Every request JSON includes a random `nonce` (Ed25519 signatures are deterministic).
 
 deploy-api and health-api each have their **own** `allowed_signers` file. health-api’s file has two `ddashboard` lines (`atlas-prod` and `atlas-dev`). deploy-api’s file has only the production key. See [`../stella-server/health-api.md`](../stella-server/health-api.md) and [`dev-instance.md`](dev-instance.md).
 

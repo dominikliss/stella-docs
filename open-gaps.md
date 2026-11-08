@@ -153,7 +153,7 @@ Service live at `https://stella-media-api.foxcraft.digital`. Contract: [`stella-
   - finditoo (5 consumer repos + contracts)
 - [ ] **stella-api in git** — `/opt/services/stella-api` is not version controlled yet
 - [ ] **stella-docs is public** — anonymous clone works. Contains IPs, allowlists, ports, firewall rules, public keys, full service layout — no secrets, but a full infrastructure map. **TODO (Dominik):** make it private and check that the submodule in the Atlas/theme repos still clones (`atlas.dev`, Edison, Cursor).
-- [ ] **Backup files on Stella from 2026-11-04** — delete once confirmed: `/opt/services/docker-compose.yml.bak-20261104`, `/opt/services/docker-compose.yml.bak-20261104b`, `/opt/services/caddy/Caddyfile.bak-20261104`, `/opt/services/caddy/Caddyfile.bak-20261104b`, `/opt/services/caddy/Caddyfile.bak-20261108`, `/opt/services/stack-api/app/main.py.bak-20261104`, `/opt/services/stack-api/app/main.py.bak-20261108`, `/opt/services/stack-api/app/main.py.bak-20261108b`, `/opt/services/stack-api/app/stackspec.py.bak-20261108`, `/opt/services/stack-api/app/stackspec.py.bak-20261108b`, `/usr/local/bin/docker-user-firewall.sh.bak-20261108` (deletion not confirmed).
+- [ ] **Backup files on Stella from 2026-11-04 / 2026-11-08** — delete once confirmed: `/opt/services/docker-compose.yml.bak-20261104`, `/opt/services/docker-compose.yml.bak-20261104b`, `/opt/services/docker-compose.yml.bak-20261108`, `/opt/services/caddy/Caddyfile.bak-20261104`, `/opt/services/caddy/Caddyfile.bak-20261104b`, `/opt/services/caddy/Caddyfile.bak-20261108`, `/opt/services/caddy/Caddyfile.bak-20261108b`, `/opt/services/stack-api/app/main.py.bak-20261104`, `/opt/services/stack-api/app/main.py.bak-20261108`, `/opt/services/stack-api/app/main.py.bak-20261108b`, `/opt/services/stack-api/app/main.py.bak-20261108c`, `/opt/services/stack-api/app/main.py.bak-20261108d`, `/opt/services/stack-api/app/stackspec.py.bak-20261108`, `/opt/services/stack-api/app/stackspec.py.bak-20261108b`, `/opt/services/stack-api/app/stackspec.py.bak-20261108c`, `/opt/services/stack-api/Dockerfile.bak-20261108`, `/usr/local/bin/docker-user-firewall.sh.bak-20261108` (deletion not confirmed).
 - [ ] **Daily connectivity tests** — automated login/fetch/update tests for contract sync with failure notifications (stack not finalized)
 - [ ] **Atlas health-api: render newer payload keys** — ~~`docker_daemon`, `ollama_resource_usage`, `cpu_ram` (added later 2026-08-10). Polling + dashboard already live against `STELLA_HEALTH_API_URL`. See [`stella-server/health-api.md`](stella-server/health-api.md).~~ **Closed 2026-09-03.** All keys are now normalized by `StellaHealthApiClient::normalizeServices()` and stored as per-service `StellaServiceUptimeLog` rows. See [`atlas/monitoring.md`](atlas/monitoring.md).
 - [ ] **Remove now-unneeded UFW rules for port 11434** — Ollama no longer needs direct host-level access now that it's fully behind `edge`/Caddy. Rules for the two static-IP whitelist entries can be deleted once the retired systemd `ollama.service` is confirmed not coming back.
@@ -196,16 +196,19 @@ Service live at `https://stella-media-api.foxcraft.digital`. Contract: [`stella-
 
 Live at `https://stella-stack-api.foxcraft.digital`. Feature list and remaining build work: **[Roadmap in `stella-server/stack-api.md`](stella-server/stack-api.md#roadmap)**. Do not maintain that list here.
 
-Closed on atlas.dev: Atlas client (flag on, key `/var/www/.ssh/id_ed25519`, `stack_actions` migrated, 11 tests pass, UI shows only `dominikliss.foxcraft.digital`) and the `atlas-dev` signer (`namespaces="stack"`, sandbox scope). Allowlist is `2.31.42.13`, `95.217.144.93`, `172.20.0.1`. `wp-staging-api` is superseded.
+Closed on atlas.dev: Atlas client (flag on, key `/var/www/.ssh/id_ed25519`, `stack_actions` migrated, UI + plan/apply/fix-permissions), first stack `sandbox.staging.foxcraft.digital` created end to end 2026-11-08, and the `atlas-dev` signer (`namespaces="stack"`, sandbox scope). Allowlist is `2.31.42.13`, `95.217.144.93`, `172.20.0.1`. `wp-staging-api` is superseded.
 
 **Open (concrete, not in the roadmap):**
 - [ ] **Enable the Atlas client on prod** — `STELLA_STACK_API_KEY_PATH=/home/atlas/.ssh/atlas-stack-api`, `STELLA_STACK_API_ENABLED=true`, migration `2026_11_04_020000_create_stack_actions_table`. Flag stays off until then.
 - [x] **Nonce in `StackApiClient`** — every request body includes a random `nonce`. Ed25519 signatures are deterministic; identical requests in the same second are replay (01:29, audit row 19).
-- [ ] **Re-decide `dominikliss.foxcraft.digital` as the sandbox** before `apply` / `delete`. Current `STACK_API_SANDBOX_STACKS` is `dominikliss.foxcraft.digital,sandbox.staging.foxcraft.digital` (`sandbox.staging.foxcraft.digital` is a plan/apply test name; it does not exist yet).
+- [ ] **Re-decide `dominikliss.foxcraft.digital` as the sandbox** before `delete`. Current `STACK_API_SANDBOX_STACKS` is `dominikliss.foxcraft.digital,sandbox.staging.foxcraft.digital`.
 - [x] **Atlas stack logs panel does not scroll to the newest line** (API returns the correct window; display only) — closed 2026-11-08: panel scrolls to the bottom after load/refresh and shows “showing N lines, newest at bottom”.
-- [ ] **Port 2202 `DOCKER-USER` rules lack `178.105.203.54` (Edison) unlike 2201/2204–2207 — decide if intended.**
-- [ ] **WP blueprint creates the ssh service and port even with zero `ssh_users` — skip ssh when the list is empty (stack-api).**
-- [ ] **SSH keys in the New stack form are pasted per stack — consider storing public keys per person in Atlas and picking them.**
+- [ ] **Port 2202 `DOCKER-USER` rules lack `178.105.203.54` (Edison), unlike 2201/2204–2207 — decide if intended.**
+- [ ] **People list changes do not reach existing stacks yet** (needs a "sync users" action).
+- [ ] **stack-api has no delete yet** — `sandbox.staging.foxcraft.digital` can only be removed by hand for now (`compose down -v`, folder, `/opt/services/caddy/sites/<name>.caddy` + Caddy reload).
+- [ ] **wp container has no health check;** apply relies on an HTTP probe.
+- [ ] **`/opt/apps/wordpress/uploads.ini` exists at the top level** — check what uses it.
+- [ ] **SSH keys for new people:** add to `stack-api/people/` and rebuild (`docker compose up -d --build stack-api`). Existing stacks are not updated automatically.
 
 ---
 
