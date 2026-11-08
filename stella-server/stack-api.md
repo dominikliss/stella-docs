@@ -19,7 +19,7 @@ Infra: [`infrastructure.md`](infrastructure.md). System map: [`../integration/sy
   ├── Dockerfile          ← python:3.13-slim + openssh-client
   ├── requirements.txt    ← fastapi, uvicorn, httpx, pyyaml
   ├── .dockerignore       ← .env, allowed_signers, data, images
-  ├── .env                ← chmod 600; STACK_API_TOKEN, STACK_API_ALLOWED_IPS, STACK_API_SANDBOX_STACKS, STACK_API_SITE_ALLOW_IPS, STACK_API_HEAVY_JOBS
+  ├── .env                ← chmod 600; STACK_API_TOKEN, STACK_API_ALLOWED_IPS, STACK_API_SANDBOX_STACKS, STACK_API_SITE_ALLOW_IPS, STACK_API_DOMAINS, STACK_API_HEAVY_JOBS
   ├── allowed_signers     ← mounted read-only, not baked into the image; atlas-prod + atlas-dev, both namespaces="stack"
   ├── data/               ← host dir; SQLite at /data/stack-api.sqlite in the container (code default; STACK_API_DB is not in .env)
   ├── app/main.py
@@ -30,9 +30,11 @@ Infra: [`infrastructure.md`](infrastructure.md). System map: [`../integration/sy
         └── entrypoint.sh
 ```
 
-Never write the token value into docs. Backups on Stella: `/opt/services/stack-api/app/main.py.bak-20261108`, `app/main.py.bak-20261108b`, `app/stackspec.py.bak-20261108`.
+Never write the token value into docs. Backups on Stella: `/opt/services/stack-api/app/main.py.bak-20261108`, `app/main.py.bak-20261108b`, `app/stackspec.py.bak-20261108`, `app/stackspec.py.bak-20261108b`.
 
-`.env` keys (no values): `STACK_API_TOKEN`, `STACK_API_ALLOWED_IPS`, `STACK_API_SANDBOX_STACKS`, `STACK_API_SITE_ALLOW_IPS`. `STACK_API_DB` is **not** in `.env` — the code default `/data/stack-api.sqlite` is used.
+`.env` keys (no values): `STACK_API_TOKEN`, `STACK_API_ALLOWED_IPS`, `STACK_API_SANDBOX_STACKS`, `STACK_API_SITE_ALLOW_IPS`, `STACK_API_DOMAINS`. `STACK_API_DB` is **not** in `.env` — the code default `/data/stack-api.sqlite` is used.
+
+Values: `STACK_API_SANDBOX_STACKS` = `dominikliss.foxcraft.digital,sandbox.staging.foxcraft.digital` (the latter does not exist yet; test name for plan/apply). `STACK_API_SITE_ALLOW_IPS` = `194.126.177.181` (Proton), `78.47.218.190` (york), `2.31.42.13` (Atlas prod), decided 2026-11-08. `STACK_API_DOMAINS` = `staging.foxcraft.digital`.
 
 ---
 
@@ -100,9 +102,9 @@ POST body = {"payload": …, "signature": …, "request": "<JSON string>"}
 
 `PRINCIPAL_SCOPES = {"atlas-prod": "all", "atlas-dev": "sandbox"}`. `allowed_signers` has both lines, both `namespaces="stack"`. The shared Atlas prod deploy key (`/home/atlas/.ssh/id_ed25519`, principal `ddashboard`) is **not** trusted by stack-api.
 
-`STACK_API_SANDBOX_STACKS` in stack-api `.env` is the sandbox allowlist — currently `dominikliss.foxcraft.digital,sandbox.foxcraft.digital` (the stack name is the folder name, not `dominikliss`). `sandbox.foxcraft.digital` is a test name for plan/apply; it does not exist yet. `atlas-dev` sees only those stacks; any other name is `404`. A sandbox principal may only **plan** names in that list. `list` / `get` include `"sandbox"` on each stack; `ping` includes `"scope"`.
+`STACK_API_SANDBOX_STACKS` in stack-api `.env` is the sandbox allowlist — currently `dominikliss.foxcraft.digital,sandbox.staging.foxcraft.digital` (the stack name is the folder name, not `dominikliss`). `sandbox.staging.foxcraft.digital` is a test name for plan/apply; it does not exist yet. `atlas-dev` sees only those stacks; any other name is `404`. A sandbox principal may only **plan** names in that list. `list` / `get` include `"sandbox"` on each stack; `ping` includes `"scope"`.
 
-**Decision (2026-11-04):** `dominikliss.foxcraft.digital` is the sandbox. Re-decide before `apply` / `delete`. **2026-11-08:** `sandbox.foxcraft.digital` added to the list as the plan/apply test name.
+**Decision (2026-11-04):** `dominikliss.foxcraft.digital` is the sandbox. Re-decide before `apply` / `delete`. **2026-11-08:** `sandbox.staging.foxcraft.digital` added as the plan/apply test name. New stacks are `<label>.staging.foxcraft.digital`.
 
 **Incident 00:51 (2026-11-04):** the `atlas-dev` signer was added to `allowed_signers` before the sandbox-restricting code was in the running container. atlas.dev then restarted the whole `osgar` stack (audit row 11). No damage. **Rule:** never add a principal before the restricting code is verified in the running container.
 
@@ -160,7 +162,7 @@ Signed endpoints: action = payload prefix. Auth is IP + token + signature unless
 | `POST /stacks/logs` | `stack-logs` | `{name, service, lines?, nonce}` (`lines` 1–1000, default 200) | `{name, service, containers:[{name, state, truncated, lines:[{ts, stream, text}]}]}`. Container stdout/stderr via the Docker logs API (demuxed, timestamps on), max 2 MB per container, each line cut to 4000 chars. Log content is never written to the audit log (detail is only `lines=N`). `404` `service not found` |
 | `POST /jobs/get` | `job-get` | `{id, nonce}` (32 lowercase hex) | `{id, action, stack, service, principal, state (queued / running / ok / error), created_at, started_at, finished_at, result, detail}`. `404` `job not found`, also when the job's stack is not visible to the principal |
 | `POST /jobs/list` | `job-list` | `{name?, limit?, nonce}` (`limit` 1–100, default 20; omit `name` when null) | `{jobs:[job, …]}` newest first, filtered by principal scope |
-| `POST /stacks/plan` | `stack-plan` | `{spec, nonce}` | Always 200 for a handled plan. Writes nothing. Rejected: `{ok:false, errors:[string]}`. Planned: `{ok, errors, mode:"create", name, type, path, ssh_port, compose (YAML), files, caddy, notes}`. `ok` can be false with a rendered result when policy fails. Existing stacks are refused (`update is not supported yet`). Sandbox principal may only plan names in `STACK_API_SANDBOX_STACKS`. |
+| `POST /stacks/plan` | `stack-plan` | `{spec, nonce}` | Always 200 for a handled plan. Writes nothing. Rejected: `{ok:false, errors:[string]}`. Planned: `{ok, errors, mode:"create", name, type, path, ssh_port, compose (YAML, multi-line strings as `\|` blocks), files, caddy, notes}`. `ok` can be false with a rendered result when policy fails. Existing stacks are refused (`update is not supported yet`). Sandbox principal may only plan names in `STACK_API_SANDBOX_STACKS`. |
 
 Docker errors → `502` `"docker error"`.
 
@@ -175,18 +177,18 @@ Code: `app/stackspec.py` (`validate_spec`, `render_wordpress`, `render_caddy`, `
 | Key | Rule |
 |---|---|
 | `type` | only `"wordpress"` |
-| `name` | subdomain of `STACK_API_DOMAINS` (default `foxcraft.digital`). First label not in `atlas` / `api` / `stella` / `edison` / `york` / `www` / `mail`, not `stella-*` |
+| `name` | exactly one label + `.staging.foxcraft.digital` (`STACK_API_DOMAINS`). Label not in `atlas` / `api` / `stella` / `edison` / `york` / `www` / `mail`, not `stella-*` |
 | `php` | `STACK_API_PHP_VERSIONS` (default `8.5`) |
 | `ssh_users` | list of `{name, key}`, max 20. `name` `^[a-z][a-z0-9_-]{0,31}$`. `key` = OpenSSH public key. UIDs 1000+ in list order |
 | `php_ini` | whitelist only; each value validated: `memory_limit`, `upload_max_filesize`, `post_max_size`, `max_execution_time`, `max_input_time`, `max_input_vars`, `display_errors`, `date.timezone`, `session.gc_maxlifetime`, `opcache.enable`, `opcache.memory_consumption`, `opcache.max_accelerated_files`, `opcache.validate_timestamps`, `opcache.revalidate_freq` |
 
 ## Policy (allowlist)
 
-Checked on every rendered compose (plan today; `up` later). Top-level keys only `services` / `networks` / `volumes`. Networks only `edge` (external) and `internal`. Named volumes without options. Service keys only `image`, `container_name`, `environment`, `volumes`, `depends_on`, `networks`, `ports`, `restart`, `pull_policy`. Images: `wordpress:php8.x-apache`, `mariadb:11`, `stella/ssh-php:8.x` (`pull_policy: never` only for `stella/`). `container_name` = `<name>` for `wp`, `<name>-<service>` otherwise. `restart: unless-stopped`. Only `wp` on `edge`. Only `ssh` publishes ports. Bind mounts only `./` paths without `..`. Env values are strings; newlines only in `WORDPRESS_CONFIG_EXTRA`.
+Checked on every rendered compose (plan today; `up` later). Top-level keys only `services` / `networks` / `volumes`. Networks only `edge` (external) and `internal`. Named volumes without options. Service keys only `image`, `container_name`, `environment`, `volumes`, `depends_on`, `networks`, `ports`, `restart`, `pull_policy`. Images: `wordpress:php8.x-apache`, `mariadb:11`, `stella/ssh-php:8.x` (`pull_policy: never` only for `stella/`). `container_name` = `<name>` for `wp`, `<name>-<service>` otherwise. `restart: unless-stopped`. Only `wp` on `edge`. Only `ssh` publishes ports, `22100–22199:22`. Bind mounts only `./` paths without `..`. Env values are strings; newlines only in `WORDPRESS_CONFIG_EXTRA`.
 
 ## WordPress blueprint
 
-Same as hypershape, plus `./php/zz-atlas.ini` mounted read-only into `/usr/local/etc/php/conf.d/` in `wp` and `ssh`; per-user `./html:/home/<user>/app` mounts. Caddy block with `@blocked not remote_ip` from `STACK_API_SITE_ALLOW_IPS`.
+Same as hypershape, plus `./php/zz-atlas.ini` mounted read-only into `/usr/local/etc/php/conf.d/` in `wp` and `ssh`; per-user `./html:/home/<user>/app` mounts. Caddy site block has **no `tls` section** (wildcard cert); only `@blocked not remote_ip` from `STACK_API_SITE_ALLOW_IPS` and `reverse_proxy <name>:80`.
 
 **Site allowlist for new stacks (decided 2026-11-08):** `194.126.177.181` (Proton), `78.47.218.190` (york), `2.31.42.13` (Atlas prod).
 
@@ -311,7 +313,7 @@ sudo -u atlas rm -rf "$TMP"; unset STACK_TOKEN
 
 ## Verification (2026-11-08)
 
-atlas.dev, principal `atlas-dev`, stack `dominikliss.foxcraft.digital`. Backups on Stella: `/opt/services/stack-api/app/main.py.bak-20261108`, `app/main.py.bak-20261108b`, `app/stackspec.py.bak-20261108`.
+atlas.dev, principal `atlas-dev`, stack `dominikliss.foxcraft.digital`. Backups on Stella: `/opt/services/stack-api/app/main.py.bak-20261108`, `app/main.py.bak-20261108b`, `app/stackspec.py.bak-20261108`, `app/stackspec.py.bak-20261108b`.
 
 | Test | From | Result |
 |---|---|---|
@@ -373,14 +375,14 @@ Single list. Do not duplicate it in [`../open-gaps.md`](../open-gaps.md).
 
 ### apply (create/change from a spec) — needs the safeguards first
 
-- [x] Spec schema with strict validation (names, PHP versions from a list, whitelisted ini keys, no newlines; paths must resolve under `/opt/apps/<type>/<name>/`) (2026-11-08, plan only)
-- [x] Policy check on every rendered compose before `up` (refuse `privileged`, `cap_add`, `network_mode: host`, `pid: host`, bind mounts outside the app folder, `docker.sock`, `edge` on `ssh`/`db`/`adminer`, images outside the allowlist) (2026-11-08, plan only)
+- [x] Spec schema with strict validation (names, PHP versions from a list, whitelisted ini keys, no newlines; paths must resolve under `/opt/apps/<type>/<name>/`) (2026-11-08, used by plan)
+- [x] Policy check on every rendered compose before `up` (refuse `privileged`, `cap_add`, `network_mode: host`, `pid: host`, bind mounts outside the app folder, `docker.sock`, `edge` on `ssh`/`db`/`adminer`, images outside the allowlist) (2026-11-08, used by plan)
 - [ ] WordPress blueprint (template of the hypershape compose; `ssh` on `internal`)
 - [ ] SSH users and keys via spec (`users.conf` + `keys/`, then `atlas-sync-users`)
 - [ ] Outbound SSH key per user (`ssh-keys/generate`, returns only the `.pub`, for GitHub deploy keys)
 - [ ] PHP version change as a job (DB dump first, `wp` + `ssh` image together, verify `php -v` / HTTP / fatals / ACL, revert)
 - [ ] PHP settings: `PHP_INI_SCAN_DIR` with shared `php-defaults.ini` + per-site `zz-atlas.ini`, whitelisted keys (`memory_limit`, `upload_max_filesize`, `post_max_size`, `max_execution_time`, `max_input_time`, `max_input_vars`, `display_errors`, `date.timezone`, `session.gc_maxlifetime`, selected `opcache.*`); never `auto_prepend_file`, `disable_functions`, `open_basedir`, `extension`; return effective values via `php -i`
-- [ ] Domain/TLS: Caddy `sites/*.caddy` imported by the main Caddyfile, reload via the admin API; wildcard `*.foxcraft.digital` → Stella so stack-api needs no DNS token
+- [x] wildcard DNS + wildcard cert for `*.staging.foxcraft.digital` (2026-11-08); apply still needs to write the per-site Caddy block (`sites/*.caddy` import or equivalent) and restart/reload Caddy
 - [x] stack-api SSH ports 22100–22199, lowest free, one `DOCKER-USER` range rule (2026-11-08). A port freed by a deleted stack can be reused.
 - [ ] Drift detection (hash of rendered files; mismatch blocks apply until "reconcile")
 - [ ] Adopt existing stacks: hypershape (done by hand) → `dominikliss.foxcraft.digital` → `osgar`, `advoapp` (need .NET blueprint) → `atlas.dev`, `edison.dev` (need Laravel blueprint)

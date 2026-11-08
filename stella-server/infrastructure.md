@@ -94,6 +94,8 @@ Token stored in `/opt/services/caddy/.env` (`chmod 600`), referenced in the Cadd
 
 **foxcraft.digital zone ID:** `567656` (unchanged after the project move; verified with the new token via `GET /v1/zones?name=foxcraft.digital`). **TODO (Dominik): name of the new Hetzner Cloud project** (previously referred to as `konsoleH`).
 
+**Wildcard staging (2026-11-08):** A record `*.staging.foxcraft.digital` → `95.217.144.93`, TTL 300, created via `POST /v1/zones/567656/rrsets` (name `*.staging`). Explicit records elsewhere under `foxcraft.digital` are unaffected.
+
 ### Zone moved to another Hetzner Cloud project (2026-10-03)
 
 `foxcraft.digital` was moved to a different Hetzner Cloud project. Zone ID stayed `567656`. The token in `/opt/services/caddy/.env` was from the old project and lost access to the zone; the old token was revoked and the `.env` backup deleted.
@@ -276,7 +278,7 @@ edison.dev.foxcraft.digital {
 }
 ```
 
-> **Per-site IP scoping (2026-09-03):** `@blocked` matchers were added to all site blocks. Blocks other than `osgar.datahub` deny the client IPs outright; `osgar.datahub` uses an allow-list. This is the second layer of a two-layer approach — the first layer (DOCKER-USER) lets client IPs reach port 443 at all; Caddy's matchers then restrict which subdomain they can actually use. See [`client-ip-access.md`](client-ip-access.md) for the full rationale, the list of current client IPs, and removal instructions.
+> **Per-site IP scoping (2026-09-03):** `@blocked` matchers were added to all site blocks. Blocks other than `osgar.datahub` deny the client IPs outright; `osgar.datahub` uses an allow-list. This is the second layer of a two-layer approach — the first layer (DOCKER-USER) lets client IPs reach port 443 at all; Caddy's matchers then restrict which subdomain they can actually use. See [`client-ip-access.md`](client-ip-access.md) for the full rationale, the list of current client IPs, and removal instructions. The `@blocked remote_ip 213.47.151.242 89.67.29.69 49.13.27.117` lines in most Caddy blocks are intentional (client IPs that may only reach osgar).
 
 > **Caddyfile reality check (2026-10-03):** port 443 in `DOCKER-USER` also ACCEPTs `49.13.27.117`. Caddy `@blocked` deny-lists contain `49.13.27.117` on `stella`, `stella-deployment-api`, `stella-health-api`, and `dominikliss`, but **not** on `advoapp.finditoo` (that block only denies `213.47.151.242` and `89.67.29.69`), so that IP currently reaches `advoapp.finditoo`. **TODO (Dominik):** who is `49.13.27.117` (client? expiry?) and whether the `advoapp.finditoo` block should deny it too. The live `osgar.datahub` upstream is `osgar-datahub-dev:8080` (the excerpt previously showed `osgar.datahub.foxcraft.digital:8080`).
 
@@ -317,6 +319,34 @@ Each new subdomain gets its own block at the bottom, reverse-proxying to a conta
 **After any Caddyfile edit:** `docker compose restart caddy` is required (not `up -d` alone — Compose does not recreate/reload on bind-mounted file content changes). Restart mid-retry is fine; Caddy simply restarts the attempt for the affected domain. **Also** `docker compose up -d --force-recreate health-api` — health-api bind-mounts the Caddyfile as a **single file**; `sed -i` (new inode) leaves the container on the old file, so cert discovery for the new domain stays stale until force-recreate (Issue 4, 2026-10-18). `docker compose restart caddy` was enough for Caddy itself.
 
 **2026-11-07 (york allow lists):** wrote the new Caddyfile in place with `cat /tmp/Caddyfile.new > caddy/Caddyfile` so the inode stayed the same, then `docker compose restart caddy`. Do not `rm` + recreate the bind-mounted file.
+
+### Wildcard `*.staging.foxcraft.digital` (2026-11-08)
+
+Caddy **2.11.4**. Catch-all block for unknown names under the wildcard, DNS-01 (Hetzner, `propagation_delay 45s` / `propagation_timeout 3m`), `respond 404`. Cert obtained 2026-11-08 (Let's Encrypt, issuer YE1). Since Caddy 2.10, subdomains covered by a managed wildcard use it automatically; `auto_https prefer_wildcard` no longer exists (validate fails with it). Per-site blocks under `*.staging` have **no `tls` section**. Why: no per-site ACME wait, and site names don't show up in Certificate Transparency logs.
+
+```caddyfile
+*.staging.foxcraft.digital {
+    tls {
+        issuer acme {
+            email projects@foxcraft.digital
+            dir https://acme-v02.api.letsencrypt.org/directory
+            dns hetzner {env.HETZNER_API_TOKEN}
+            propagation_delay 45s
+            propagation_timeout 3m
+        }
+    }
+    respond 404
+}
+
+# Per-site blocks under *.staging — no tls section (wildcard cert).
+# <label>.staging.foxcraft.digital {
+#     @blocked not remote_ip 194.126.177.181 78.47.218.190 2.31.42.13
+#     respond @blocked 403
+#     reverse_proxy <label>.staging.foxcraft.digital:80
+# }
+```
+
+Procedure that worked: back up, `rm` + nano the Caddyfile, validate in a throwaway container (`docker compose run --rm --no-deps caddy caddy validate --config /etc/caddy/Caddyfile --adapter caddyfile`), then `docker compose restart caddy` (single-file bind mount: reload would still see the old inode). Duplicate `propagation_*` lines in `stella-media-api` removed. Backup `/opt/services/caddy/Caddyfile.bak-20261108`. Gotcha: replacing a script or the Caddyfile via `rm` + nano drops the execute bit on scripts → `chmod 755` before running them.
 
 **`caddy-data` volume (added 2026-09-01):** Caddy stores ACME certificates under `/data`. Before this volume existed, every `docker compose up -d --force-recreate caddy` (or `down`/`up`) wiped all certs and forced a full re-issuance across every domain. That is what happened when the leftover `8080`/`3001` port publishes were removed — a multi-domain recert storm, including a transient Let's Encrypt staging fallback on `stella-deployment-api.foxcraft.digital` (resolved after clearing one stale `_acme-challenge` TXT record and waiting out normal DNS-01 retries — same Issue 2/3 pattern, no new failure mode). The named volume is declared next to `ollama-models` under the top-level `volumes:` key. **This should prevent the whole-fleet-recert issue from recurring on any future Caddy recreate.** The volume lives outside `/opt/services` as `services_caddy-data`. As of 2026-10-10 restic includes every volume used by a container (except `ollama-models` and dumped DB volumes), so **`caddy-data` is backed up** — a restore should not force a recert storm. See [`backup.md`](backup.md).
 
@@ -438,7 +468,7 @@ This is the same inode class of bug as “never `rm` + recreate a bind-mounted f
 - `mkdir` the app folder before writing files into it.
 - The "next free SSH port" in these docs can drift (it said 2206 while hypershape already used it). Check `docker ps` for `220X` ports before choosing one.
 - Recreating `/usr/local/bin/docker-user-firewall.sh` with `rm` + nano drops the executable bit. Run `chmod 755 /usr/local/bin/docker-user-firewall.sh` afterwards (the original was `-rwxr-xr-x root:root`), then run the script.
-- The live `stella-media-api` Caddy block has its `propagation_delay` and `propagation_timeout` lines duplicated. It works, but should be cleaned up. **TODO (Dominik).**
+- Duplicate `propagation_delay` / `propagation_timeout` lines in the live `stella-media-api` Caddy block were removed 2026-11-08.
 
 ---
 

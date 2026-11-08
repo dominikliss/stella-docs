@@ -1,6 +1,6 @@
 # Open Gaps & Next Steps
 
-Last updated: 2026-11-07
+Last updated: 2026-11-08
 
 **Cross-system overview:** [integration/system-overview.md](integration/system-overview.md) (Atlas + ddashboard + Stella + Edison + york). AI-chat path only: [integration/ddashboard-and-stella-server.md](integration/ddashboard-and-stella-server.md).
 
@@ -153,7 +153,7 @@ Service live at `https://stella-media-api.foxcraft.digital`. Contract: [`stella-
   - finditoo (5 consumer repos + contracts)
 - [ ] **stella-api in git** — `/opt/services/stella-api` is not version controlled yet
 - [ ] **stella-docs is public** — anonymous clone works. Contains IPs, allowlists, ports, firewall rules, public keys, full service layout — no secrets, but a full infrastructure map. **TODO (Dominik):** make it private and check that the submodule in the Atlas/theme repos still clones (`atlas.dev`, Edison, Cursor).
-- [ ] **Backup files on Stella from 2026-11-04** — delete once confirmed: `/opt/services/docker-compose.yml.bak-20261104`, `/opt/services/docker-compose.yml.bak-20261104b`, `/opt/services/caddy/Caddyfile.bak-20261104`, `/opt/services/caddy/Caddyfile.bak-20261104b`, `/opt/services/stack-api/app/main.py.bak-20261104`, `/opt/services/stack-api/app/main.py.bak-20261108`, `/opt/services/stack-api/app/main.py.bak-20261108b`, `/opt/services/stack-api/app/stackspec.py.bak-20261108`, `/usr/local/bin/docker-user-firewall.sh.bak-20261108` (deletion not confirmed).
+- [ ] **Backup files on Stella from 2026-11-04** — delete once confirmed: `/opt/services/docker-compose.yml.bak-20261104`, `/opt/services/docker-compose.yml.bak-20261104b`, `/opt/services/caddy/Caddyfile.bak-20261104`, `/opt/services/caddy/Caddyfile.bak-20261104b`, `/opt/services/caddy/Caddyfile.bak-20261108`, `/opt/services/stack-api/app/main.py.bak-20261104`, `/opt/services/stack-api/app/main.py.bak-20261108`, `/opt/services/stack-api/app/main.py.bak-20261108b`, `/opt/services/stack-api/app/stackspec.py.bak-20261108`, `/opt/services/stack-api/app/stackspec.py.bak-20261108b`, `/usr/local/bin/docker-user-firewall.sh.bak-20261108` (deletion not confirmed).
 - [ ] **Daily connectivity tests** — automated login/fetch/update tests for contract sync with failure notifications (stack not finalized)
 - [ ] **Atlas health-api: render newer payload keys** — ~~`docker_daemon`, `ollama_resource_usage`, `cpu_ram` (added later 2026-08-10). Polling + dashboard already live against `STELLA_HEALTH_API_URL`. See [`stella-server/health-api.md`](stella-server/health-api.md).~~ **Closed 2026-09-03.** All keys are now normalized by `StellaHealthApiClient::normalizeServices()` and stored as per-service `StellaServiceUptimeLog` rows. See [`atlas/monitoring.md`](atlas/monitoring.md).
 - [ ] **Remove now-unneeded UFW rules for port 11434** — Ollama no longer needs direct host-level access now that it's fully behind `edge`/Caddy. Rules for the two static-IP whitelist entries can be deleted once the retired systemd `ollama.service` is confirmed not coming back.
@@ -173,7 +173,7 @@ Service live at `https://stella-media-api.foxcraft.digital`. Contract: [`stella-
 - [ ] **`dominikliss` `wordpress:php8.5-apache` is a moving tag** — `wp` now runs an untagged image (`sha256:ce31904f…` / `ce31904fa1e5`) because `docker compose pull wp` for hypershape moved the tag. Recreate the container (`docker compose up -d wp`) to pick up the current build; check patch level with `php -v`. Live image **OPEN** from atlas.dev-ssh. See [`stella-server/php-updates.md`](stella-server/php-updates.md).
 - [ ] **Managed host `dedi6724` PHP version** — operator says updated after CVE-2026-109618/109619 (ddashboard, Foxx Cloud, `dominikliss.com` live); exact version **UNVERIFIED**. See [`stella-server/php-updates.md`](stella-server/php-updates.md).
 - [ ] **`hypershape.foxcraft.digital`** — WP staging on Stella. PHP 8.5.12 (`wordpress:php8.5-apache` + shared `stella/ssh-php:8.5`, adopted 2026-11-04). SSH port **2206**, on `internal` (never `edge`). `edison` has its own key (`atlas/keys/edison.pub`, UID 1002). Still open: `DOCKER-USER` source IPs for 2206 not documented; Edison login from Edison after the switch **UNVERIFIED** (host keys unchanged via the `ssh-keys` volume); no `uploads.ini` mount; delete `/root/hypershape-before-adopt.sql` and `docker-compose.yml.bak-20261104`. **TODO (Dominik).** See [`stella-server/wordpress-staging.md`](stella-server/wordpress-staging.md).
-- [ ] **`stella-media-api` Caddy block** — `propagation_delay` / `propagation_timeout` lines are duplicated in the live Caddyfile. Works; **TODO (Dominik):** clean up.
+- [x] **`stella-media-api` Caddy block** — duplicate `propagation_delay` / `propagation_timeout` lines removed 2026-11-08.
 - [ ] **Hetzner Cloud project name for `foxcraft.digital`** — zone moved; ID still `567656`. **TODO (Dominik):** name of the new project (docs previously said `konsoleH`).
 - [x] **Stella `DOCKER-USER` 443 ACCEPT for Atlas** — `2.31.42.13` added. After any `rm` + nano recreation of `/usr/local/bin/docker-user-firewall.sh` it must be `chmod 755`. Port **2205** added (Dominik’s IP, managed host, Edison). Port **2207** added 2026-10-26 for Edison dev (same three IPs); 2206 is hypershape. Next free SSH port: **2208**.
 - [ ] **Caddy `propagation_delay` on `dominikliss`** — untested idea after the zone-move ACME delay. Live `dominikliss` block does not currently have it (**UNVERIFIED**). **TODO (Dominik):** `grep -n propagation_delay /opt/services/caddy/Caddyfile`. `stella-media-api` **does** have `propagation_delay 45s` + `propagation_timeout 3m` (verified 2026-10-18). See [`stella-server/infrastructure.md`](stella-server/infrastructure.md) Issue 2.
@@ -201,10 +201,11 @@ Closed on atlas.dev: Atlas client (flag on, key `/var/www/.ssh/id_ed25519`, `sta
 **Open (concrete, not in the roadmap):**
 - [ ] **Enable the Atlas client on prod** — `STELLA_STACK_API_KEY_PATH=/home/atlas/.ssh/atlas-stack-api`, `STELLA_STACK_API_ENABLED=true`, migration `2026_11_04_020000_create_stack_actions_table`. Flag stays off until then.
 - [x] **Nonce in `StackApiClient`** — every request body includes a random `nonce`. Ed25519 signatures are deterministic; identical requests in the same second are replay (01:29, audit row 19).
-- [ ] **Re-decide `dominikliss.foxcraft.digital` as the sandbox** before `apply` / `delete`. Current `STACK_API_SANDBOX_STACKS` is `dominikliss.foxcraft.digital,sandbox.foxcraft.digital` (`sandbox.foxcraft.digital` is a plan/apply test name; it does not exist yet).
+- [ ] **Re-decide `dominikliss.foxcraft.digital` as the sandbox** before `apply` / `delete`. Current `STACK_API_SANDBOX_STACKS` is `dominikliss.foxcraft.digital,sandbox.staging.foxcraft.digital` (`sandbox.staging.foxcraft.digital` is a plan/apply test name; it does not exist yet).
 - [x] **Atlas stack logs panel does not scroll to the newest line** (API returns the correct window; display only) — closed 2026-11-08: panel scrolls to the bottom after load/refresh and shows “showing N lines, newest at bottom”.
 - [ ] **Port 2202 `DOCKER-USER` rules lack `178.105.203.54` (Edison) unlike 2201/2204–2207 — decide if intended.**
 - [ ] **WP blueprint creates the ssh service and port even with zero `ssh_users` — skip ssh when the list is empty (stack-api).**
+- [ ] **SSH keys in the New stack form are pasted per stack — consider storing public keys per person in Atlas and picking them.**
 
 ---
 
