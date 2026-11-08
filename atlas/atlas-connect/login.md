@@ -2,7 +2,7 @@
 
 Atlas calls the plugin from **Laravel**, not from the browser. The Atlas host IP is what the site allowlists for the API, and the shared secret never reaches the operator's browser after it is saved.
 
-The login link itself is opened in the operator's browser and is locked to the **team office IP**.
+The login link itself is opened in the operator's browser and is locked to the **Proton static IP** and the **york WireGuard floating IP**.
 
 UI today: WP Sites drawer → **03. Atlas Connect**.
 
@@ -13,13 +13,13 @@ Full contract index, auth, and secret lifecycle: [`README.md`](README.md). Backu
 ## Flow
 
 ```
-Operator (office, 194.126.177.181)
+Operator (Proton 194.126.177.181 or york WireGuard 78.47.218.190)
          → Atlas POST /api/wp-sites/{id}/login
 Atlas    (2.31.42.13 prod / 95.217.144.93 dev)
          → POST https://{domain}/wp-json/atlas-connect/v1/generate-token
          ← { "url": "https://client.com/?atlas_autologin=<token>" }
 Atlas    → returns url; SPA opens it in a new tab
-Browser  (must be 194.126.177.181)
+Browser  (must be 194.126.177.181 or 78.47.218.190)
          → GET https://client.com/?atlas_autologin=<token>
 Site     → sets WP auth cookie, fires wp_login, redirects to /wp-admin/ (or ?redirect=)
 ```
@@ -29,7 +29,7 @@ Two different IP gates:
 | Step | Caller | Must come from | Config key |
 |---|---|---|---|
 | 1. `generate-token` | Atlas server | `2.31.42.13` or `95.217.144.93` | `config.php` → `ip_whitelist` |
-| 2. Open the link | Operator's browser | `194.126.177.181` (team office static IP) | `config.php` → `autologin_ip_whitelist` |
+| 2. Open the link | Operator's browser | `194.126.177.181` (Proton static IP) or `78.47.218.190` (york WireGuard floating IP) | `config.php` → `autologin_ip_whitelist` |
 
 Both use the same client-IP logic (`REMOTE_ADDR`, or the rightmost `X-Forwarded-For` entry when `REMOTE_ADDR` is a trusted proxy). See [`README.md`](README.md#how-the-client-ip-is-determined).
 
@@ -81,7 +81,7 @@ Success `200`:
 The SPA opens `url` in a new tab. On WordPress `init` the plugin:
 
 1. Reads `atlas_autologin` from the query string.
-2. **Checks the browser's IP** against `autologin_ip_whitelist` (`194.126.177.181`). Not on the list → `403` HTML page “Login link expired or invalid.” **The token is not consumed** — the same link still works from the office until it expires.
+2. **Checks the browser's IP** against `autologin_ip_whitelist` (`194.126.177.181`, `78.47.218.190`). Not on the list → `403` HTML page “Login link expired or invalid.” **The token is not consumed** — the same link still works from an allowlisted IP until it expires.
 3. Looks up the transient. Missing (expired or already used) → `403` HTML page “Login link expired or invalid.”
 4. **Deletes the token** (single-use) **before** logging in.
 5. Looks up the user again. Deleted in the meantime → `404` HTML page “User not found.”
@@ -103,7 +103,7 @@ Same-site only. Other hosts fall back to `admin_url()`.
 
 ### What the operator sees off-network
 
-Home office, VPN, mobile hotspot, café: the tab shows “Login link expired or invalid.” This is expected. Either connect through the office network within the TTL, or ask for the IP to be added to `autologin_ip_whitelist` (plugin release — it is code in `config.php`, not a WP setting).
+Home office without york WireGuard, mobile hotspot, café: the tab shows “Login link expired or invalid.” This is expected. Connect through Proton (`194.126.177.181`) or york WireGuard (profile “york”, `78.47.218.190`) within the TTL, or ask for the IP to be added to `autologin_ip_whitelist` (plugin release — it is code in `config.php`, not a WP setting).
 
 ---
 
@@ -163,6 +163,6 @@ export async function getLoginUrl(site: { url: string; secretKey: string; wpUser
 2. WP Admin → Settings → Atlas Connect → Connection → **Generate**, then **Copy** — the key is shown once.
 3. Pick **Auto-login Username** (administrators only) and **Save Connection Settings**.
 4. Atlas → WP Sites: paste the secret + **WP username** (an administrator).
-5. Open the login from the office network (`194.126.177.181`).
+5. Open the login from Proton (`194.126.177.181`) or york WireGuard (`78.47.218.190`).
 
 The Atlas server IP is already in the shipped `ip_whitelist`. The operator does not allowlist anything per site.
