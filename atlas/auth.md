@@ -1,6 +1,6 @@
 # Atlas authentication
 
-Atlas stores local users and mints its own access / refresh tokens. Login is email + password, then TOTP (or a recovery code). ddashboard is no longer the identity provider.
+Atlas stores local users and mints its own access / refresh tokens. Login is email + password, then TOTP (or a recovery code). ddashboard is no longer the identity provider. Atlas **is** the identity provider for Edison (authorization-code + PKCE). Edison never receives Atlas API bearers; 2FA stays on Atlas.
 
 System context: [`../integration/system-overview.md`](../integration/system-overview.md).
 
@@ -55,7 +55,7 @@ Challenges live in cache for `ATLAS_AUTH_CHALLENGE_TTL` (default 600s). Invalid 
 
 `TokenAuthMiddleware`:
 
-1. **Tests:** if `auth()->check()` (Pest `actingAs`), skip token lookup. Inactive users still 401.
+1. **Tests:** if `auth()->check()` (Pest `actingAs`) **and there is no bearer**, skip token lookup. Inactive users still 401. A present `Authorization` header always wins so an OIDC token cannot ride an Atlas session.
 2. **Atlas access token:** `AuthTokenService::userFromAccessToken` (hashed row, not expired, user active).
 3. **Fallback:** `DdashboardTokenDriver::verify()` → `GET {ATLAS_DDASHBOARD_URL}/dls/v1/auth/verify`. Then `firstOrCreate` local `User` + role sync. A verify timeout returns **401**.
 
@@ -152,8 +152,42 @@ ATLAS_AUTH_REFRESH_TTL=28800
 ATLAS_AUTH_REFRESH_TTL_REMEMBER=2592000
 ATLAS_AUTH_CHALLENGE_TTL=600
 ATLAS_AUTH_MAX_ATTEMPTS=5
+ATLAS_OIDC_ISSUER=https://atlas.foxcraft.digital
+ATLAS_OIDC_PRIVATE_KEY=base64:…    # php artisan atlas:oidc-key --generate
+ATLAS_OIDC_EDISON_SECRET=
+ATLAS_OIDC_EDISON_REDIRECT_URIS=https://edison.dev.foxcraft.digital/auth/atlas/callback
 ATLAS_DEMO_MODE=false
 ```
+
+---
+
+## OIDC for Edison
+
+First-party authorization-code + PKCE. Atlas API access / refresh tokens stay on `atlas.foxcraft.digital`. Edison exchanges a one-time code for an **ID token** (`aud=edison`) and keeps its own session. Password and TOTP happen only on Atlas.
+
+Generate keys: `php artisan atlas:oidc-key --generate`. Put `ATLAS_OIDC_PRIVATE_KEY` and `ATLAS_OIDC_EDISON_SECRET` in Atlas `.env`. Edison gets the same secret as its client secret, `client_id=edison`.
+
+| Piece | URL |
+|-------|-----|
+| Discovery | `GET /.well-known/openid-configuration` |
+| JWKS | `GET /oauth/jwks` |
+| Authorize (browser / SPA) | `GET /oauth/authorize` → if signed in, `POST /api/oauth/authorize` with the Atlas SPA bearer, then redirect to Edison with `code` |
+| Token (Edison server) | `POST /oauth/token` (`grant_type=authorization_code`, PKCE verifier, client secret) |
+| Userinfo | `GET /oauth/userinfo` with the **OIDC** access token (`oidc_…`), not an Atlas API bearer |
+
+Authorize query: `client_id`, `redirect_uri` (exact match), `response_type=code`, `scope=openid profile email`, `state`, `nonce`, `code_challenge`, `code_challenge_method=S256`. `prompt=login` forces Atlas password + TOTP even if a session exists.
+
+Token response: `{ id_token, access_token, token_type, expires_in }`. `access_token` is only valid at `/oauth/userinfo`. It must not open `/api/*`. ID token claims: `iss`, `sub` (Atlas user id), `aud=edison`, `email`, `name`, `roles` (`admin` / `developer` / `viewer`), `nonce` if sent.
+
+Edison client (not in this repo):
+
+1. Redirect the browser to Atlas `/oauth/authorize` with PKCE S256.
+2. Callback receives `code` (never an Atlas bearer).
+3. Server POST `/oauth/token` with `client_secret` + `code_verifier`.
+4. Verify `id_token` against JWKS (`iss`, `aud=edison`, `exp`, `nonce`).
+5. Create an Edison session. Map `roles` as-is. No Edison TOTP.
+
+IP allowlist still applies. `edison.dev` token exchange comes from Stella (`95.217.144.93`), already on `ATLAS_ALLOWED_IPS`. Edison prod on `178.105.203.54` would need that IP added before it can call `/oauth/token`.
 
 ---
 
@@ -162,3 +196,4 @@ ATLAS_DEMO_MODE=false
 - **Not Laravel Sanctum** for the live API. `laravel/sanctum` is in `composer.json` from the starter; live bearers are rows in `auth_access_tokens`.
 - **Not** ddashboard login. Client lookup still uses a ddashboard **service** token ([`../stella-dashboard/atlas-client-lookup.md`](../stella-dashboard/atlas-client-lookup.md)).
 - **Not** the SSH-signature scheme used against Stella. That key is for deploy-api / health-api only — see [`../integration/system-overview.md`](../integration/system-overview.md#4-shared-ssh-key-the-one-secret-that-spans-three-jobs).
+- **Not** a public IdP. Only configured first-party clients (Edison). Not for ddashboard.

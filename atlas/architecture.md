@@ -28,7 +28,7 @@ Business code lives under `app/Domain/{Name}/` (controllers, models, jobs, servi
 
 | Domain | Responsibility |
 |--------|----------------|
-| `Auth` | Local password + TOTP login, Atlas-issued tokens, user admin, IP allowlist; leftover `DdashboardTokenDriver` / `FakeTokenAuthDriver` verify fallback |
+| `Auth` | Local password + TOTP login, Atlas-issued tokens, user admin, IP allowlist; leftover `DdashboardTokenDriver` / `FakeTokenAuthDriver` verify fallback; OIDC authorization-code + PKCE for Edison (`Domain/Auth/Oidc`) |
 | `Deploy` | Configs, servers, runs, rsync, Stella deploy-api client, SSH signer, GitHub branches, folder browser, source zip (`DeploySourcePackager`) |
 | `Monitoring` | Stella health-api + public-probe fallback; Atlas host-api health + optional self-deploy; Hetzner Cloud (atlas + edison backups); history + prune |
 | `WpSites` | Site registry, uptime job, Atlas Connect login, down-alert mail, backup driver + explorer + browser decrypt — see [`atlas-connect/backups.md`](atlas-connect/backups.md). Infection scan driver, inventory, allowlist, verdict — [`atlas-connect/security-scan.md`](atlas-connect/security-scan.md). Staging from a full backup is planned as `create` + `restore` on Stella [`stack-api`](../stella-server/stack-api.md); `wp-staging-api` will not be deployed. Fresh Atlas Connect zip (`GET /api/wp-sites/atlas-connect.zip`) |
@@ -48,7 +48,8 @@ Entry: `resources/views/app.blade.php` → Vite → `resources/js/routes/index.t
 
 | Route | Page |
 |-------|------|
-| `/login` | `domains/auth/LoginPage` |
+| `/login` | `domains/auth/LoginPage` (honors `?continue=/oauth/authorize?…` after 2FA) |
+| `/oauth/authorize` | `domains/auth/OidcAuthorizePage` (Edison SSO; issues a code, not an Atlas bearer) |
 | `/forgot-password` | `domains/auth/ForgotPasswordPage` |
 | `/reset-password` | `domains/auth/ResetPasswordPage` |
 | `/profile` | `domains/auth/ProfilePage` |
@@ -90,7 +91,7 @@ HTTP
   → Domain controller
 ```
 
-Login / refresh / logout / forgot / reset skip token middleware (still IP-filtered) and use Atlas-issued tokens. See [`auth.md`](auth.md).
+Login / refresh / logout / forgot / reset skip token middleware (still IP-filtered) and use Atlas-issued tokens. OIDC `/oauth/token`, `/oauth/jwks`, and discovery are also unauthenticated (client secret / PKCE). `POST /api/oauth/authorize` uses the Atlas SPA bearer. See [`auth.md`](auth.md).
 
 ---
 
@@ -110,7 +111,7 @@ Login / refresh / logout / forgot / reset skip token middleware (still IP-filter
 | `wp_site_stagings` | Stella staging builds from a full backup |
 | `stack_actions` | Atlas-side history for restart, apply, and fix-permissions (`user_id`, stack, service, result, detail, created_at). Queued rows store the job id in `detail` and settle to `ok` / `error`. stack-api has its own audit log |
 | `imap_migration_jobs` | Atlas-side IMAP history (hosts/users only — **no passwords**) |
-| `customers`, `projects`, `task_lists`, `tasks`, `task_checklist_items`, `task_comments`, `time_entries`, `attachments` | TrackingTime import (one-way). Trello ids live on projects/tasks/check items/attachments. `projects.max_hours_per_week` / `trello_pushed_hash` and `tasks.skip_trello` are Atlas-local |
+| `customers`, `projects`, `task_lists`, `tasks`, `task_checklist_items`, `task_comments`, `time_entries`, `attachments` | TrackingTime import (one-way). Trello ids live on projects/tasks/check items/attachments. `projects.max_hours_per_week` / `trello_hours_custom_field_id` / `trello_deadline_custom_field_id` / `trello_pushed_hash` and `tasks.skip_trello` are Atlas-local. `tasks.deadline` is the TrackingTime **Deadline** custom field (`set_custom_fields`) |
 | `slack_destinations`, `notification_rules`, `notification_rule_channels`, `notification_rule_projects`, `notification_bindings`, `notification_events`, `notification_deliveries` | Notification rules, Slack webhooks (encrypted), fires + per-channel deliveries |
 | `tracking_time_import_jobs` | Import / open-task sync history |
 | Redis | Cache, including hashed access tokens after login |
@@ -171,6 +172,6 @@ Pest feature tests under `tests/Feature/{Auth,Deploy,Projects,Settings,Stacks}/`
 
 - Not a WordPress theme and not a ddashboard module
 - Not the Stella UI
-- Not an identity provider
+- Not the identity provider for **ddashboard**. It **is** the IdP for Edison (OIDC code + PKCE; no Atlas API bearer sharing)
 - Not responsible for Edison / Cursor agents (Cloud API reads server + backup status only; no agent control)
 - Not the mailbox **importer** (ddashboard `dls_mail_*`); Atlas only starts **mailbox copies** on Stella

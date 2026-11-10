@@ -98,7 +98,7 @@ Stella is a **service host**. It does not have a general-purpose UI. Atlas and d
 **Hard rules**
 
 1. The **browser never calls Stella**. Atlas, ddashboard, and Foxx Cloud proxy every Stella call server-side.
-2. Atlas **does** issue its own login passwords and API tokens. ddashboard is a business API (clients / TrackingTime ids), not the Atlas IdP. See [`../atlas/auth.md`](../atlas/auth.md).
+2. Atlas **does** issue its own login passwords and API tokens. It is the OIDC identity provider for Edison (authorization-code + PKCE; Edison never receives Atlas API bearers; 2FA stays on Atlas). ddashboard is a business API (clients / TrackingTime ids), not the Atlas IdP. See [`../atlas/auth.md`](../atlas/auth.md).
 3. Stella **deploy-api** and **health-api** do not use bearer tokens. They verify an OpenSSH signature from Atlas’s SSH private key, principal `ddashboard` (same keypair as the old managed-host Atlas; the managed host still holds a copy). Stella **stack-api** is a different trust model: Caddy + app IP allowlist, header token `X-Stack-Token`, and a **separate** SSH key (`/home/atlas/.ssh/atlas-stack-api`, principal `atlas-prod`, namespace `stack`). The shared deploy key is not trusted there. See [`../stella-server/stack-api.md`](../stella-server/stack-api.md).
 4. Stella **media-api** uses HMAC-SHA256 (`MEDIA_HMAC_SECRET`), not SSH signatures — shared hosting on the nest often lacks `ssh-keygen -Y`. See [`../stella-server/media-api.md`](../stella-server/media-api.md).
 5. Stella **stella-api** (`/chat/*`) and **imap-sync** have no HTTP auth — ingress is restricted at the network / Caddy layer.
@@ -111,7 +111,7 @@ Stella is a **service host**. It does not have a general-purpose UI. Atlas and d
 
 ### Atlas identity
 
-Login, refresh, and logout stay on Atlas (`users`, `auth_access_tokens`, `auth_refresh_tokens`). Details: [`../atlas/auth.md`](../atlas/auth.md).
+Login, refresh, and logout stay on Atlas (`users`, `auth_access_tokens`, `auth_refresh_tokens`). Edison signs in through Atlas OIDC (`/oauth/authorize` → `/oauth/token`); the ID token audience is `edison`. Details: [`../atlas/auth.md`](../atlas/auth.md).
 
 ### Atlas → ddashboard (business APIs)
 

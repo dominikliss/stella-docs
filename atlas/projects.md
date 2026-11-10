@@ -21,6 +21,7 @@ Per project, the operator maps:
 | Active task list | In progress column + Done column |
 | Backlog task list | Backlog column |
 | Hours worked field (optional) | Number or text custom field (e.g. **Zeit gearbeitet**) |
+| Deadline field (optional) | Date or text custom field (e.g. **Deadline**) |
 
 A mapping is ready when at least one of the two list pairs is complete (active + both columns, or backlog + backlog column). Individual tasks in those lists can be marked **keep off the board** (`tasks.skip_trello`) in the project Trello panel. That flag is Atlas-local and is not overwritten by TrackingTime import.
 
@@ -59,7 +60,23 @@ Hours = sum of `time_entries.duration_seconds` on the task **and its subtasks** 
 
 Number values are a decimal (`1.5`) or a whole number (`2`, not `2.00`). If Trello rejects a float, Atlas retries the rounded integer.
 
-The field must exist **on the mapped board**. `GET /boards/{id}/customFields` only returns number/text fields. A field on another board will not appear in the dropdown.
+The field must exist **on the mapped board**. `GET /boards/{id}/customFields` returns number, text, and date fields. A field on another board will not appear in the dropdown.
+
+---
+
+## Deadline
+
+TrackingTime Pro task custom field labelled **deadline** is imported on every task that is pulled (full import, hourly open-task sync, last-pull of closing tasks). Empty is stored as `null`. Payloads that omit custom fields leave the existing Atlas value alone.
+
+This is separate from TrackingTime’s native due date (`tasks.due_date` → Trello card due). Deadline is **only** written to the mapped Trello custom field.
+
+| Deadline field mapping | Where deadline goes |
+|------------------------|---------------------|
+| Empty | Not pushed |
+| Date custom field | That field (`YYYY-MM-DDT12:00:00.000Z`) |
+| Text custom field | That field (`YYYY-MM-DD`) |
+
+An empty Atlas deadline clears the Trello field (`{"value":""}`).
 
 ---
 
@@ -74,7 +91,7 @@ The field must exist **on the mapped board**. `GET /boards/{id}/customFields` on
 
 There is **no** dedicated Trello cron. Hourly Trello is a side effect of `projects:sync-tracking-time-open` (Laravel scheduler, every hour). Quiet hours (TrackingTime upserted the same values) do not rewrite Trello cards.
 
-The hash covers board/list/hours mapping, skipped task ids (`tasks.skip_trello`), plus candidate tasks (name, description, due, priority, estimate, archive, hours, subtasks, checklists, attachments, whether a card already exists). Comments are ignored. The hash also includes a push format version (`TrelloPusher::PUSH_FORMAT`); bump it when push behaviour changes (e.g. marking Done cards complete) so the next hourly sync re-pushes existing cards once. **Reset Trello IDs** clears the hash so the next auto-push recreates cards.
+The hash covers board/list/hours/deadline mapping, skipped task ids (`tasks.skip_trello`), plus candidate tasks (name, description, due, deadline, priority, estimate, archive, hours, subtasks, checklists, attachments, whether a card already exists). Comments are ignored. The hash also includes a push format version (`TrelloPusher::PUSH_FORMAT`); bump it when push behaviour changes (e.g. marking Done cards complete) so the next hourly sync re-pushes existing cards once. **Reset Trello IDs** clears the hash so the next auto-push recreates cards.
 
 Progress (`trello_push_status` / `done` / `total` / `log`) is stored on the project and polled by the project page.
 
@@ -96,12 +113,12 @@ Use this after changing to a different board so the next push creates new cards 
 | `GET` | `/api/projects/{id}` | Project detail (lists, tasks, `trello` state) |
 | `PATCH` | `/api/projects/{id}` | Update name, notes, color, customer, archived, max hours / week |
 | `GET` | `/api/projects/{id}/trello` | Mapping + push progress |
-| `PATCH` | `/api/projects/{id}/trello` | Save board / columns / task lists / hours field / `skip_trello_task_ids` |
+| `PATCH` | `/api/projects/{id}/trello` | Save board / columns / task lists / hours field / deadline field / `skip_trello_task_ids` |
 | `POST` | `/api/projects/{id}/trello/push` | Queue a push |
 | `POST` | `/api/projects/{id}/trello/reset` | Clear stored Trello ids for this project |
 | `GET` | `/api/trello/boards` | Open boards for the saved token |
 | `GET` | `/api/trello/boards/{boardId}/lists` | Open lists |
-| `GET` | `/api/trello/boards/{boardId}/custom-fields` | Number/text custom fields |
+| `GET` | `/api/trello/boards/{boardId}/custom-fields` | Number/text/date custom fields |
 | `GET` | `/api/settings/trello` | Configured? (never returns the key/token) |
 | `PATCH` | `/api/settings/trello` | Save key/token (`••••••••` = keep current) |
 | `POST` | `/api/settings/trello/test` | `GET /members/me` |
@@ -113,7 +130,7 @@ Use this after changing to a different board so the next push creates new cards 
 | Piece | Role |
 |-------|------|
 | `TrelloClient` | REST v1 (`key` + `token` query params) |
-| `TrelloPusher` | Create/update/move cards, hours, checklists, attachments |
+| `TrelloPusher` | Create/update/move cards, hours, deadline, checklists, attachments |
 | `TrelloPushStarter` | Queue guard + hourly hook (skip when content hash matches) |
 | `PushProjectToTrelloJob` | `deployments` queue, 30 min timeout, 1 try |
 | `TrelloSettings` | Encrypted credentials |

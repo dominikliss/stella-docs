@@ -78,7 +78,7 @@ Stay with Cursor CLI for now (rules, skills, MCP and login already work). Build 
 
 ## Edison app
 
-Own Laravel app (`foxcraftdigital/edison`), separate from Atlas, with the same ddashboard token login. Dev instance at `https://edison.dev.foxcraft.digital` on **Stella** (SSH port 2207). Prod (`edison.foxcraft.digital`) is planned, not built. The headless API is live at `api.edison.foxcraft.digital`. When `EDISON_HOST_API_URL` is set, the app calls `POST /v1/runs` (not stubbed). The Laravel workspaces contract (catalog → ensure → repos → run on a leaf) is not built yet. **UNVERIFIED:** end-to-end chat in the UI (including resume).
+Own Laravel app (`foxcraftdigital/edison`), separate from Atlas. Sign-in is Atlas OIDC (authorization-code + PKCE; same password + TOTP; Edison keeps its own session and must not accept Atlas API bearers). Atlas side is in [`../atlas/auth.md`](../atlas/auth.md). Edison client wiring is still to do in the Edison repo. Dev instance at `https://edison.dev.foxcraft.digital` on **Stella** (SSH port 2207). Prod (`edison.foxcraft.digital`) is planned, not built. The headless API is live at `api.edison.foxcraft.digital`. When `EDISON_HOST_API_URL` is set, the app calls `POST /v1/runs` (not stubbed). The Laravel workspaces contract (catalog → ensure → repos → run on a leaf) is not built yet. **UNVERIFIED:** end-to-end chat in the UI (including resume).
 
 - App, repo, env, build: [app.md](app.md)
 - Dev instance on Stella: [dev-instance.md](dev-instance.md)

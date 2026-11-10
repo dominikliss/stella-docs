@@ -19,7 +19,7 @@ It is **not** the business dashboard. Clients, invoices, and mail live in **ddas
 |-------|--------------------|
 | Backend | Laravel 12.61, PHP 8.5.4-FPM (pool `atlas`), domain folders under `app/Domain/*` |
 | Frontend | Vite + React 18 SPA (`resources/js`), **TanStack Router** + TanStack Query. Served from a Laravel Blade shell. Inertia packages are leftover from the Breeze starter — they are **not** the live router. |
-| Auth | Atlas-issued access/refresh tokens (local password + TOTP). Not Sanctum for the API. See [`auth.md`](auth.md). |
+| Auth | Atlas-issued access/refresh tokens (local password + TOTP). OIDC authorization-code + PKCE for Edison. Not Sanctum for the API. See [`auth.md`](auth.md). |
 | Database | MySQL 8.4 (`atlas_prod`; old managed-host name was `dev_atlas_foxcraft_digital`, not `atlas_dev`) |
 | Cache | Redis localhost only (`token:{sha256}` cache after login, general cache) — **not** the deploy queue |
 | Deploy queue | **Database** queue `deployments`, drained by systemd `atlas-queue.service` (not Horizon, not cron + `flock`) |
@@ -52,13 +52,13 @@ It is **not** the business dashboard. Clients, invoices, and mail live in **ddas
 | [server.md](server.md) | Production host runbook (stack, Caddy, systemd, deploy) |
 | [host-api.md](host-api.md) | Atlas host API (`api.atlas.foxcraft.digital`) |
 | [dev-instance.md](dev-instance.md) | Stella-hosted `atlas.dev.foxcraft.digital` |
-| [auth.md](auth.md) | Local login, TOTP, Atlas tokens, user admin, IP allowlist |
+| [auth.md](auth.md) | Local login, TOTP, Atlas tokens, OIDC for Edison, user admin, IP allowlist |
 | [../design-language/auth-landing.md](../design-language/auth-landing.md) | Login / forgot / reset UI snapshot (2026-11-07) and WCAG 2.1 AA |
 | [atlas-connect/](atlas-connect/) | WP plugin: login + backups + infection scan |
 | [deploy-pipeline.md](deploy-pipeline.md) | ssh_rsync and stella_deploy_api |
 | [monitoring.md](monitoring.md) | Stella health + WP uptime |
 | [tools.md](tools.md) | IMAP copy via Stella; TrackingTime import and open-task sync |
-| [projects.md](projects.md) | Projects UI; one-way Trello push (mapping, skip tasks, hours field, reset ids) |
+| [projects.md](projects.md) | Projects UI; one-way Trello push (mapping, skip tasks, hours field, deadline field, reset ids) |
 | [notifications.md](notifications.md) | Inbox, Slack/email channels, weekly hour-budget rules |
 | [dotnet-azure.md](dotnet-azure.md) | .NET / Azure via `stella_deploy_api` |
 | [../design-language/](../design-language/) | Shared UI language Atlas implements (spec + tokens) |
@@ -229,6 +229,11 @@ The **public** key must be in:
 | `GET` | `/api/auth/me` | Current user |
 | `PATCH` | `/api/auth/me` | Update name / email |
 | `GET` | `/api/users` | Admin: list users |
+| `GET` | `/.well-known/openid-configuration` | OIDC discovery (Edison) |
+| `GET` | `/oauth/jwks` | OIDC signing keys |
+| `GET` | `/oauth/authorize` | SPA consent; `POST /api/oauth/authorize` issues a code |
+| `POST` | `/oauth/token` | Exchange code for ID token (PKCE + client secret) |
+| `GET` | `/oauth/userinfo` | OIDC access token only |
 
 See [`auth.md`](auth.md).
 
@@ -354,7 +359,7 @@ See [`../stella-server/stack-api.md`](../stella-server/stack-api.md).
 | `GET` | `/api/attachments/{id}/download` | Download an imported attachment |
 | `GET` | `/api/trello/boards` | List open Trello boards |
 | `GET` | `/api/trello/boards/{boardId}/lists` | List open columns |
-| `GET` | `/api/trello/boards/{boardId}/custom-fields` | Number/text custom fields |
+| `GET` | `/api/trello/boards/{boardId}/custom-fields` | Number/text/date custom fields |
 | `GET` | `/api/settings/trello` | Trello credential status (never the key/token) |
 | `PATCH` | `/api/settings/trello` | Save Trello API key + token |
 | `POST` | `/api/settings/trello/test` | Test Trello credentials |
