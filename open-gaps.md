@@ -1,6 +1,6 @@
 # Open Gaps & Next Steps
 
-Last updated: 2026-11-13
+Last updated: 2026-11-14
 
 **Cross-system overview:** [integration/system-overview.md](integration/system-overview.md) (Atlas + ddashboard + Stella + Edison + york). AI-chat path only: [integration/ddashboard-and-stella-server.md](integration/ddashboard-and-stella-server.md).
 
@@ -196,21 +196,25 @@ Service live at `https://stella-media-api.foxcraft.digital`. Contract: [`stella-
 
 Live at `https://stella-stack-api.foxcraft.digital`. Feature list and remaining build work: **[Roadmap in `stella-server/stack-api.md`](stella-server/stack-api.md#roadmap)**. Do not maintain that list here.
 
-Closed on atlas.dev: Atlas client (flag on, key `/var/www/.ssh/id_ed25519`, `stack_actions` migrated, UI + plan/apply/fix-permissions), first stack `sandbox.staging.foxcraft.digital` created end to end 2026-11-08, and the `atlas-dev` signer (`namespaces="stack"`, sandbox scope). Atlas UI documented 2026-11-13: [`atlas/stacks.md`](atlas/stacks.md). Allowlist is `2.31.42.13`, `95.217.144.93`, `172.20.0.1`. `wp-staging-api` is superseded.
+Closed on atlas.dev: Atlas client (flag on, key `/var/www/.ssh/id_ed25519`, `stack_actions` migrated, UI + plan/apply/fix-permissions/delete/trash), first stack `sandbox.staging.foxcraft.digital` created end to end 2026-11-08 and adopted into `stack_state` 2026-11-14 (owner `atlas-dev`), and the `atlas-dev` signer (`namespaces="stack"`, sandbox scope = allowlist ∪ owned). Atlas UI documented 2026-11-13 / delete 2026-11-14: [`atlas/stacks.md`](atlas/stacks.md). Allowlist is `2.31.42.13`, `95.217.144.93`, `172.20.0.1`. `wp-staging-api` is superseded.
 
 **Open (concrete, not in the roadmap):**
 - [ ] **Enable the Atlas client on prod** — `STELLA_STACK_API_KEY_PATH=/home/atlas/.ssh/atlas-stack-api`, `STELLA_STACK_API_ENABLED=true`, migration `2026_11_04_020000_create_stack_actions_table`. Flag stays off until then.
 - [x] **Nonce in `StackApiClient`** — every request body includes a random `nonce`. Ed25519 signatures are deterministic; identical requests in the same second are replay (01:29, audit row 19).
-- [ ] **Re-decide `dominikliss.foxcraft.digital` as the sandbox** before `delete`. Current `STACK_API_SANDBOX_STACKS` is `dominikliss.foxcraft.digital,sandbox.staging.foxcraft.digital`.
+- [x] **Re-decide `dominikliss.foxcraft.digital` as the sandbox** before `delete` — closed 2026-11-14: delete is live and only **managed** stacks can be deleted. `dominikliss` stays on `STACK_API_SANDBOX_STACKS` (visible to `atlas-dev`) but is not managed, so it cannot be deleted through stack-api.
 - [x] **Atlas stack logs panel does not scroll to the newest line** (API returns the correct window; display only) — closed 2026-11-08: panel scrolls to the bottom after load/refresh and shows “showing N lines, newest at bottom”.
 - [ ] **Port 2202 `DOCKER-USER` rules lack `178.105.203.54` (Edison), unlike 2201/2204–2207 — decide if intended.**
-- [ ] **People list changes do not reach existing stacks yet** (needs a "sync users" action).
-- [ ] **stack-api has no delete yet** — `sandbox.staging.foxcraft.digital` can only be removed by hand for now (`compose down -v`, folder, `/opt/services/caddy/sites/<name>.caddy` + Caddy reload).
+- [ ] **People list changes do not reach existing stacks yet** (needs a "sync users" action). `people/` is bind-mounted; the API sees host files without an image rebuild.
+- [x] **stack-api delete / trash / restore** — closed 2026-11-14 (`main.py`): managed stacks only; final dump optional; `compose down` without `-v`; Caddy site removed; folder to `/opt/apps/.trash/<name>-<ts>`; hourly purge after `STACK_API_TRASH_DAYS` (default 7) as principal `system`. Adopted: `sandbox.staging.foxcraft.digital`.
 - [ ] **wp container has no health check;** apply relies on an HTTP probe.
 - [ ] **`/opt/apps/wordpress/uploads.ini` exists at the top level** — check what uses it.
-- [ ] **SSH keys for new people:** add to `stack-api/people/` and rebuild (`docker compose up -d --build stack-api`). Existing stacks are not updated automatically.
+- [ ] **SSH keys for new people:** add to `stack-api/people/` (bind-mounted; no stack-api image rebuild). Existing stacks are not updated automatically.
 
 ---
+
+## Closed 2026-11-14
+
+- **stack-api `stack_state` + delete / trash / restore** — `main.py`. Table `stack_state`; startup backfill adopts a WP stack only when a re-render matches live files byte for byte and a successful `stack-apply` job exists (adopted `sandbox.staging.foxcraft.digital`, owner `atlas-dev`). Sandbox principal may create any valid `*.staging` name and owns it (visible = `STACK_API_SANDBOX_STACKS` ∪ owned). `list` / `get` include `managed`. Compose mounts `/opt/apps` and `./stack-api/people`. `.env`: `STACK_API_TRASH_DAYS=7`, `STACK_API_PHP_VERSIONS=8.4,8.5`. Images on Stella: `stella/ssh-php:8.4`, `wordpress:php8.4-apache`. See [`stella-server/stack-api.md`](stella-server/stack-api.md).
 
 ## Closed 2026-11-07
 

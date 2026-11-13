@@ -149,9 +149,9 @@ Verified 2026-11-07 through york: `ssh atlas.dev.foxcraft.digital 'echo OK'` →
 
 ## Stacks UI (2026-11-13)
 
-Enabled on this instance. Keys live in `src/.env` (see table above). Migration `2026_11_04_020000_create_stack_actions_table` run. Signs as principal `atlas-dev` — stack-api returns only sandbox stacks `dominikliss.foxcraft.digital` and `sandbox.staging.foxcraft.digital` (created from Atlas 2026-11-08). Prod stays off. UI: [`stacks.md`](stacks.md). Contract: [`../stella-server/stack-api.md`](../stella-server/stack-api.md).
+Enabled on this instance. Keys live in `src/.env` (see table above). Migration `2026_11_04_020000_create_stack_actions_table` run. Signs as principal `atlas-dev` — visible = `STACK_API_SANDBOX_STACKS` ∪ owned. Allowlist is `dominikliss.foxcraft.digital` and `sandbox.staging.foxcraft.digital` (created from Atlas 2026-11-08, adopted into `stack_state` 2026-11-14, owner `atlas-dev`). A sandbox principal may create any valid `<label>.staging.foxcraft.digital` name and then owns it. Prod stays off. UI: [`stacks.md`](stacks.md). Contract: [`../stella-server/stack-api.md`](../stella-server/stack-api.md).
 
-Live: list/search, logs, sync and async restart, jobs, history, WordPress **Plan → Create**, fix-permissions. A sandbox principal still cannot see `hypershape`. Update / delete / restore are not built.
+Live: list/search, logs, sync and async restart, jobs, history, WordPress **Plan → Create**, fix-permissions, delete + trash/restore of **managed** stacks. A sandbox principal still cannot see `hypershape`. Update / restore-from-backup are not built.
 
 A container on `edge` calling `https://stella-stack-api.foxcraft.digital` is seen by Caddy as `172.20.0.1`, not `95.217.144.93`. Test that path from **inside** the app container. See [`../stella-server/stack-api.md`](../stella-server/stack-api.md).
 

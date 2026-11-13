@@ -34,7 +34,7 @@ It is **not** the business dashboard. Clients, invoices, and mail live in **ddas
 | **Dashboard** | `/dashboard` | Home + Stella status summary |
 | **Deployments** | `/deployments` | SSH rsync deploys and Stella deploy-api deploys |
 | **WP Sites** | `/wp-sites` | Register sites, 5-min uptime, Atlas Connect login, start/list/explore backups; browser decrypt (`/backup-decrypt`); daily + manual infection scans with verdict, report, allowlist, trusted baseline; build a Stella staging site from a completed full backup (planned via stack-api `create` + `restore`; `wp-staging-api` will not be deployed); download a fresh installable Atlas Connect zip |
-| **Stacks** | `/stacks` | Stella compose stacks: list/search, logs, restart (sync/async), WordPress create (Plan → Create), fix-permissions, jobs, history. Flag-gated, admin only. Live on atlas.dev (sandbox `dominikliss.foxcraft.digital` + `sandbox.staging.foxcraft.digital`); prod off. UI: [`stacks.md`](stacks.md). Contract: [`../stella-server/stack-api.md`](../stella-server/stack-api.md) |
+| **Stacks** | `/stacks`, `/stacks/trash` | Stella compose stacks: list/search, logs, restart (sync/async), WordPress create (Plan → Create), fix-permissions, delete + trash/restore of managed stacks, jobs, history. Flag-gated, admin only. Live on atlas.dev (`atlas-dev` visible = `STACK_API_SANDBOX_STACKS` ∪ owned); prod off. UI: [`stacks.md`](stacks.md). Contract: [`../stella-server/stack-api.md`](../stella-server/stack-api.md) |
 | **Monitoring** | `/monitoring`, `/monitoring/stella`, `/monitoring/atlas`, `/monitoring/edison`, `/monitoring/york` | Stella / Atlas / Edison host health + york Cloud-only status |
 | **Tools → IMAP Migration** | `/tools/imap-migration` | Trigger / poll `imapsync` jobs on Stella |
 | **Tools → TrackingTime Import** | `/tools/tracking-time-import` | Full one-way import of selected TrackingTime projects into Atlas MySQL |
@@ -59,7 +59,7 @@ It is **not** the business dashboard. Clients, invoices, and mail live in **ddas
 | [monitoring.md](monitoring.md) | Stella health + WP uptime |
 | [tools.md](tools.md) | IMAP copy via Stella; TrackingTime import and open-task sync |
 | [projects.md](projects.md) | Projects UI; one-way Trello push (mapping, skip tasks, hours field, deadline field, reset ids) |
-| [stacks.md](stacks.md) | Stella compose stacks: list, logs, restart, WordPress Plan → Create, fix-permissions, jobs |
+| [stacks.md](stacks.md) | Stella compose stacks: list, logs, restart, WordPress Plan → Create, fix-permissions, delete + trash/restore, jobs |
 | [notifications.md](notifications.md) | Inbox, Slack/email channels, weekly hour-budget rules |
 | [dotnet-azure.md](dotnet-azure.md) | .NET / Azure via `stella_deploy_api` |
 | [../design-language/](../design-language/) | Shared UI language Atlas implements (spec + tokens) |
@@ -74,7 +74,7 @@ Browser (IP-allowlisted)
         → ddashboard          business APIs (clients / TrackingTime ids; service token)
         → Stella deploy-api   signed .NET / Docker deploys
         → Stella health-api   signed dynamic container / Caddyfile-cert / disk / backup snapshot
-        → Stella stack-api    IP + token + signed list/get/restart/logs/jobs/plan/apply/fix-permissions/people (update/delete/restore not built). Atlas UI: [`stacks.md`](stacks.md)
+        → Stella stack-api    IP + token + signed list/get/restart/logs/jobs/plan/apply/fix-permissions/people/delete/trash/restore (update / restore-from-backup not built). Atlas UI: [`stacks.md`](stacks.md)
         → Stella imap-sync    mailbox copy (no HTTP auth)
         → GitHub + SSH hosts  ssh_rsync deploys
         → WP sites            HEAD uptime + Atlas Connect login / backup / scan driver
@@ -311,11 +311,14 @@ Admin only. All of these return 404 when `STELLA_STACK_API_ENABLED` is off.
 | `GET` | `/api/stacks/{name}/logs` | Last N log lines for a service (`service`, `lines` 1–1000, default 200) |
 | `POST` | `/api/stacks/{name}/restart` | Restart a service or the whole stack (`{"service"?, "async"?}`). `async: true` queues a job and records `stack_actions` as `queued` with the job id |
 | `POST` | `/api/stacks/{name}/fix-permissions` | WordPress only. Queues a job and records `stack_actions` as `fix-permissions` / `queued` with the job id |
+| `POST` | `/api/stacks/{name}/delete` | Managed WordPress stacks. `{confirm}`. `confirm` must equal name. Always sends `final_dump: false` to stack-api. Queues a job and records `stack_actions` as `delete` / `queued` with the job id |
 | `GET` | `/api/stack-jobs` | Recent stack-api jobs (`name?`, `limit` 1–100, default 20) |
 | `GET` | `/api/stack-jobs/{id}` | One stack-api job |
 | `GET` | `/api/stack-people` | SSH people list (`[{name, uid}]`, no keys) |
 | `POST` | `/api/stack-plan` | Dry-run a new stack spec (`type`, `name`, `php`, `ssh_users` min 1, `php_ini`?). No `stack_actions` row |
 | `POST` | `/api/stack-apply` | Create a stack from a spec. Records `stack_actions` as `apply` / `queued` with the job id |
+| `GET` | `/api/stack-trash` | Trash list (`retention_days`, `trash[]`) |
+| `POST` | `/api/stack-trash/{name}/restore` | Restore from trash. Queues a job and records `stack_actions` as `trash-restore` / `queued` with the job id |
 
 UI: [`stacks.md`](stacks.md). Contract: [`../stella-server/stack-api.md`](../stella-server/stack-api.md).
 

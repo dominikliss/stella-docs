@@ -128,7 +128,7 @@ Login, refresh, and logout stay on Atlas (`users`, `auth_access_tokens`, `auth_r
 | Monitoring cron + dashboard | **health-api** `https://stella-health-api.foxcraft.digital` | SSH signature, payload `system-health:{ts}` | [`../stella-server/health-api.md`](../stella-server/health-api.md), [`../atlas/monitoring.md`](../atlas/monitoring.md) |
 | Tools → IMAP Migration | **imap-sync** `https://stella.foxcraft.digital/imap-sync` | Network restriction only | [`../stella-server/imap-sync-service.md`](../stella-server/imap-sync-service.md), [`../atlas/tools.md`](../atlas/tools.md) |
 | Health-api **fallback** probes | Public Caddy hosts (`/chat/health`, `/ollama`, apps) | None | [`../atlas/monitoring.md`](../atlas/monitoring.md) |
-| Stacks: list / get / restart / logs / jobs / people; WordPress plan + apply (create); fix-permissions. Update / delete / restore not built | **stack-api** `https://stella-stack-api.foxcraft.digital` | IP allowlist (`2.31.42.13` `95.217.144.93` `172.20.0.1`) + `X-Stack-Token` + SSH signature, namespace `stack`, payload `<action>:<ts>:<sha256(request)>`, random `nonce` in every request | [`../stella-server/stack-api.md`](../stella-server/stack-api.md), Atlas UI [`../atlas/stacks.md`](../atlas/stacks.md). Atlas `Domain/Stacks` on **atlas.dev** (flag on, principal `atlas-dev`, sandbox `dominikliss.foxcraft.digital` + `sandbox.staging.foxcraft.digital`). Prod flag still off. Staging from backup is planned as `create` + `restore` here — `wp-staging-api` will not be deployed |
+| Stacks: list / get / restart / logs / jobs / people; WordPress plan + apply (create); fix-permissions; delete + trash/restore of **managed** stacks. Update / restore-from-backup not built | **stack-api** `https://stella-stack-api.foxcraft.digital` | IP allowlist (`2.31.42.13` `95.217.144.93` `172.20.0.1`) + `X-Stack-Token` + SSH signature, namespace `stack`, payload `<action>:<ts>:<sha256(request)>`, random `nonce` in every request | [`../stella-server/stack-api.md`](../stella-server/stack-api.md), Atlas UI [`../atlas/stacks.md`](../atlas/stacks.md). Atlas `Domain/Stacks` on **atlas.dev** (flag on, principal `atlas-dev`; visible = `STACK_API_SANDBOX_STACKS` ∪ owned). Prod flag still off. Staging from backup is planned as `create` + `restore` here — `wp-staging-api` will not be deployed |
 
 Atlas **does not** call `stella-api` `/chat/*`. That path is ddashboard’s.
 
@@ -235,7 +235,7 @@ The private key never crosses the network. Only a short-lived signed payload (`a
 | Stella health snapshots | **Atlas** (`stella_health_checks`, `stella_service_uptime_logs`) | health-api is live-only except last-seen container names in `seen.json`; Atlas stores the snapshots |
 | WP site registry + uptime | **Atlas** (`wp_sites`, `wp_site_uptime_logs`) | Site itself does not push status (Atlas pulls) |
 | IMAP migration job history | **Atlas** (`imap_migration_jobs`, **no passwords**) | Stella `imap-sync` holds live job + log in memory (lost on restart, 4 h TTL) |
-| Compose stacks | **Stella** stack-api (Docker + SQLite jobs/audit) | Atlas `stack_actions` (who restarted / applied / fixed permissions). UI: [`../atlas/stacks.md`](../atlas/stacks.md) |
+| Compose stacks | **Stella** stack-api (Docker + SQLite `stack_state` / jobs / audit) | Atlas `stack_actions` (who restarted / applied / fixed permissions / deleted / restored). UI: [`../atlas/stacks.md`](../atlas/stacks.md) |
 | LLM inference | **Stella** Ollama | ddashboard stores chat transcripts |
 
 ---
@@ -315,7 +315,7 @@ Hetzner Cloud  (same project)
 | **deploy-api** | FastAPI app — signed deploy trigger + status |
 | **health-api** | FastAPI app — signed system-status snapshot |
 | **media-api** | FastAPI app — RAW/HEIC/JPEG/video-poster decode for Foxx Cloud (HMAC; `/convert` body or `/convert-remote` Storage Box). `https://stella-media-api.foxcraft.digital` |
-| **stack-api** | FastAPI app — Atlas container management. Isolated `stack` network. IP + token + SSH signature (namespace `stack`, own key). `list` / `get` / `restart` + append-only audit log (2026-11-04). `https://stella-stack-api.foxcraft.digital`. [`../stella-server/stack-api.md`](../stella-server/stack-api.md) |
+| **stack-api** | FastAPI app — Atlas container management. Isolated `stack` network. IP + token + SSH signature (namespace `stack`, own key). `list` / `get` / `restart` / `plan` / `apply` / `delete` / trash + `stack_state` + append-only audit log. `https://stella-stack-api.foxcraft.digital`. [`../stella-server/stack-api.md`](../stella-server/stack-api.md) |
 | **Foxx Cloud** | Laravel app on the nest (`dedi6724`). Calls media-api. Not one of the five named Vegapunk systems. |
 | **york** | WireGuard access gateway (Hetzner Cloud CX23). Floating IP `78.47.218.190` is the whitelisted exit; primary `2.28.33.52` is not. Not a service host. See [`../york/README.md`](../york/README.md) |
 | **atlas-api / Atlas host API** | FastAPI on the Atlas host (`https://api.atlas.foxcraft.digital` → `127.0.0.1:8090`). Signed `system-health` snapshot of the Atlas box. See [`../atlas/host-api.md`](../atlas/host-api.md) |
