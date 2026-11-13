@@ -1,6 +1,6 @@
 # stack-api (container management for Atlas)
 
-**Status:** live since 2026-11-04. As of 2026-11-08: signed `list` / `get` / `restart` (sync + async) / `logs` / `plan` / `apply` / `fix-permissions` / people list, job table with per-stack locks, append-only audit log. First stack created end to end from Atlas on 2026-11-08: `sandbox.staging.foxcraft.digital`. Not yet: update of existing stacks, delete, restore, Laravel/.NET blueprints.
+**Status:** live since 2026-11-04. As of 2026-11-13: signed `list` / `get` / `restart` (sync + async) / `logs` / `plan` / `apply` / `fix-permissions` / people list, job table with per-stack locks, append-only audit log. Atlas UI on atlas.dev: [`../atlas/stacks.md`](../atlas/stacks.md) (list/search, logs, restart, WordPress Plan → Create, fix-permissions, jobs, history). First stack created end to end from Atlas on 2026-11-08: `sandbox.staging.foxcraft.digital`. Not yet: update of existing stacks, delete, restore, Laravel/.NET blueprints.
 
 **URL:** `https://stella-stack-api.foxcraft.digital`
 

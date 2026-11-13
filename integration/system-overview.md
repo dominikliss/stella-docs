@@ -29,7 +29,7 @@ Servers use One Piece Vegapunk-satellite names. Firewalls, IPs, and networks use
 | Name | What it is | Host | Owns |
 |------|------------|------|------|
 | **ddashboard** | Internal business app (CRM, accounting, mail, PM, AI chat) | Hetzner managed WordPress (`foxcrr`) | Relational business data, WP sessions, `dls/v1` auth tokens |
-| **Atlas** | Internal ops platform (deploys, Stella health, WP uptime, IMAP migration, TrackingTime import, Trello push) | Hetzner Cloud CX33 `atlas` (`2.31.42.13`) — `https://atlas.foxcraft.digital` | Deploy history, health history, WP-site registry, IMAP job history, imported PM, Trello card ids |
+| **Atlas** | Internal ops platform (deploys, Stella health, WP uptime, compose stacks, IMAP migration, TrackingTime import, Trello push) | Hetzner Cloud CX33 `atlas` (`2.31.42.13`) — `https://atlas.foxcraft.digital` | Deploy history, health history, WP-site registry, stack action history, IMAP job history, imported PM, Trello card ids |
 | **Stella** | Dedicated AI / services machine | Hetzner dedicated | Ollama, stella-api, deploy-api, health-api, media-api, stack-api, imap-sync, Caddy, .NET / WP / Laravel stacks |
 | **Edison** | Coding-agent sandbox | Hetzner Cloud (same project as Atlas) | Cursor CLI container, sshfs mounts, `host-api` behind `api.edison.foxcraft.digital` (Caddy → host-api). **Must not** run on Stella. Atlas prod + Atlas dev may poll `/system/health` (poller not built). `edison.dev` calls `/v1/*`. Atlas also reads Cloud API status/backups. |
 | **york** | Access gateway (not a service host) | Hetzner Cloud CX23 `york` — primary `york-ip` `2.28.33.52` (not whitelisted); floating **`york-floating-ip` `78.47.218.190`** (the whitelisted exit) | WireGuard `wg0` (`10.8.0.1/24`, UDP/51820). Operator traffic to Stella / Atlas / Edison. Proton `194.126.177.181` stays as fallback. Set up 2026-11-07. [`../york/README.md`](../york/README.md) |
@@ -128,7 +128,7 @@ Login, refresh, and logout stay on Atlas (`users`, `auth_access_tokens`, `auth_r
 | Monitoring cron + dashboard | **health-api** `https://stella-health-api.foxcraft.digital` | SSH signature, payload `system-health:{ts}` | [`../stella-server/health-api.md`](../stella-server/health-api.md), [`../atlas/monitoring.md`](../atlas/monitoring.md) |
 | Tools → IMAP Migration | **imap-sync** `https://stella.foxcraft.digital/imap-sync` | Network restriction only | [`../stella-server/imap-sync-service.md`](../stella-server/imap-sync-service.md), [`../atlas/tools.md`](../atlas/tools.md) |
 | Health-api **fallback** probes | Public Caddy hosts (`/chat/health`, `/ollama`, apps) | None | [`../atlas/monitoring.md`](../atlas/monitoring.md) |
-| Stack list / get / restart / logs / jobs (2026-11-04); create / delete not built | **stack-api** `https://stella-stack-api.foxcraft.digital` | IP allowlist (`2.31.42.13` `95.217.144.93` `172.20.0.1`) + `X-Stack-Token` + SSH signature, namespace `stack`, payload `<action>:<ts>:<sha256(request)>`, random `nonce` in every request | [`../stella-server/stack-api.md`](../stella-server/stack-api.md). Atlas `Domain/Stacks` on **atlas.dev** (flag on, principal `atlas-dev`, sandbox `dominikliss` only). Prod flag still off. Staging from backup is `create` + `restore` here — `wp-staging-api` will not be deployed |
+| Stacks: list / get / restart / logs / jobs / people; WordPress plan + apply (create); fix-permissions. Update / delete / restore not built | **stack-api** `https://stella-stack-api.foxcraft.digital` | IP allowlist (`2.31.42.13` `95.217.144.93` `172.20.0.1`) + `X-Stack-Token` + SSH signature, namespace `stack`, payload `<action>:<ts>:<sha256(request)>`, random `nonce` in every request | [`../stella-server/stack-api.md`](../stella-server/stack-api.md), Atlas UI [`../atlas/stacks.md`](../atlas/stacks.md). Atlas `Domain/Stacks` on **atlas.dev** (flag on, principal `atlas-dev`, sandbox `dominikliss.foxcraft.digital` + `sandbox.staging.foxcraft.digital`). Prod flag still off. Staging from backup is planned as `create` + `restore` here — `wp-staging-api` will not be deployed |
 
 Atlas **does not** call `stella-api` `/chat/*`. That path is ddashboard’s.
 
@@ -235,6 +235,7 @@ The private key never crosses the network. Only a short-lived signed payload (`a
 | Stella health snapshots | **Atlas** (`stella_health_checks`, `stella_service_uptime_logs`) | health-api is live-only except last-seen container names in `seen.json`; Atlas stores the snapshots |
 | WP site registry + uptime | **Atlas** (`wp_sites`, `wp_site_uptime_logs`) | Site itself does not push status (Atlas pulls) |
 | IMAP migration job history | **Atlas** (`imap_migration_jobs`, **no passwords**) | Stella `imap-sync` holds live job + log in memory (lost on restart, 4 h TTL) |
+| Compose stacks | **Stella** stack-api (Docker + SQLite jobs/audit) | Atlas `stack_actions` (who restarted / applied / fixed permissions). UI: [`../atlas/stacks.md`](../atlas/stacks.md) |
 | LLM inference | **Stella** Ollama | ddashboard stores chat transcripts |
 
 ---

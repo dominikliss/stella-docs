@@ -13,7 +13,7 @@
 - **Role:** WordPress — ddashboard theme, Stella **chat** client, REST `dls/v1` (including auth tokens consumed by Atlas)
 
 ### Atlas (Hetzner Cloud, same project as Edison — not this host)
-- **Role:** Ops platform — deploys, Stella health polling, WP site uptime, IMAP migration UI
+- **Role:** Ops platform — deploys, Stella health polling, WP site uptime, compose stacks (stack-api), IMAP migration UI
 - **Host:** CX33 `atlas`, `2.31.42.13`, Ubuntu 26.04, not containerized
 - **URL:** `https://atlas.foxcraft.digital` (replaces `https://dev.atlas.foxcraft.digital` on the managed `foxcrr` host)
 - **Docs:** [`../atlas/README.md`](../atlas/README.md), [`../atlas/server.md`](../atlas/server.md), [`../integration/system-overview.md`](../integration/system-overview.md)
@@ -45,7 +45,7 @@ Core Docker-managed services live at `/opt/services/docker-compose.yml`. Dev/sta
 | `ollama` | Docker (`edge` network) | 11434 (published to `127.0.0.1` only) | LLM inference — containerized 2026-08-10, see below |
 | `health-api` | Docker (`edge` network) | 443 via Caddy (`stella-health-api.foxcraft.digital`) | System status endpoint for Atlas — [`health-api.md`](health-api.md) |
 | `media-api` | Docker (`edge` network) | 443 via Caddy (`stella-media-api.foxcraft.digital`) | RAW/HEIC/JPEG/video-poster decode for Foxx Cloud (HMAC; RawTherapee + Adobe DCPs for `master` on RAW). `/convert-remote` pulls from / writes to Storage Box (ro mounts `profiles/`, `ssh/`; outbound port 23 verified). [`media-api.md`](media-api.md). No published ports. cpuset `6-11` |
-| `stack-api` | Docker (`stack` network only, no host port; Docker socket mounted) | 443 via Caddy (`stella-stack-api.foxcraft.digital`) | Container management API for Atlas — [`stack-api.md`](stack-api.md). `list` / `get` / `restart` / `logs` / `plan` / `apply` / `fix-permissions` / people + jobs + append-only audit log. First created stack 2026-11-08: `sandbox.staging.foxcraft.digital` |
+| `stack-api` | Docker (`stack` network only, no host port; Docker socket mounted) | 443 via Caddy (`stella-stack-api.foxcraft.digital`) | Container management API for Atlas — [`stack-api.md`](stack-api.md). `list` / `get` / `restart` / `logs` / `plan` / `apply` / `fix-permissions` / people + jobs + append-only audit log. Atlas UI: [`../atlas/stacks.md`](../atlas/stacks.md). First created stack 2026-11-08: `sandbox.staging.foxcraft.digital` |
 | `backup` | Docker (`edge` network, no host port) | — | Nightly restic backup to Hetzner Storage Box — see [`backup.md`](backup.md) |
 | `osgar-datahub-dev` | Docker (.NET dev, hot-reload) | 5081→8080 (localhost) | `.NET` app, same pattern as `advoapp-dev` — `Dockerfile.dev` + bind-mounted `src`; compose file at `/opt/apps/dotnet/osgar.datahub.foxcraft.digital/docker-compose.dev.yml` |
 | `osgar-datahub-db` | Docker (MSSQL 2022) | — (internal only) | `mcr.microsoft.com/mssql/server:2022-latest`, data volume `osgar-datahub-mssql-data`; same compose file as `osgar-datahub-dev` |

@@ -1,6 +1,6 @@
 # Open Gaps & Next Steps
 
-Last updated: 2026-11-08
+Last updated: 2026-11-13
 
 **Cross-system overview:** [integration/system-overview.md](integration/system-overview.md) (Atlas + ddashboard + Stella + Edison + york). AI-chat path only: [integration/ddashboard-and-stella-server.md](integration/ddashboard-and-stella-server.md).
 
@@ -196,7 +196,7 @@ Service live at `https://stella-media-api.foxcraft.digital`. Contract: [`stella-
 
 Live at `https://stella-stack-api.foxcraft.digital`. Feature list and remaining build work: **[Roadmap in `stella-server/stack-api.md`](stella-server/stack-api.md#roadmap)**. Do not maintain that list here.
 
-Closed on atlas.dev: Atlas client (flag on, key `/var/www/.ssh/id_ed25519`, `stack_actions` migrated, UI + plan/apply/fix-permissions), first stack `sandbox.staging.foxcraft.digital` created end to end 2026-11-08, and the `atlas-dev` signer (`namespaces="stack"`, sandbox scope). Allowlist is `2.31.42.13`, `95.217.144.93`, `172.20.0.1`. `wp-staging-api` is superseded.
+Closed on atlas.dev: Atlas client (flag on, key `/var/www/.ssh/id_ed25519`, `stack_actions` migrated, UI + plan/apply/fix-permissions), first stack `sandbox.staging.foxcraft.digital` created end to end 2026-11-08, and the `atlas-dev` signer (`namespaces="stack"`, sandbox scope). Atlas UI documented 2026-11-13: [`atlas/stacks.md`](atlas/stacks.md). Allowlist is `2.31.42.13`, `95.217.144.93`, `172.20.0.1`. `wp-staging-api` is superseded.
 
 **Open (concrete, not in the roadmap):**
 - [ ] **Enable the Atlas client on prod** — `STELLA_STACK_API_KEY_PATH=/home/atlas/.ssh/atlas-stack-api`, `STELLA_STACK_API_ENABLED=true`, migration `2026_11_04_020000_create_stack_actions_table`. Flag stays off until then.

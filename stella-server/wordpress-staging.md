@@ -10,7 +10,7 @@ Established 2026-10-03 with `dominikliss.foxcraft.digital` as the first implemen
 
 ## Managed staging sites (stack-api)
 
-New WordPress staging sites are created from Atlas (Stacks → New stack → Plan → Create) as `<label>.staging.foxcraft.digital`; never by hand under `/opt/apps` (rule from 2026-11-04). Details: [`stack-api.md`](stack-api.md). Existing manual sites (`dominikliss`, `hypershape`) stay as they are until adopted.
+New WordPress staging sites are created from Atlas (Stacks → New stack → Plan → Create) as `<label>.staging.foxcraft.digital`; never by hand under `/opt/apps` (rule from 2026-11-04). Details: [`stack-api.md`](stack-api.md), Atlas UI [`../atlas/stacks.md`](../atlas/stacks.md). First created stack: `sandbox.staging.foxcraft.digital` (2026-11-08). Existing manual sites (`dominikliss`, `hypershape`) stay as they are until adopted.
 
 **Two SSH variants**
 

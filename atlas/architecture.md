@@ -35,7 +35,7 @@ Business code lives under `app/Domain/{Name}/` (controllers, models, jobs, servi
 | `Tools` | IMAP migration proxy to Stella `imap-sync`; TrackingTime import / open-task sync (ddashboard [`../stella-dashboard/atlas-client-lookup.md`](../stella-dashboard/atlas-client-lookup.md) for client stubs) |
 | `Projects` | Imported customers/projects/tasks; project metadata edit; attachment download; one-way Trello push ([`projects.md`](projects.md)) |
 | `Notifications` | Rules, Slack webhooks, in-app inbox, weekly hour-budget checker ([`notifications.md`](notifications.md)) |
-| `Stacks` | Stella stack-api client: list / get / restart / logs / jobs / plan / apply / people / fix-permissions. Admin only. Hidden unless `STELLA_STACK_API_ENABLED`. Local `stack_actions` history. **On** atlas.dev 2026-11-04; **off** on prod |
+| `Stacks` | Stella stack-api client: list / get / restart / logs / jobs / plan / apply / people / fix-permissions. Admin only. Hidden unless `STELLA_STACK_API_ENABLED`. Local `stack_actions` history. **On** atlas.dev (create live 2026-11-08); **off** on prod. UI: [`stacks.md`](stacks.md) |
 | `Settings` | `app_settings` key/value (SSH path, stack-api SSH path, Brevo, Hetzner Cloud token, backup S3 + X25519 vault, TrackingTime, Trello, ddashboard service token) |
 
 `App\Providers\AtlasServiceProvider` binds `TokenAuthDriver` for the leftover ddashboard-bearer fallback. With `ATLAS_DEMO_MODE=true` it binds `FakeTokenAuthDriver`. Live login uses local passwords and `AuthTokenService`.
@@ -58,8 +58,8 @@ Entry: `resources/views/app.blade.php` → Vite → `resources/js/routes/index.t
 | `/dashboard` | `domains/dashboard/DashboardPage` (+ `StellaServerStatus`, `AtlasServerStatus`, `EdisonServerStatus`) |
 | `/deployments` | `domains/deployments/DeploymentsPage` (+ `ConfirmDeployModal` before each run) |
 | `/wp-sites` | `domains/wp-sites/WpSitesPage` |
-| `/stacks` | `domains/stacks/StacksPage` (nav hidden unless `STELLA_STACK_API_ENABLED`; New stack: Plan → Create) |
-| `/stacks/$name` | `domains/stacks/StackDetailPage` (logs, async restart, WordPress fix-permissions, recent jobs, history) |
+| `/stacks` | `domains/stacks/StacksPage` (nav hidden unless `STELLA_STACK_API_ENABLED`; search / Issues / type; New stack: Plan → Create) |
+| `/stacks/$name` | `domains/stacks/StackDetailPage` (logs 50/200/1000, sync or async restart, WordPress fix-permissions, recent jobs, history) |
 | `/monitoring/stella` | `domains/monitoring/StellaDetailPage` |
 | `/monitoring/atlas` | `domains/monitoring/AtlasDetailPage` |
 | `/monitoring/edison` | `domains/monitoring/EdisonDetailPage` |
