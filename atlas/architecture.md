@@ -35,7 +35,7 @@ Business code lives under `app/Domain/{Name}/` (controllers, models, jobs, servi
 | `Tools` | IMAP migration proxy to Stella `imap-sync`; TrackingTime import / open-task sync (ddashboard [`../stella-dashboard/atlas-client-lookup.md`](../stella-dashboard/atlas-client-lookup.md) for client stubs) |
 | `Projects` | Imported customers/projects/tasks; project metadata edit; attachment download; one-way Trello push ([`projects.md`](projects.md)) |
 | `Notifications` | Rules, Slack webhooks, in-app inbox, weekly hour-budget checker ([`notifications.md`](notifications.md)) |
-| `Stacks` | Stella stack-api client: list / get / restart / logs / jobs / plan / apply / update / reconcile / people / people-sync / fix-permissions / delete / trash / restore. Admin only. Hidden unless `STELLA_STACK_API_ENABLED`. Local `stack_actions` history. **On** atlas.dev (create live 2026-11-08); **off** on prod. UI: [`stacks.md`](stacks.md) |
+| `Stacks` | Stella stack-api client: list / get / restart / logs / jobs / plan / apply / update / reconcile / people / people-sync / fix-permissions / delete / trash / restore / purge. Admin only. Hidden unless `STELLA_STACK_API_ENABLED`. Local `stack_actions` history. **On** atlas.dev (create live 2026-11-08); **off** on prod. UI: [`stacks.md`](stacks.md) |
 | `Settings` | `app_settings` key/value (SSH path, stack-api SSH path, Brevo, Hetzner Cloud token, backup S3 + X25519 vault, TrackingTime, Trello, ddashboard service token) |
 
 `App\Providers\AtlasServiceProvider` binds `TokenAuthDriver` for the leftover ddashboard-bearer fallback. With `ATLAS_DEMO_MODE=true` it binds `FakeTokenAuthDriver`. Live login uses local passwords and `AuthTokenService`.
@@ -60,7 +60,7 @@ Entry: `resources/views/app.blade.php` → Vite → `resources/js/routes/index.t
 | `/wp-sites` | `domains/wp-sites/WpSitesPage` |
 | `/stacks` | `domains/stacks/StacksPage` (nav hidden unless `STELLA_STACK_API_ENABLED`; card grid grouped by type with live preview + restart + drift badge; search; New stack: Plan → Create; Stacks / People / Trash tabs) |
 | `/stacks/people` | `domains/stacks/StackPeoplePage` (people list, out-of-sync stacks, Sync / Sync all) |
-| `/stacks/trash` | `domains/stacks/StackTrashPage` (trash cards, purge after, restore) |
+| `/stacks/trash` | `domains/stacks/StackTrashPage` (trash cards, purge after, restore, purge now) |
 | `/stacks/$name` | same `StacksPage` with `StackDetailPanel` sidebar (containers, logs 50/200/1000, restart, edit / reconcile when managed, delete when managed, recent jobs, history) |
 | `/monitoring/stella` | `domains/monitoring/StellaDetailPage` |
 | `/monitoring/atlas` | `domains/monitoring/AtlasDetailPage` |
@@ -111,7 +111,7 @@ Login / refresh / logout / forgot / reset skip token middleware (still IP-filter
 | `wp_site_backups` | Atlas Connect backup jobs, progress, manifest hash |
 | `wp_site_scans`, `wp_site_scan_files`, `wp_site_scan_allowlist_entries` | Infection-scan jobs, inventory, allowlist |
 | `wp_site_stagings` | Stella staging builds from a full backup |
-| `stack_actions` | Atlas-side history for restart, apply, update, reconcile, people-sync, fix-permissions, delete, and trash-restore (`user_id`, stack, service, result, detail, created_at). Queued rows store the job id in `detail` and settle to `ok` / `error`. stack-api has its own audit log |
+| `stack_actions` | Atlas-side history for restart, apply, update, reconcile, people-sync, fix-permissions, delete, trash-restore, and trash-purge (`user_id`, stack, service, result, detail, created_at). Queued rows store the job id in `detail` and settle to `ok` / `error`. stack-api has its own audit log |
 | `imap_migration_jobs` | Atlas-side IMAP history (hosts/users only — **no passwords**) |
 | `customers`, `projects`, `task_lists`, `tasks`, `task_checklist_items`, `task_comments`, `time_entries`, `attachments` | TrackingTime import (one-way). Trello ids live on projects/tasks/check items/attachments. `projects.max_hours_per_week` / `trello_hours_custom_field_id` / `trello_deadline_custom_field_id` / `trello_pushed_hash` and `tasks.skip_trello` are Atlas-local. `tasks.deadline` is the TrackingTime **Deadline** custom field (`set_custom_fields`) |
 | `slack_destinations`, `notification_rules`, `notification_rule_channels`, `notification_rule_projects`, `notification_bindings`, `notification_events`, `notification_deliveries` | Notification rules, Slack webhooks (encrypted), fires + per-channel deliveries |
@@ -150,7 +150,7 @@ signature = ssh-keygen -Y sign -f {key} -n {namespace}  {payload}
 | `StellaDeployApiService::listApps` | `list-apps:` | `deploy` | `deploy_ssh_key_path` |
 | `StellaDeployApiService::trigger` | `deploy-{app}:` | `deploy` | `deploy_ssh_key_path` |
 | `StellaHealthApiClient::fetchSystemHealth` | `system-health:` | `deploy` | `deploy_ssh_key_path` |
-| `StackApiClient` | `stack-ping` / `stack-list` / `stack-get` / `stack-restart` / `stack-logs` / `job-get` / `job-list` / `stack-plan` / `stack-apply` / `people-list` / `stack-fix-permissions` / `stack-delete` / `stack-trash-list` / `stack-trash-restore` | `stack` | `stack_api_ssh_key_path` (fallback `STELLA_STACK_API_KEY_PATH`) |
+| `StackApiClient` | `stack-ping` / `stack-list` / `stack-get` / `stack-restart` / `stack-logs` / `job-get` / `job-list` / `stack-plan` / `stack-apply` / `stack-reconcile` / `people-list` / `stack-people-sync` / `stack-fix-permissions` / `stack-delete` / `stack-trash-list` / `stack-trash-restore` / `stack-trash-purge` | `stack` | `stack_api_ssh_key_path` (fallback `STELLA_STACK_API_KEY_PATH`) |
 
 stack-api POST body is `{payload, signature, request}` with header `X-Stack-Token`. Never log the token, signature, or key contents. Stella verifies stack-api with namespace `stack`. Prod principal `atlas-prod` (`/home/atlas/.ssh/atlas-stack-api`, flag still off). atlas.dev principal `atlas-dev` (`/var/www/.ssh/id_ed25519`) — visible = `STACK_API_SANDBOX_STACKS` ∪ stacks it owns (allowlist currently `dominikliss.foxcraft.digital`, `sandbox.staging.foxcraft.digital`; it may create any valid `*.staging.foxcraft.digital` name). Replay window is 60 seconds on Stella. Every request JSON includes a random `nonce` (Ed25519 signatures are deterministic).
 

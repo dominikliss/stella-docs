@@ -33,6 +33,7 @@ Token stays in `.env` (`STELLA_STACK_API_TOKEN`). Signing key: Settings → GitH
 | Recent stack-api jobs + Atlas `stack_actions` history | yes |
 | Delete a managed WordPress stack (queued job; trash for `retention_days`) | yes |
 | Trash list + restore (queued job) | yes |
+| Trash purge now (queued job; frees the name) | yes |
 | Restore from an Atlas backup | **not built** (`create` + `restore` is the planned replacement for wp-staging-api) |
 | Create Laravel or .NET stacks | **not built** (list/get still show those types) |
 | PHP version change | **not built** |
@@ -61,9 +62,9 @@ The form is a dry-run plus an apply job. Plan writes nothing. Create is disabled
 | SSH users | At least one name from `GET /api/stack-people`. Defaults to every returned person. uid + key come from Stella `people/`, not the form |
 | PHP settings | Always shown with blueprint defaults and a value dropdown per key. Overlay from `spec.php_ini` on edit. Keys: `memory_limit` `256M`, `upload_max_filesize` `64M`, `post_max_size` `64M`, `max_execution_time` `300`, `max_input_time` `60`, `max_input_vars` `1000`, `display_errors` `Off`, `date.timezone` `Europe/Vienna`, `session.gc_maxlifetime` `1440`, `opcache.enable` `1`, `opcache.memory_consumption` `128`, `opcache.max_accelerated_files` `10000`, `opcache.validate_timestamps` `0`, `opcache.revalidate_freq` `2` |
 
-Plan response (always HTTP 200 when handled) includes `mode: "create"`: path, SSH port (or “no SSH”), SSH users, notes, and artifacts (`docker-compose.yml`, extra files, Caddy site block). `ok: false` with a rendered compose means policy failed (e.g. a disallowed `php_ini` key). An existing **managed** stack is an update (below), not a create. Unmanaged existing stacks / folders / Caddy files are still refused. A name in the trash is rejected (`name: <name> is in the trash until <ts>; restore it or wait for the purge`). A sandbox principal may plan/apply any valid `<label>.staging.foxcraft.digital` name; after apply it owns that stack and it shows up in its list.
+Plan response (always HTTP 200 when handled) includes `mode: "create"`: path, SSH port (or “no SSH”), SSH users, notes, and artifacts (`docker-compose.yml`, extra files, Caddy site block). `ok: false` with a rendered compose means policy failed (e.g. a disallowed `php_ini` key). An existing **managed** stack is an update (below), not a create. Unmanaged existing stacks / folders / Caddy files are still refused. A name in the trash is rejected (`name: <name> is in the trash until <ts>; restore it, purge it, or wait for the purge`). Atlas shows a link to `/stacks/trash` so the name can be restored or purged immediately. A sandbox principal may plan/apply any valid `<label>.staging.foxcraft.digital` name; after apply it owns that stack and it shows up in its list.
 
-Create confirms, then `POST /api/stack-apply`. Response includes `mode: "create"`. Atlas records `stack_actions` as `apply` / `queued` with the job id. Success result: public URL (`https://<name>`), SSH port in **22100–22199**, SSH users, Open stack, and a **WordPress login** block when `result.admin` is present: login URL `{result.url}/wp-admin/`, user, email, table prefix, and the admin password (masked, reveal + copy). If `admin.password` is `null`, the password row is hidden and the block says “already installed”. The password is shown only from the stack-api job result; Atlas does not write it to `stack_actions`, history, or any Atlas table, and does not log it. Failure result: `detail`, failed `step`, output, done / rollback lists. Apply is a heavy job (one at a time on Stella).
+Create confirms, then `POST /api/stack-apply`. Response includes `mode: "create"`. Atlas records `stack_actions` as `apply` / `queued` with the job id. Success result: public URL (`https://<name>`), SSH port in **22100–22199**, SSH users, Open stack, and a **WordPress login** block when `result.admin` is present: login URL `{result.url}/wp-admin/`, user, email, table prefix, and the admin password (masked, reveal + copy). If `admin.password` is `null`, the password row is hidden and the block says “already installed”. The password is shown only from the stack-api job result; Atlas does not write it to `stack_actions`, history, or any Atlas table, and does not log it. If the create job is `ok` but `result.admin` is missing, Atlas warns that WordPress was not installed (the public site is still the installer). The same block is on the stack sidebar from the latest `stack-apply` job, not only on the create drawer. Failure result: `detail`, failed `step`, output, done / rollback lists. Apply is a heavy job (one at a time on Stella).
 
 New sites are IP-restricted in Caddy (`STACK_API_SITE_ALLOW_IPS`: Proton, york, Atlas prod). Wildcard cert for `*.staging.foxcraft.digital` — the site block has no `tls` section.
 
@@ -84,7 +85,7 @@ New sites are IP-restricted in Caddy (`STACK_API_SITE_ALLOW_IPS`: Proton, york, 
 
 Busy stack (sync restart or any job already running) → `409` “Stack is busy — another action is running.” Delete also maps 409 `stack is not managed by stack-api` / `stack is already in the trash` / `stack busy` (message stays `stack busy`; detail is passed through). Adopt-live 409 `live files do not match a blueprint render; use re-render` is shown in the reconcile dialog (message still `stack busy`; detail is passed through).
 
-**Recent jobs** come from stack-api (`limit` 10 on the page). **History** is Atlas `stack_actions` (last 50): restart, apply, update, reconcile, people-sync, fix-permissions, delete, trash-restore. Queued rows store the job id in `detail` and settle to `ok` / `error` when the job is fetched (detail page, job list, or job get). `plan`, `people`, and trash list do not write `stack_actions`. Stella keeps its own append-only audit log.
+**Recent jobs** come from stack-api (`limit` 10 on the page). **History** is Atlas `stack_actions` (last 50): restart, apply, update, reconcile, people-sync, fix-permissions, delete, trash-restore, trash-purge. Queued rows store the job id in `detail` and settle to `ok` / `error` when the job is fetched (detail page, job list, or job get). `plan`, `people`, and trash list do not write `stack_actions`. Stella keeps its own append-only audit log.
 
 ---
 
@@ -124,11 +125,13 @@ Central SSH people (`[{name, uid}]`, no keys) and the stacks that are out of syn
 
 Card grid of trash entries, grouped by type: name, type, deleted at, purge after (days left), volumes, dump path only if present. **Restore** confirms, then `POST /api/stack-trash/{name}/restore`. Atlas records `stack_actions` as `trash-restore` / `queued` with the job id. On success: toast + link to the restored stack. On failure: failed `step` + output. `404` `not in trash`; `409` stack busy (detail may be `trash folder missing`, `<path> already exists`, `volume <v> missing`, `ssh port <n> is in use`).
 
+**Purge now** type-the-name confirms, then `POST /api/stack-trash/{name}/purge` (`{confirm}` must equal name). Backed by stack-api `stack-trash-purge` (live 2026-11-14). Atlas records `stack_actions` as `trash-purge` / `queued`. Destroys volumes and the trash folder immediately so the name can be created again. On success: toast + “the name is free”. `400` `confirm must equal name`; `404` `not in trash`; `409` stack busy.
+
 ---
 
 ## Atlas API
 
-Admin only. 404 when the flag is off. Client: `app/Domain/Stacks/StackApiClient.php`. Timeouts: restart 65 s (15 s when async), logs 30 s, plan 30 s, apply 30 s, delete 30 s, trash list / restore 30 s, reconcile 30 s, people-sync 30 s, people / fix-permissions 15 s. Every Stella body includes a random `nonce`. Empty `php_ini` is `{}`, never `[]`. Delete always sends `final_dump` as JSON `false`.
+Admin only. 404 when the flag is off. Client: `app/Domain/Stacks/StackApiClient.php`. Timeouts: restart 65 s (15 s when async), logs 30 s, plan 30 s, apply 30 s, delete 30 s, trash list / restore / purge 30 s, reconcile 30 s, people-sync 30 s, people / fix-permissions 15 s. Every Stella body includes a random `nonce`. Empty `php_ini` is `{}`, never `[]`. Delete always sends `final_dump` as JSON `false`.
 
 | Atlas | Stella action |
 |-------|---------------|
@@ -146,6 +149,7 @@ Admin only. 404 when the flag is off. Client: `app/Domain/Stacks/StackApiClient.
 | `POST /api/stack-apply` | `stack-apply` (create or update; records `apply` or `update`) |
 | `GET /api/stack-trash` | `stack-trash-list` |
 | `POST /api/stack-trash/{name}/restore` | `stack-trash-restore` |
+| `POST /api/stack-trash/{name}/purge` | `stack-trash-purge` (`{confirm}` must equal name) |
 
 Use `/api/stack-jobs`, `/api/stack-plan`, `/api/stack-people`, `/api/stack-people-sync`, `/api/stack-apply`, `/api/stack-trash` — not `/api/stacks/jobs` and so on (`jobs` / `people` / `trash` would match `{name}`).
 

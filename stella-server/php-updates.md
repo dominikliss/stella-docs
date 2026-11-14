@@ -78,15 +78,20 @@ Details: [`wordpress-staging.md`](wordpress-staging.md#migration-of-hypershape-2
 
 ## Shared SSH image (`stella/ssh-php`)
 
-A **patch** update needs a rebuild of the local tag, then a recreate of every stack that uses it (today: `hypershape`):
+Dockerfile (`images/ssh-php/Dockerfile`): after the apt layer, `RUN docker-php-ext-install mysqli pdo_mysql` (backup `Dockerfile.bak-20261114`). Needed so WP-CLI in the throwaway install container (and `wp db` over SSH) can talk to MariaDB. **Both** `stella/ssh-php:8.4` and `:8.5` must be rebuilt after a Dockerfile change.
+
+A **patch** update needs a rebuild of each local tag, then a recreate of every stack that uses it (running containers keep the old image until then):
 
 ```bash
 docker build --pull --build-arg PHP_VERSION=8.5 -t stella/ssh-php:8.5 /opt/services/stack-api/images/ssh-php
+docker build --pull --build-arg PHP_VERSION=8.4 -t stella/ssh-php:8.4 /opt/services/stack-api/images/ssh-php
 cd /opt/apps/wordpress/hypershape.foxcraft.digital
 docker compose up -d ssh
 ```
 
-A **minor** bump is a new tag (e.g. `stella/ssh-php:8.6`), not an overwrite of `8.5`. Keep `wp` and the SSH image on the same minor. See [`stack-api.md`](stack-api.md#shared-ssh-image-stellassh-phpversion).
+Rebuilt both tags 2026-11-14; verified `php -m` lists `mysqli` and `pdo_mysql` in both. Recreating existing ssh containers is optional — only needed if SSH users run `wp db` there. See [`stack-api.md`](stack-api.md#shared-ssh-image-stellassh-phpversion).
+
+A **minor** bump is a new tag (e.g. `stella/ssh-php:8.6`), not an overwrite of `8.5`. Keep `wp` and the SSH image on the same minor.
 
 ---
 
