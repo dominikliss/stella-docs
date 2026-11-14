@@ -78,7 +78,7 @@ Details: [`wordpress-staging.md`](wordpress-staging.md#migration-of-hypershape-2
 
 ## Shared SSH image (`stella/ssh-php`)
 
-Dockerfile (`images/ssh-php/Dockerfile`): after the apt layer, `RUN docker-php-ext-install mysqli pdo_mysql` (backup `Dockerfile.bak-20261114`). Needed so WP-CLI in the throwaway install container (and `wp db` over SSH) can talk to MariaDB. **Both** `stella/ssh-php:8.4` and `:8.5` must be rebuilt after a Dockerfile change. An `entrypoint.sh` change also needs a rebuild of both tags, plus a recreate of each ssh container that should pick it up (backup `entrypoint.sh.bak-20261114`, both tags rebuilt 2026-11-14).
+Dockerfile (`images/ssh-php/Dockerfile`): after the apt layer, `RUN docker-php-ext-install mysqli pdo_mysql` (backup `Dockerfile.bak-20261114`). The apt layer ends with `&& rm -f /etc/ssh/ssh_host_*` so host keys are not baked into the image (backup `Dockerfile.bak-20261114b`). Needed so WP-CLI in the throwaway install container (and `wp db` over SSH) can talk to MariaDB, and so each stack gets unique host keys from the entrypoint. **Both** `stella/ssh-php:8.4` and `:8.5` must be rebuilt after a Dockerfile or `entrypoint.sh` change, plus a recreate/restart of each ssh container that should pick it up (backup `entrypoint.sh.bak-20261114`, both tags rebuilt 2026-11-14).
 
 A **patch** update needs a rebuild of each local tag, then a recreate of every stack that uses it (running containers keep the old image until then):
 
@@ -89,7 +89,7 @@ cd /opt/apps/wordpress/hypershape.foxcraft.digital
 docker compose up -d ssh
 ```
 
-Rebuilt both tags 2026-11-14 (mysqli, then `/etc/environment`); verified `php -m` lists `mysqli` and `pdo_mysql` in both. Sandbox ssh was recreated (re-render). hypershape is still on the older image. Recreating remaining ssh containers is optional — only needed if SSH users run `wp db` there. See [`stack-api.md`](stack-api.md#shared-ssh-image-stellassh-phpversion).
+Rebuilt both tags 2026-11-14 (mysqli, then `/etc/environment`, then host-key removal); verified `php -m` lists `mysqli` and `pdo_mysql` in both, and the image has no `/etc/ssh/ssh_host_*`. Sandbox ssh was recreated (re-render) and its host keys regenerated. hypershape is still on the older image (pre-mysqli, shared build host key). Recreating remaining ssh containers is optional for mysqli — only needed if SSH users run `wp db` there — but hypershape still needs a host-key regenerate together with Edison's and the Mac's `known_hosts`. See [`stack-api.md`](stack-api.md#shared-ssh-image-stellassh-phpversion).
 
 A **minor** bump is a new tag (e.g. `stella/ssh-php:8.6`), not an overwrite of `8.5`. Keep `wp` and the SSH image on the same minor.
 

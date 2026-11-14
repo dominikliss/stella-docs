@@ -29,7 +29,8 @@ Token stays in `.env` (`STELLA_STACK_API_TOKEN`). Signing key: Settings → GitH
 | WordPress login after create (URL, user, email, password once from the job result, table prefix) | yes |
 | Edit a managed WordPress stack (apply; job action `stack-update`) | yes |
 | Reconcile drift (`adopt-live` sync or `re-render` job) | yes |
-| People list + out-of-sync stacks; sync one or all | yes |
+| People list + create/edit/remove; out-of-sync stacks; sync one or all | yes |
+| User SSH keys (profile + admin user drawer; public keys only) | yes |
 | Recent stack-api jobs + Atlas `stack_actions` history | yes |
 | Delete a managed WordPress stack (queued job; trash for `retention_days`) | yes |
 | Trash list + restore (queued job) | yes |
@@ -94,7 +95,7 @@ One 640px drawer with three tabs. Create still uses its own drawer.
 
 Busy stack (sync restart or any job already running) → `409` “Stack is busy — another action is running.” Delete also maps 409 `stack is not managed by stack-api` / `stack is already in the trash` / `stack busy` (message stays `stack busy`; detail is passed through). Adopt-live 409 `live files do not match a blueprint render; use re-render` is shown in the reconcile dialog (message still `stack busy`; detail is passed through).
 
-**Recent jobs** come from stack-api (`limit` 10 on the page). **History** is Atlas `stack_actions` (last 50): restart, apply, update, php-version, reconcile, people-sync, fix-permissions, delete, trash-restore, trash-purge. Queued rows store the job id in `detail` and settle to `ok` / `error` when the job is fetched (detail page, job list, or job get). `plan`, `people`, and trash list do not write `stack_actions`. Stella keeps its own append-only audit log.
+**Recent jobs** come from stack-api (`limit` 10 on the page). **History** is Atlas `stack_actions` (last 50): restart, apply, update, php-version, reconcile, people-sync, people-upsert, people-remove, people-link, fix-permissions, delete, trash-restore, trash-purge. Queued rows store the job id in `detail` and settle to `ok` / `error` when the job is fetched (detail page, job list, or job get). People write rows have `stack` null (fingerprints only, never full keys) and do not appear on a stack's Jobs tab. `plan`, `people` list, and trash list do not write `stack_actions`. Stella keeps its own append-only audit log.
 
 ---
 
@@ -104,7 +105,7 @@ Managed stacks only. The Stack tab embeds the same form as create, prefilled fro
 
 Stella still accepts `POST /api/stack-plan` for a dry-run (`mode: "update"` plus `drift`, `changes`, notes, artifacts). Atlas does not call it. `ok: false` with `drift: live files differ from the last apply; reconcile first` means Apply is the wrong action — reconcile first. The form is locked until then.
 
-Apply response `{ok:true, mode:"update", job, state, name}` (job action `stack-update`). Atlas records `stack_actions` as `update` / `queued`. Toast “Update queued.”, then “Stack updated.” / “No changes.” / error when the job settles. Job result: `{name, changed, changes:[{file,status}], backup, ssh_port, ssh_users[], steps[]}`. `changed: false` is a **neutral info** (“No changes”), not an error. Failure: `{step, output, done[], rollback[], backup}` or the string `drift: …`. Full result stays on the Jobs tab.
+Apply response `{ok:true, mode:"update", job, state, name}` (job action `stack-update`). Atlas records `stack_actions` as `update` / `queued`. Toast “Update queued.”, then “Stack updated.” / “No changes.” / error when the job settles. Job result: `{name, changed, changes:[{file,status}], backup, ssh_port, ssh_users[], steps[]}`. `changed: false` is a **neutral info** (“No changes”), not an error. Failure: `{step, output, done[], rollback[], backup}` or the string `drift: …`. Full result stays on the Jobs tab. After a successful update, the sidebar copies `ssh_users` from the job result into the cached stack spec so reopening it keeps the new selection (without that, the picker showed the old list until a full reload).
 
 ---
 
@@ -138,7 +139,36 @@ When `drift` is true, the edit form is locked and **Reconcile** opens a dialog w
 
 ## People (`/stacks/people`)
 
-Central SSH people (`[{name, uid}]`, no keys) and the stacks that are out of sync (`out_of_sync: true`), each with `dropped[]` and `errors[]`. **Sync** per stack and **Sync all** (`POST /api/stack-people-sync`, `{name?}`; omit `name` for every out-of-sync stack). Response `{"jobs":[{name, job, state} | {name, error}]}`. Atlas records `people-sync` / `queued` (or `error`) per row. Job result is like update plus `dropped`. The result panel lists dropped people.
+stack-api is the source of truth. Atlas stores no people table; it only links an Atlas login to a person via `users.ssh_username` (admin-set, unique, pattern `^[a-z][a-z0-9_-]{0,31}$`). Public keys only — Atlas never generates a key pair and never accepts a private key (client `PRIVATE KEY` check + server `PublicSshKey` rule).
+
+The page lists people with name, UID, key count, managed stacks, and the linked Atlas user (from `users.ssh_username`). Expanding a row shows fingerprints (`SshPublicKeyDetails`). `can_edit` false → **Read-only on this instance** (no Add / Remove). Out-of-sync stacks still have **Sync** / **Sync all**.
+
+**Add person** (admin, `can_edit`): name + 1–10 public-key lines + Atlas password. **Remove person**: type-the-name + Atlas password. Removing a key from a person that still has others is an upsert of the remaining keys. The last key cannot be deleted here — the dialog says to remove the person instead.
+
+`POST /api/stacks/people` → Stella `people-upsert`. `POST /api/stacks/people/{name}/remove` → `people-remove` (`confirm` must equal `name`). `DELETE /api/stacks/people/{name}` is also registered, **before** the `/api/stacks/{name}` catch-all. Bug fixed 2026-11-14: that DELETE was matched as stack name `people`, so remove never reached stack-api.
+
+Atlas records `stack_actions` `people-upsert` / `people-remove` with `stack` null and fingerprints only (`added` / `removed`). Stella upsert/remove auto-sync every managed stack the person is on (`sync: [{name, job, state} | {name, error}]`). **The Atlas UI does not read `sync`.** Toasts still say “Saved. Changes reach the containers on the next sync.” Manual **Sync** / **Sync all** (`POST /api/stacks/people/sync`) remains the fallback when auto-sync hits a busy stack. Open: show auto-sync jobs from the upsert/remove response.
+
+**Sync** per stack and **Sync all** (`{name?}`; omit `name` for every out-of-sync stack). Response `{"jobs":[{name, job, state} | {name, error}]}`. Atlas records `people-sync` / `queued` (or `error`) per row. Job result is like update plus `dropped`. The result panel lists dropped people.
+
+Hand-built stacks (hypershape, dominikliss) are not managed. People changes do not reach them.
+
+## User SSH keys
+
+Profile (`/profile`) shows **SSH keys** when `me.features.stack_api` is on.
+
+- No `ssh_username` → “No SSH username assigned — ask an admin.”
+- Otherwise: fingerprints, add/remove with Atlas password confirmation, **Sync my stacks** (`POST /api/me/ssh-keys/sync`).
+- Refuses deleting the last key (“Add a new key first. To revoke access completely, ask an admin.”).
+- Client- and server-side private-key rejection (`this is a private key; paste the .pub file`).
+- Adding a key is rate-limited: `throttle:ssh-key-add` = 10 per hour per user (`POST /api/me/ssh-keys`).
+- Notification email (`PeopleSshKeyChangedMail`) to the linked user and every active admin. Fingerprints only. Copy still says changes reach containers on the next people sync.
+
+Admin **Users** drawer (when the stack-api flag is on): unique `ssh_username`, keys for that person, and linking. Pasting a public key that already belongs to a person assigns `ssh_username` to that person (`people-link`) instead of duplicating the key. `ssh_username` cannot be changed once set.
+
+Deactivate and delete **always** remove the linked SSH person on Stella (`people-remove`, then auto-sync). Confirm dialogs say so. Toast: “User deactivated. SSH person `<name>` removed.” There is no checkbox. If stack-api is off, or the user has no `ssh_username`, Atlas does not call Stella.
+
+Negative UI checks (deleting the last key, pasting a private key, wrong password): **UNVERIFIED**.
 
 ---
 
@@ -152,7 +182,7 @@ Card grid of trash entries, grouped by type: name, type, deleted at, purge after
 
 ## Atlas API
 
-Admin only. 404 when the flag is off. Client: `app/Domain/Stacks/StackApiClient.php`. Timeouts: restart 65 s (15 s when async), logs 30 s, plan 30 s, apply 30 s, delete 30 s, trash list / restore / purge 30 s, reconcile 30 s, PHP version 30 s, people-sync 30 s, people / fix-permissions 15 s. Every Stella body includes a random `nonce`. Empty `php_ini` is `{}`, never `[]`. Delete always sends `final_dump` as JSON `false`.
+Admin only (except a user managing their own keys). 404 when the flag is off. Client: `app/Domain/Stacks/StackApiClient.php`. Timeouts: restart 65 s (15 s when async), logs 30 s, plan 30 s, apply 30 s, delete 30 s, trash list / restore / purge 30 s, reconcile 30 s, PHP version 30 s, people-sync 30 s, people list / upsert / remove / fix-permissions 15 s. Every Stella body includes a random `nonce`. Empty `php_ini` is `{}`, never `[]`. Delete always sends `final_dump` as JSON `false`. People write bodies include `actor` (Atlas email).
 
 | Atlas | Stella action |
 |-------|---------------|
@@ -165,19 +195,28 @@ Admin only. 404 when the flag is off. Client: `app/Domain/Stacks/StackApiClient.
 | `POST /api/stacks/{name}/php-version` | `stack-php-version` (`{php}`) |
 | `POST /api/stacks/{name}/reconcile` | `stack-reconcile` (`{mode: adopt-live\|re-render}`) |
 | `GET /api/stack-jobs` / `{id}` | `job-list` / `job-get` |
-| `GET /api/stack-people` | `people-list` |
-| `POST /api/stack-people-sync` | `stack-people-sync` (`{name?}`; omit `name` for all out-of-sync) |
+| `GET /api/stacks/people` (also `GET /api/stack-people`) | `people-list` |
+| `POST /api/stacks/people` (also `POST /api/stack-people`) | `people-upsert` (`{name, keys, current_password}`; Stella also gets `actor`) |
+| `POST /api/stacks/people/{name}/remove` (also `DELETE /api/stacks/people/{name}` and `DELETE /api/stack-people/{name}`) | `people-remove` (`{confirm, current_password}`; `confirm` must equal name) |
+| `POST /api/stacks/people/sync` (also `POST /api/stack-people-sync`) | `stack-people-sync` (`{name?}`; omit `name` for all out-of-sync) |
+| `GET /api/me/ssh-keys` | `people-list` (filtered to `users.ssh_username`) |
+| `POST /api/me/ssh-keys` | `people-upsert` (append one key; password + throttle) |
+| `DELETE /api/me/ssh-keys/{fingerprint}` | `people-upsert` (remaining keys; refuses the last key) |
+| `POST /api/me/ssh-keys/sync` | `stack-people-sync` per stack the person is on |
+| `GET /api/users/{user}/ssh-keys` | `people-list` for that user's `ssh_username` |
+| `POST /api/users/{user}/ssh-keys` | `people-upsert` or `people-link` |
+| `DELETE /api/users/{user}/ssh-keys/{fingerprint}` | `people-upsert` (remaining keys) |
 | `POST /api/stack-plan` | `stack-plan` |
 | `POST /api/stack-apply` | `stack-apply` (create or update; records `apply` or `update`) |
 | `GET /api/stack-trash` | `stack-trash-list` |
 | `POST /api/stack-trash/{name}/restore` | `stack-trash-restore` |
 | `POST /api/stack-trash/{name}/purge` | `stack-trash-purge` (`{confirm}` must equal name) |
 
-Use `/api/stack-jobs`, `/api/stack-plan`, `/api/stack-people`, `/api/stack-people-sync`, `/api/stack-apply`, `/api/stack-trash` — not `/api/stacks/jobs` and so on (`jobs` / `people` / `trash` would match `{name}`).
+People routes under `/api/stacks/people*` are registered **before** `/api/stacks/{name}`. `/api/stack-jobs`, `/api/stack-plan`, `/api/stack-people*`, `/api/stack-apply`, `/api/stack-trash` aliases remain so `jobs` / `people` / `trash` do not match `{name}`.
 
-Name `^[a-z0-9][a-z0-9.-]{0,252}$`, service `^[a-z0-9][a-z0-9_-]{0,62}$`, job id `^[0-9a-f]{32}$` — validated in Atlas before the call. Plan names are not pre-validated so Stella can return sandbox / reserved-name errors.
+Name `^[a-z0-9][a-z0-9.-]{0,252}$`, person `^[a-z][a-z0-9_-]{0,31}$`, service `^[a-z0-9][a-z0-9_-]{0,62}$`, job id `^[0-9a-f]{32}$` — validated in Atlas before the call. Plan names are not pre-validated so Stella can return sandbox / reserved-name errors.
 
-Mapped errors: 401/403 → `stack-api rejected the request`; 400/404 detail passed through; 409 → stack busy; 502 → docker error (results passed through); connection → `stack-api unreachable`. A handled plan or apply rejection is HTTP 200 with `ok` + `errors`.
+Mapped errors: 401/403 → `stack-api rejected the request` (people upsert/remove 403 → `Editing people is not allowed for this Atlas instance`); 400/404 detail passed through (`person not found` on people actions); 409 → stack busy; 502 → docker error (results passed through); connection → `stack-api unreachable`. A handled plan or apply rejection is HTTP 200 with `ok` + `errors`.
 
 Never log the token, signature, key contents, log lines, spec keys, or response files.
 

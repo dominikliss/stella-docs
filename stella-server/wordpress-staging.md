@@ -136,7 +136,7 @@ New WP containers are discovered by health-api and included in the restic backup
 
 Current pattern. Image: [`stack-api.md`](stack-api.md#shared-ssh-image-stellassh-phpversion). First stack: `hypershape` (adopted by hand 2026-11-04).
 
-Blueprint stacks (sandbox) now put the same `WORDPRESS_DB_*` / `WORDPRESS_TABLE_PREFIX` env on `ssh` as on `wp`, and `entrypoint.sh` writes those into `/etc/environment` so WP-CLI over SSH can reach the DB. Verified 2026-11-14: `ssh -p 22100 dominik@95.217.144.93 'cd app && wp option get siteurl'`. The hypershape compose below is the 2026-11-04 adopt snapshot and has **no** `WORDPRESS_*` on `ssh`. Host keys baked into the image are an open issue: [`stack-api.md`](stack-api.md#known-issues).
+Blueprint stacks (sandbox) now put the same `WORDPRESS_DB_*` / `WORDPRESS_TABLE_PREFIX` env on `ssh` as on `wp`, and `entrypoint.sh` writes those into `/etc/environment` so WP-CLI over SSH can reach the DB. Verified 2026-11-14: `ssh -p 22100 dominik@95.217.144.93 'cd app && wp option get siteurl'`. The hypershape compose below is the 2026-11-04 adopt snapshot and has **no** `WORDPRESS_*` on `ssh`. People changes from Atlas do not reach hand-built stacks; keep `atlas/users.conf` by hand. Host keys: the shared image no longer bakes them (2026-11-14); sandbox was regenerated. hypershape is still on the shared build key — [`stack-api.md`](stack-api.md#ssh-host-keys).
 
 `hypershape` has **no** `uploads.ini` mount.
 
