@@ -35,7 +35,7 @@ Business code lives under `app/Domain/{Name}/` (controllers, models, jobs, servi
 | `Tools` | IMAP migration proxy to Stella `imap-sync`; TrackingTime import / open-task sync (ddashboard [`../stella-dashboard/atlas-client-lookup.md`](../stella-dashboard/atlas-client-lookup.md) for client stubs) |
 | `Projects` | Imported customers/projects/tasks; project metadata edit; attachment download; one-way Trello push ([`projects.md`](projects.md)) |
 | `Notifications` | Rules, Slack webhooks, in-app inbox, weekly hour-budget checker ([`notifications.md`](notifications.md)) |
-| `Stacks` | Stella stack-api client: list / get / restart / logs / jobs / plan / apply / people / fix-permissions / delete / trash / restore. Admin only. Hidden unless `STELLA_STACK_API_ENABLED`. Local `stack_actions` history. **On** atlas.dev (create live 2026-11-08); **off** on prod. UI: [`stacks.md`](stacks.md) |
+| `Stacks` | Stella stack-api client: list / get / restart / logs / jobs / plan / apply / update / reconcile / people / people-sync / fix-permissions / delete / trash / restore. Admin only. Hidden unless `STELLA_STACK_API_ENABLED`. Local `stack_actions` history. **On** atlas.dev (create live 2026-11-08); **off** on prod. UI: [`stacks.md`](stacks.md) |
 | `Settings` | `app_settings` key/value (SSH path, stack-api SSH path, Brevo, Hetzner Cloud token, backup S3 + X25519 vault, TrackingTime, Trello, ddashboard service token) |
 
 `App\Providers\AtlasServiceProvider` binds `TokenAuthDriver` for the leftover ddashboard-bearer fallback. With `ATLAS_DEMO_MODE=true` it binds `FakeTokenAuthDriver`. Live login uses local passwords and `AuthTokenService`.
@@ -58,9 +58,10 @@ Entry: `resources/views/app.blade.php` → Vite → `resources/js/routes/index.t
 | `/dashboard` | `domains/dashboard/DashboardPage` (+ `StellaServerStatus`, `AtlasServerStatus`, `EdisonServerStatus`) |
 | `/deployments` | `domains/deployments/DeploymentsPage` (+ `ConfirmDeployModal` before each run) |
 | `/wp-sites` | `domains/wp-sites/WpSitesPage` |
-| `/stacks` | `domains/stacks/StacksPage` (nav hidden unless `STELLA_STACK_API_ENABLED`; card grid; search / Issues / type; New stack: Plan → Create; managed badge; Stacks / Trash tabs) |
+| `/stacks` | `domains/stacks/StacksPage` (nav hidden unless `STELLA_STACK_API_ENABLED`; card grid grouped by type with live preview + restart + drift badge; search; New stack: Plan → Create; Stacks / People / Trash tabs) |
+| `/stacks/people` | `domains/stacks/StackPeoplePage` (people list, out-of-sync stacks, Sync / Sync all) |
 | `/stacks/trash` | `domains/stacks/StackTrashPage` (trash cards, purge after, restore) |
-| `/stacks/$name` | `domains/stacks/StackDetailPage` (container cards, logs 50/200/1000, sync or async restart, WordPress fix-permissions, delete when managed, recent jobs, history) |
+| `/stacks/$name` | same `StacksPage` with `StackDetailPanel` sidebar (containers, logs 50/200/1000, restart, edit / reconcile when managed, delete when managed, recent jobs, history) |
 | `/monitoring/stella` | `domains/monitoring/StellaDetailPage` |
 | `/monitoring/atlas` | `domains/monitoring/AtlasDetailPage` |
 | `/monitoring/edison` | `domains/monitoring/EdisonDetailPage` |
@@ -110,7 +111,7 @@ Login / refresh / logout / forgot / reset skip token middleware (still IP-filter
 | `wp_site_backups` | Atlas Connect backup jobs, progress, manifest hash |
 | `wp_site_scans`, `wp_site_scan_files`, `wp_site_scan_allowlist_entries` | Infection-scan jobs, inventory, allowlist |
 | `wp_site_stagings` | Stella staging builds from a full backup |
-| `stack_actions` | Atlas-side history for restart, apply, fix-permissions, delete, and trash-restore (`user_id`, stack, service, result, detail, created_at). Queued rows store the job id in `detail` and settle to `ok` / `error`. stack-api has its own audit log |
+| `stack_actions` | Atlas-side history for restart, apply, update, reconcile, people-sync, fix-permissions, delete, and trash-restore (`user_id`, stack, service, result, detail, created_at). Queued rows store the job id in `detail` and settle to `ok` / `error`. stack-api has its own audit log |
 | `imap_migration_jobs` | Atlas-side IMAP history (hosts/users only — **no passwords**) |
 | `customers`, `projects`, `task_lists`, `tasks`, `task_checklist_items`, `task_comments`, `time_entries`, `attachments` | TrackingTime import (one-way). Trello ids live on projects/tasks/check items/attachments. `projects.max_hours_per_week` / `trello_hours_custom_field_id` / `trello_deadline_custom_field_id` / `trello_pushed_hash` and `tasks.skip_trello` are Atlas-local. `tasks.deadline` is the TrackingTime **Deadline** custom field (`set_custom_fields`) |
 | `slack_destinations`, `notification_rules`, `notification_rule_channels`, `notification_rule_projects`, `notification_bindings`, `notification_events`, `notification_deliveries` | Notification rules, Slack webhooks (encrypted), fires + per-channel deliveries |

@@ -16,7 +16,7 @@ Dedicated AI / services host. No general-purpose UI — **Atlas**, **ddashboard*
 | [stella-api.md](stella-api.md) | FastAPI `/chat/*` (ddashboard) |
 | [deploy-api.md](deploy-api.md) | Signed deploy trigger (Atlas) |
 | [health-api.md](health-api.md) | Signed system-status snapshot for Atlas — dynamic containers + Caddyfile certs |
-| [stack-api.md](stack-api.md) | Container management for Atlas — `list` / `get` / `restart` / `logs` / `plan` / `apply` / `fix-permissions` / delete / trash / restore / people, `stack_state`, principals + sandbox, append-only audit log. Atlas UI: [`../atlas/stacks.md`](../atlas/stacks.md). First stack 2026-11-08: `sandbox.staging.foxcraft.digital` (adopted 2026-11-14). [Roadmap](stack-api.md#roadmap) |
+| [stack-api.md](stack-api.md) | Container management for Atlas — `list` / `get` / `restart` / `logs` / `plan` / `apply` (create + update) / reconcile / people + people-sync / `fix-permissions` / delete / trash / restore, `stack_state` + drift, principals + sandbox, append-only audit log. Atlas UI: [`../atlas/stacks.md`](../atlas/stacks.md). First stack 2026-11-08: `sandbox.staging.foxcraft.digital` (adopted 2026-11-14). [Roadmap](stack-api.md#roadmap) |
 | [wp-staging-api.md](wp-staging-api.md) | **Superseded** by stack-api — will not be deployed |
 | [media-api.md](media-api.md) | RAW/HEIC/JPEG/video-poster decode for Foxx Cloud (HMAC; `/convert` and `/convert-remote`) — `stella-media-api.foxcraft.digital` |
 | [imap-sync-service.md](imap-sync-service.md) | Express + `imapsync` mailbox copy (Atlas) |
