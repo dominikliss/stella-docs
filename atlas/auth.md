@@ -21,7 +21,7 @@ A leftover `DdashboardTokenDriver` still verifies an unknown bearer against `GET
 ```
 Browser  POST /api/auth/login  { email|username, password, remember? }
    → AuthSessionService::beginLogin
-      → local User by email, Hash::check, reject inactive
+      → local User by email; `kind=agent` is the same generic failure as a wrong password; Hash::check; reject inactive
    → next step (challenge or session)
 ```
 
@@ -36,7 +36,7 @@ Throttled as `atlas-auth` (`ATLAS_AUTH_MAX_ATTEMPTS` / minute, keyed by email + 
 
 A completed challenge calls `AuthTokenService::issue`. The SPA stores both tokens (`resources/js/lib/token-store.ts`) and sends `Authorization: Bearer {access_token}` on later API calls.
 
-Challenges live in cache for `ATLAS_AUTH_CHALLENGE_TTL` (default 600s). Invalid credentials → 401 `Invalid credentials.` Deactivated account → 401 `This account is deactivated.`
+Challenges live in cache for `ATLAS_AUTH_CHALLENGE_TTL` (default 600s). Invalid credentials → 401 `Invalid credentials.` (Agents always get this, even with a password — never reveal that the account is an agent.) Deactivated account → 401 `This account is deactivated.`
 
 ---
 
@@ -63,7 +63,7 @@ No bearer → 401 `Unauthenticated.`
 
 The SPA (`resources/js/lib/api-client.ts`) only toasts when the JSON body has a `message`. Canceled requests, dropped connections, and gateway **502/504** stay silent so background dashboard polls do not show “An unexpected error occurred.”
 
-`GET /api/auth/me` returns the local user + Spatie role names + `ssh_username` / `has_avatar` / `features.stack_api` + `two_factor_confirmed` / `password_must_change` / `is_active` (used to bootstrap the SPA). Photos are not inlined; `has_avatar` true means `GET /api/users/{id}/avatar` will 200 (any signed-in user).
+`GET /api/auth/me` returns the local user + Spatie role names + `kind` / `ssh_username` / `has_avatar` / `features.stack_api` + `two_factor_confirmed` / `password_must_change` / `is_active` (used to bootstrap the SPA). Photos are not inlined; `has_avatar` true means `GET /api/users/{id}/avatar` will 200 (any signed-in user). Agents never reach this: they cannot log in.
 
 ---
 
@@ -85,7 +85,7 @@ Forgot / reset (IP-filtered, throttled, no token):
 
 | Method | Path | Purpose |
 |--------|------|---------|
-| `POST` | `/api/auth/forgot-password` | Always 200; emails a one-hour link if the account is active |
+| `POST` | `/api/auth/forgot-password` | Always 200; emails a one-hour link if the account is an active human. Agents get the same 200 and no mail |
 | `POST` | `/api/auth/reset-password` | `{ email, token, password }` |
 
 ---
@@ -94,19 +94,23 @@ Forgot / reset (IP-filtered, throttled, no token):
 
 Admins only (`auth.admin` → `EnsureAdmin`). UI: `/users`.
 
+`/users` is a card grid (1 / 2 / 3 columns), same `stack-card` language as stacks. Toolbar is search (name, email, or `ssh_username`) + **Add user**. There is no All / Humans / Agents filter — type is only the Human / Agent switch in the add drawer. No page heading or count. Each card: large avatar (initials if none), **Off** if inactive; footer is two columns — left name + email (or the SSH username for an agent), right Agent badge or Admin/Dev + 2FA, then `{ssh_username} · N SSH keys` (or “No SSH username”) when stack-api is on. Click opens the user drawer. Empty: “Add someone with an Atlas login, or an agent.”
+
 | Method | Path | Purpose |
 |--------|------|---------|
-| `GET` | `/api/users` | List (`ssh_username`, `has_avatar`, …) |
-| `POST` | `/api/users` | Create (temporary password emailed; `password_must_change`) |
-| `PATCH` | `/api/users/{user}` | Name, email, role (`admin` / `developer`), `is_active`, unique `ssh_username` |
-| `DELETE` | `/api/users/{user}` | After deactivate; also removes the linked SSH person and avatar |
+| `GET` | `/api/users` | List (`kind`, `ssh_username`, `has_avatar`, …). Agent `email` is omitted. |
+| `POST` | `/api/users` | Human: temporary password emailed; `password_must_change`. Agent: `{kind: agent, name, ssh_username, keys?, current_password}` — no login, no mail. |
+| `PATCH` | `/api/users/{user}` | Name, email, role (`admin` / `developer`), `is_active`, unique `ssh_username`. Agents cannot be given `admin`. |
+| `DELETE` | `/api/users/{user}` | After deactivate; also removes the avatar. Linked SSH person is removed only when people writes are allowed (`can_edit`) |
 | `GET` | `/api/users/{user}/avatar` | Photo bytes (any signed-in user; 404 if none) |
 | `POST` | `/api/users/{user}/avatar` | Same rules as profile |
 | `DELETE` | `/api/users/{user}/avatar` | Remove photo |
-| `POST` | `/api/users/{user}/reset-password` | New temporary password |
-| `POST` | `/api/users/{user}/reset-two-factor` | Clear TOTP |
+| `POST` | `/api/users/{user}/reset-password` | New temporary password (humans only) |
+| `POST` | `/api/users/{user}/reset-two-factor` | Clear TOTP (humans only) |
 
-`ssh_username` is unique, pattern `^[a-z][a-z0-9_-]{0,31}$`, and cannot be changed once set. SSH keys live on Stella, not in Atlas — [`stacks.md`](stacks.md#user-ssh-keys). Deactivate and delete always `people-remove` the linked person when the stack-api flag is on.
+`ssh_username` is unique, pattern `^[a-z][a-z0-9_-]{0,31}$`, and cannot be changed once set. SSH keys live on Stella, not in Atlas — [`stacks.md`](stacks.md#user-ssh-keys). Deactivate and delete call `people-remove` for the linked person only when the stack-api flag is on **and** this principal can edit people (`can_edit`). atlas.dev is read-only for people, so those actions only change the Atlas login.
+
+`users.kind` is `human` (default) or `agent` (migration `2026_11_14_221000_add_kind_to_users_table`). Agents have `password` null, no sessions, no password-reset mail, and a placeholder email `agent+<ssh_username>@agents.invalid` (`users.email` stays NOT NULL + unique). `php artisan atlas:agent-create {name} {ssh_username}` creates or links without sending keys.
 
 The last active admin cannot be demoted or deactivated. `atlas:setup` creates the first admin with a local password (and required 2FA on first login).
 

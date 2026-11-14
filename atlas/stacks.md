@@ -2,7 +2,7 @@
 
 **`/stacks`** is the operator UI for Stella compose stacks. Atlas does not talk to Docker itself: every call is a signed request to [`../stella-server/stack-api.md`](../stella-server/stack-api.md). The browser never calls Stella.
 
-**Status (2026-11-14, night):** live on **atlas.dev** and **prod**. Prod `.env`: `STELLA_STACK_API_ENABLED=true`, `STELLA_STACK_API_KEY_PATH=/home/atlas/.ssh/atlas-stack-api` (backup `/var/www/atlas/.env.bak-20261114`). Migrations ran (`stack_actions`, `stack_actions.stack` nullable, `users.ssh_username`, `users.avatar_path`). Verified `ok action=stack-list` / `job-list` with `principal=atlas-prod`. `/stacks/people` is editable on prod; person `dominik` is linked to Atlas user `dominik@foxcraft.digital`. atlas.dev is **read-only** for people (`STACK_API_PEOPLE_WRITERS=atlas-prod`). First stack created end to end from Atlas on 2026-11-08: `sandbox.staging.foxcraft.digital` (adopted into Stella `stack_state`, owner `atlas-dev`).
+**Status (2026-11-14, night):** live on **atlas.dev** and **prod**. Prod `.env`: `STELLA_STACK_API_ENABLED=true`, `STELLA_STACK_API_KEY_PATH=/home/atlas/.ssh/atlas-stack-api` (backup `/var/www/atlas/.env.bak-20261114`). Migrations ran (`stack_actions`, `stack_actions.stack` nullable, `users.ssh_username`, `users.avatar_path`, `users.kind`). Verified `ok action=stack-list` / `job-list` with `principal=atlas-prod`. `/stacks/people` is editable on prod; person `dominik` is linked to Atlas user `dominik@foxcraft.digital`. atlas.dev is **read-only** for people (`STACK_API_PEOPLE_WRITERS=atlas-prod`). First stack created end to end from Atlas on 2026-11-08: `sandbox.staging.foxcraft.digital` (adopted into Stella `stack_state`, owner `atlas-dev`). Agent users (`kind=agent`) are in the Atlas tree; link `edison` with `php artisan atlas:agent-create Edison edison` on atlas.dev then prod. `/users` is a card grid (avatar, two-column footer). Create/edit SSH users is an Atlas-user picker, not a tag list of Stella names.
 
 | Gate | Effect |
 |------|--------|
@@ -31,6 +31,7 @@ Token stays in `.env` (`STELLA_STACK_API_TOKEN`). Signing key: Settings → GitH
 | Reconcile drift (`adopt-live` sync or `re-render` job) | yes |
 | People list + create/edit/remove; out-of-sync stacks; sync one or all | yes |
 | User SSH keys (profile + admin user drawer; public keys only) | yes |
+| Agent users (`kind=agent`; no login; SSH like humans) | yes |
 | Recent stack-api jobs + Atlas `stack_actions` history | yes |
 | Delete a managed WordPress stack (queued job; trash for `retention_days`) | yes |
 | Trash list + restore (queued job) | yes |
@@ -60,8 +61,10 @@ The form submits **Create** (`POST /api/stack-apply`) with no dry-run step. Crea
 | Name | One DNS label; Atlas appends `.staging.foxcraft.digital`. Pattern `^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$`. Reserved: `atlas`, `api`, `stella`, `edison`, `york`, `www`, `mail`, `stella-*` |
 | Type | WordPress (locked) |
 | PHP | `8.4` or `8.5` (default `8.5`). Read-only on edit — Change PHP runs the PHP version job |
-| SSH users | At least one name from `GET /api/stack-people`. Defaults to every returned person. uid + key come from Stella `people/`, not the form |
+| SSH users | `SshUsersPicker`: compact avatar rows of Atlas users who have an SSH key. At least one. No helper subtext under the heading |
 | PHP settings | Always shown with blueprint defaults and a value dropdown per key. Overlay from `spec.php_ini` on edit. Keys: `memory_limit` `256M`, `upload_max_filesize` `64M`, `post_max_size` `64M`, `max_execution_time` `300`, `max_input_time` `60`, `max_input_vars` `1000`, `display_errors` `Off`, `date.timezone` `Europe/Vienna`, `session.gc_maxlifetime` `1440`, `opcache.enable` `1`, `opcache.memory_consumption` `128`, `opcache.max_accelerated_files` `10000`, `opcache.validate_timestamps` `0`, `opcache.revalidate_freq` `2` |
+
+SSH users loads `GET /api/stack-people` (Atlas attaches `atlas_user`: `id`, `name`, `email` or null for agents, `kind`, `has_avatar`, `is_active`). Eligible = linked, active Atlas user with at least one key. Create defaults to every eligible person. Each row: avatar, Atlas name, email or Agent badge, `{ssh_username} · N SSH keys`, check. Apply still sends Stella person names in `spec.ssh_users`; uid + key come from `people/`. People already on the stack who are not eligible (unlinked, inactive, or no keys — e.g. `pawel`) stay in the list when toggled off so the row does not vanish; they are omitted from a new stack. Empty: “No SSH users” + link to `/users`.
 
 Plan response (always HTTP 200 when handled) includes `mode: "create"`: path, SSH port (or “no SSH”), SSH users, notes, and artifacts (`docker-compose.yml`, extra files, Caddy site block). `ok: false` with a rendered compose means policy failed (e.g. a disallowed `php_ini` key). An existing **managed** stack is an update (below), not a create. Unmanaged existing stacks / folders / Caddy files are still refused. A name in the trash is rejected (`name: <name> is in the trash until <ts>; restore it, purge it, or wait for the purge`). Atlas shows a link to `/stacks/trash` so the name can be restored or purged immediately. A sandbox principal may plan/apply any valid `<label>.staging.foxcraft.digital` name; after apply it owns that stack and it shows up in its list.
 
@@ -141,7 +144,9 @@ When `drift` is true, the edit form is locked and **Reconcile** opens a dialog w
 
 stack-api is the source of truth. Atlas stores no people table; it only links an Atlas login to a person via `users.ssh_username` (admin-set, unique, pattern `^[a-z][a-z0-9_-]{0,31}$`). Public keys only — Atlas never generates a key pair and never accepts a private key (client `PRIVATE KEY` check + server `PublicSshKey` rule).
 
-The page lists people with name, UID, key count, managed stacks, and the linked Atlas user (from `users.ssh_username`). Expanding a row shows fingerprints (`SshPublicKeyDetails`). `can_edit` false → **Read-only on this instance** (no Add / Remove). atlas.dev is read-only as of 2026-11-14 (night) (`STACK_API_PEOPLE_WRITERS=atlas-prod`); prod can edit. Out-of-sync stacks still have **Sync** / **Sync all**.
+The page lists people with name, UID, key count, managed stacks, and the linked Atlas user (from `users.ssh_username`). Atlas adds `atlas_user` on `GET /api/stack-people` (`id`, `name`, `email`, `kind`, `has_avatar`, `is_active`); Stella’s `people-list` does not include it. An agent shows as **name + Agent badge** (placeholder email is never shown). People not linked to any Atlas user show `—`. Expanding a row shows fingerprints (`SshPublicKeyDetails`). `can_edit` false → **Read-only on this instance** (no Add / Remove). atlas.dev is read-only as of 2026-11-14 (night) (`STACK_API_PEOPLE_WRITERS=atlas-prod`); prod can edit. Out-of-sync stacks still have **Sync** / **Sync all**.
+
+Person `edison` is linked to the Atlas agent **Edison** (`users.kind = agent`, `ssh_username = edison`). Create/link with `php artisan atlas:agent-create Edison edison` (idempotent; does not send keys).
 
 **Add person** (admin, `can_edit`): name + 1–10 public-key lines + Atlas password. **Remove person**: type-the-name + Atlas password. Removing a key from a person that still has others is an upsert of the remaining keys. The last key cannot be deleted here — the dialog says to remove the person instead.
 
@@ -162,11 +167,19 @@ Profile (`/profile`) shows **SSH keys** when `me.features.stack_api` is on.
 - Refuses deleting the last key (“Add a new key first. To revoke access completely, ask an admin.”).
 - Client- and server-side private-key rejection (`this is a private key; paste the .pub file`).
 - Adding a key is rate-limited: `throttle:ssh-key-add` = 10 per hour per user (`POST /api/me/ssh-keys`).
-- Notification email (`PeopleSshKeyChangedMail`) to the linked user and every active admin. Fingerprints only. Copy still says changes reach containers on the next people sync.
+- Notification email (`PeopleSshKeyChangedMail`) to the linked **human** user and every active admin. Fingerprints only. Copy still says changes reach containers on the next people sync. **Agents are never mailed** (including the placeholder address). Key-change mail for an agent goes to admins only.
 
-Admin **Users** drawer (when the stack-api flag is on): unique `ssh_username`, keys for that person, and linking. Pasting a public key that already belongs to a person assigns `ssh_username` to that person (`people-link`) instead of duplicating the key. `ssh_username` cannot be changed once set.
+Admin **Users** (`/users`, card grid — [`auth.md`](auth.md#user-admin)): unique `ssh_username`, keys for that person, and linking. Pasting a public key that already belongs to a person assigns `ssh_username` to that person (`people-link`) instead of duplicating the key. `ssh_username` cannot be changed once set. Cards show `{ssh_username} · N SSH keys` from the same people list.
 
-Deactivate and delete **always** remove the linked SSH person on Stella (`people-remove`, then auto-sync). Confirm dialogs say so. Toast: “User deactivated. SSH person `<name>` removed.” There is no checkbox. If stack-api is off, or the user has no `ssh_username`, Atlas does not call Stella.
+**Agents** (`users.kind = agent`) never log in, never get a password or session, and can never be admin. They exist so SSH access can be managed like everyone else's and so they can later be assigned tasks (not built). `users.email` is unique and NOT NULL, so an agent stores a non-routable placeholder `agent+<ssh_username>@agents.invalid` — never shown in the UI, never mailed. Making `email` nullable would have been more invasive (login, uniqueness, reset).
+
+**Add user** (admin): Type Human or Agent in the drawer. An agent is name + photo + `ssh_username` + optional public keys + Atlas password. If the SSH person already exists (e.g. `edison` today), Atlas links only and does not send keys unless the admin adds new ones later. If keys are given and the person does not exist, one `people-upsert`. `php artisan atlas:agent-create {name} {ssh_username}` is the one-off for atlas.dev and prod (`Edison edison`); running it twice changes nothing.
+
+Agent detail: name, photo, `ssh_username`, fingerprints with add/remove (same public-key rules; cannot delete the last key), stacks the person is in. No password, email, or admin toggle — agents cannot sign in.
+
+Deactivate and delete remove the linked SSH person on Stella (`people-remove`, then auto-sync) **only when this instance can edit people** (`can_edit`). atlas.dev is read-only (`STACK_API_PEOPLE_WRITERS=atlas-prod`), so those actions only deactivate/delete the Atlas login and leave the Stella person in place. Confirm dialogs mention the Stella remove only when it will happen. Toast: “User deactivated. SSH person `<name>` removed.” when `ssh_person_removed` is true, otherwise “User deleted.” / “User deactivated.” There is no checkbox. If stack-api is off, the user has no `ssh_username`, or `can_edit` is false, Atlas does not call Stella. Reactivating an agent brings the Atlas account back; SSH access does not come back until the admin adds keys and stack membership again.
+
+Do not deactivate Edison on prod as a test — that revokes its SSH access everywhere.
 
 Negative UI checks (deleting the last key, pasting a private key, wrong password): verified 2026-11-14 (night).
 
@@ -195,7 +208,7 @@ Admin only (except a user managing their own keys). 404 when the flag is off. Cl
 | `POST /api/stacks/{name}/php-version` | `stack-php-version` (`{php}`) |
 | `POST /api/stacks/{name}/reconcile` | `stack-reconcile` (`{mode: adopt-live\|re-render}`) |
 | `GET /api/stack-jobs` / `{id}` | `job-list` / `job-get` |
-| `GET /api/stacks/people` (also `GET /api/stack-people`) | `people-list` |
+| `GET /api/stacks/people` (also `GET /api/stack-people`) | `people-list`, then Atlas attaches `atlas_user` per person |
 | `POST /api/stacks/people` (also `POST /api/stack-people`) | `people-upsert` (`{name, keys, current_password}`; Stella also gets `actor`) |
 | `POST /api/stacks/people/{name}/remove` (also `DELETE /api/stacks/people/{name}` and `DELETE /api/stack-people/{name}`) | `people-remove` (`{confirm, current_password}`; `confirm` must equal name) |
 | `POST /api/stacks/people/sync` (also `POST /api/stack-people-sync`) | `stack-people-sync` (`{name?}`; omit `name` for all out-of-sync) |
