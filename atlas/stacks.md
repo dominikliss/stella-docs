@@ -2,15 +2,15 @@
 
 **`/stacks`** is the operator UI for Stella compose stacks. Atlas does not talk to Docker itself: every call is a signed request to [`../stella-server/stack-api.md`](../stella-server/stack-api.md). The browser never calls Stella.
 
-**Status (2026-11-14):** live on **atlas.dev**. Prod flag still off. First stack created end to end from Atlas on 2026-11-08: `sandbox.staging.foxcraft.digital` (adopted into Stella `stack_state`, owner `atlas-dev`).
+**Status (2026-11-14, night):** live on **atlas.dev** and **prod**. Prod `.env`: `STELLA_STACK_API_ENABLED=true`, `STELLA_STACK_API_KEY_PATH=/home/atlas/.ssh/atlas-stack-api` (backup `/var/www/atlas/.env.bak-20261114`). Migrations ran (`stack_actions`, `stack_actions.stack` nullable, `users.ssh_username`, `users.avatar_path`). Verified `ok action=stack-list` / `job-list` with `principal=atlas-prod`. `/stacks/people` is editable on prod; person `dominik` is linked to Atlas user `dominik@foxcraft.digital`. atlas.dev is **read-only** for people (`STACK_API_PEOPLE_WRITERS=atlas-prod`). First stack created end to end from Atlas on 2026-11-08: `sandbox.staging.foxcraft.digital` (adopted into Stella `stack_state`, owner `atlas-dev`).
 
 | Gate | Effect |
 |------|--------|
-| `STELLA_STACK_API_ENABLED` | Off → `/api/stacks*` is 404 and the nav item is hidden (`me.features.stack_api`) |
+| `STELLA_STACK_API_ENABLED` | Off → `/api/stacks*` is 404. Nav item is always shown. |
 | Admin role | Non-admin → 403 even when the flag is on |
 | Principal scope | `atlas-dev` (sandbox) lists stacks it can see, including any `<label>.staging.foxcraft.digital` name it created (it then owns that name). `atlas-prod` sees all `/opt/apps/{wordpress,laravel,dotnet}/*` stacks |
 
-Token stays in `.env` (`STELLA_STACK_API_TOKEN`). Signing key: Settings → GitHub `stack_api_ssh_key_path` (fallback `STELLA_STACK_API_KEY_PATH`). atlas.dev uses `/var/www/.ssh/id_ed25519` (principal `atlas-dev`). Prod key when enabled: `/home/atlas/.ssh/atlas-stack-api` (principal `atlas-prod`). Namespace **`stack`**, not `deploy`.
+Token stays in `.env` (`STELLA_STACK_API_TOKEN`). Signing key: Settings → GitHub `stack_api_ssh_key_path` (fallback `STELLA_STACK_API_KEY_PATH`). atlas.dev uses `/var/www/.ssh/id_ed25519` (principal `atlas-dev`). Prod key: `/home/atlas/.ssh/atlas-stack-api` (principal `atlas-prod`). Namespace **`stack`**, not `deploy`.
 
 ---
 
@@ -141,13 +141,13 @@ When `drift` is true, the edit form is locked and **Reconcile** opens a dialog w
 
 stack-api is the source of truth. Atlas stores no people table; it only links an Atlas login to a person via `users.ssh_username` (admin-set, unique, pattern `^[a-z][a-z0-9_-]{0,31}$`). Public keys only — Atlas never generates a key pair and never accepts a private key (client `PRIVATE KEY` check + server `PublicSshKey` rule).
 
-The page lists people with name, UID, key count, managed stacks, and the linked Atlas user (from `users.ssh_username`). Expanding a row shows fingerprints (`SshPublicKeyDetails`). `can_edit` false → **Read-only on this instance** (no Add / Remove). Out-of-sync stacks still have **Sync** / **Sync all**.
+The page lists people with name, UID, key count, managed stacks, and the linked Atlas user (from `users.ssh_username`). Expanding a row shows fingerprints (`SshPublicKeyDetails`). `can_edit` false → **Read-only on this instance** (no Add / Remove). atlas.dev is read-only as of 2026-11-14 (night) (`STACK_API_PEOPLE_WRITERS=atlas-prod`); prod can edit. Out-of-sync stacks still have **Sync** / **Sync all**.
 
 **Add person** (admin, `can_edit`): name + 1–10 public-key lines + Atlas password. **Remove person**: type-the-name + Atlas password. Removing a key from a person that still has others is an upsert of the remaining keys. The last key cannot be deleted here — the dialog says to remove the person instead.
 
 `POST /api/stacks/people` → Stella `people-upsert`. `POST /api/stacks/people/{name}/remove` → `people-remove` (`confirm` must equal `name`). `DELETE /api/stacks/people/{name}` is also registered, **before** the `/api/stacks/{name}` catch-all. Bug fixed 2026-11-14: that DELETE was matched as stack name `people`, so remove never reached stack-api.
 
-Atlas records `stack_actions` `people-upsert` / `people-remove` with `stack` null and fingerprints only (`added` / `removed`). Stella upsert/remove auto-sync every managed stack the person is on (`sync: [{name, job, state} | {name, error}]`). **The Atlas UI does not read `sync`.** Toasts still say “Saved. Changes reach the containers on the next sync.” Manual **Sync** / **Sync all** (`POST /api/stacks/people/sync`) remains the fallback when auto-sync hits a busy stack. Open: show auto-sync jobs from the upsert/remove response.
+Atlas records `stack_actions` `people-upsert` / `people-remove` with `stack` null and fingerprints only (`added` / `removed`). Stella upsert/remove auto-sync every managed stack the person is on (`sync: [{name, job, state} | {name, error}]`). **The Atlas UI does not read `sync` (won't-do).** Toasts stay “Saved. Changes reach the containers on the next sync.” Manual **Sync** / **Sync all** (`POST /api/stacks/people/sync`) remains the fallback when auto-sync hits a busy stack.
 
 **Sync** per stack and **Sync all** (`{name?}`; omit `name` for every out-of-sync stack). Response `{"jobs":[{name, job, state} | {name, error}]}`. Atlas records `people-sync` / `queued` (or `error`) per row. Job result is like update plus `dropped`. The result panel lists dropped people.
 
@@ -168,7 +168,7 @@ Admin **Users** drawer (when the stack-api flag is on): unique `ssh_username`, k
 
 Deactivate and delete **always** remove the linked SSH person on Stella (`people-remove`, then auto-sync). Confirm dialogs say so. Toast: “User deactivated. SSH person `<name>` removed.” There is no checkbox. If stack-api is off, or the user has no `ssh_username`, Atlas does not call Stella.
 
-Negative UI checks (deleting the last key, pasting a private key, wrong password): **UNVERIFIED**.
+Negative UI checks (deleting the last key, pasting a private key, wrong password): verified 2026-11-14 (night).
 
 ---
 
