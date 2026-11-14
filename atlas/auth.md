@@ -63,7 +63,7 @@ No bearer → 401 `Unauthenticated.`
 
 The SPA (`resources/js/lib/api-client.ts`) only toasts when the JSON body has a `message`. Canceled requests, dropped connections, and gateway **502/504** stay silent so background dashboard polls do not show “An unexpected error occurred.”
 
-`GET /api/auth/me` returns the local user + Spatie role names + `two_factor_confirmed` / `password_must_change` / `is_active` (used to bootstrap the SPA).
+`GET /api/auth/me` returns the local user + Spatie role names + `ssh_username` / `has_avatar` / `features.stack_api` + `two_factor_confirmed` / `password_must_change` / `is_active` (used to bootstrap the SPA). Photos are not inlined; `has_avatar` true means `GET /api/users/{id}/avatar` will 200 (any signed-in user).
 
 ---
 
@@ -74,6 +74,8 @@ Signed-in user (`/profile`):
 | Method | Path | Purpose |
 |--------|------|---------|
 | `PATCH` | `/api/auth/me` | Name / email (email change needs current password) |
+| `POST` | `/api/auth/me/avatar` | JPEG / PNG / WebP, max 2 MB; stored 512px on the local disk (`users.avatar_path`) |
+| `DELETE` | `/api/auth/me/avatar` | Remove photo |
 | `PUT` | `/api/auth/password` | Change password (min 12, mixed case, number; `uncompromised` in production) |
 | `POST` | `/api/auth/two-factor` | Start TOTP enrollment |
 | `POST` | `/api/auth/two-factor/confirm` | Confirm TOTP |
@@ -94,11 +96,17 @@ Admins only (`auth.admin` → `EnsureAdmin`). UI: `/users`.
 
 | Method | Path | Purpose |
 |--------|------|---------|
-| `GET` | `/api/users` | List |
+| `GET` | `/api/users` | List (`ssh_username`, `has_avatar`, …) |
 | `POST` | `/api/users` | Create (temporary password emailed; `password_must_change`) |
-| `PATCH` | `/api/users/{user}` | Name, email, role (`admin` / `developer`), `is_active` |
+| `PATCH` | `/api/users/{user}` | Name, email, role (`admin` / `developer`), `is_active`, unique `ssh_username` |
+| `DELETE` | `/api/users/{user}` | After deactivate; also removes the linked SSH person and avatar |
+| `GET` | `/api/users/{user}/avatar` | Photo bytes (any signed-in user; 404 if none) |
+| `POST` | `/api/users/{user}/avatar` | Same rules as profile |
+| `DELETE` | `/api/users/{user}/avatar` | Remove photo |
 | `POST` | `/api/users/{user}/reset-password` | New temporary password |
 | `POST` | `/api/users/{user}/reset-two-factor` | Clear TOTP |
+
+`ssh_username` is unique, pattern `^[a-z][a-z0-9_-]{0,31}$`, and cannot be changed once set. SSH keys live on Stella, not in Atlas — [`stacks.md`](stacks.md#user-ssh-keys). Deactivate and delete always `people-remove` the linked person when the stack-api flag is on.
 
 The last active admin cannot be demoted or deactivated. `atlas:setup` creates the first admin with a local password (and required 2FA on first login).
 
