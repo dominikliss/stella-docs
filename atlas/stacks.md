@@ -27,7 +27,7 @@ Token stays in `.env` (`STELLA_STACK_API_TOKEN`). Signing key: Settings → GitH
 | Plan a new WordPress stack (dry-run compose / files / Caddy; mode `create`) | API only — the create drawer no longer plans first |
 | Create a WordPress stack (queued apply job; in-grid card with the current step only) | yes |
 | WordPress login after create (URL, user, email, password once from the job result, table prefix) | yes |
-| Edit a managed WordPress stack (plan diffs → apply; job action `stack-update`) | yes |
+| Edit a managed WordPress stack (apply; job action `stack-update`) | yes |
 | Reconcile drift (`adopt-live` sync or `re-render` job) | yes |
 | People list + out-of-sync stacks; sync one or all | yes |
 | Recent stack-api jobs + Atlas `stack_actions` history | yes |
@@ -38,7 +38,7 @@ Token stays in `.env` (`STELLA_STACK_API_TOKEN`). Signing key: Settings → GitH
 | Create Laravel or .NET stacks | **not built** (list/get still show those types) |
 | PHP version change | **not built** |
 
-List polls every 30 s and always refetches when `/stacks` mounts (so a restore from Trash is visible without a full reload). Detail polls every 30 s; jobs every 10 s; a watched job every 2 s until `ok` / `error`.
+List polls every 30 s and always refetches when `/stacks` mounts (so a restore from Trash is visible without a full reload). The grid stays empty until the real cards arrive — no skeleton placeholders. Detail polls every 30 s; jobs every 10 s; a watched job every 2 s until `ok` / `error`.
 
 ---
 
@@ -52,7 +52,7 @@ Card grid grouped by WordPress → Laravel → .NET → anything else, then name
 
 ## Create
 
-The form submits **Create** (`POST /api/stack-apply`) with no dry-run step. Create is enabled when the name is valid and at least one SSH user is selected. The drawer closes as soon as Stella queues the job; the WordPress grid shows a placeholder card in the sorted slot the new stack will occupy (by name, among existing WordPress cards). That card shows only the current apply step (files → compose-up → Caddy → HTTP wait → WordPress install → permissions → state), not the full checklist, with no live iframe under the overlay. The scan animation runs only inside the preview pane. Stella still accepts `POST /api/stack-plan` for edits. Changing name, PHP, SSH users, or ini rows just changes what Create sends.
+The form submits **Create** (`POST /api/stack-apply`) with no dry-run step. Create is enabled when the name is valid and at least one SSH user is selected. The drawer closes as soon as Stella queues the job; the WordPress grid shows a placeholder card in the sorted slot the new stack will occupy (by name, among existing WordPress cards). That card shows only the current apply step (files → compose-up → Caddy → HTTP wait → WordPress install → permissions → state), not the full checklist, with no live iframe under the overlay. The scan animation runs only inside the preview pane. Stella still accepts `POST /api/stack-plan`; Atlas create and edit no longer call it. Changing name, PHP, SSH users, or ini rows just changes what Create sends.
 
 | Field | Rule |
 |-------|------|
@@ -72,14 +72,22 @@ New sites are IP-restricted in Caddy (`STACK_API_SITE_ALLOW_IPS`: Proton, york, 
 
 ## Detail (sidebar on `/stacks/$name`)
 
+One 640px drawer with three tabs. Create still uses its own drawer.
+
+| Tab | Contents |
+|-----|----------|
+| Stack | Sandbox/managed/drift tags, WordPress login, edit form (when `managed` and `spec` are present), danger zone |
+| Containers | Two-column card grid (image, state, status, started, restarts, health, bind ports, logs, restart) |
+| Jobs | Watched job, last restart, recent stack-api jobs, Atlas history |
+
 | Action | Notes |
 |--------|-------|
-| Logs | Per service. Docker stdout/stderr, timestamps on. 50 / 200 / 1000 lines (API 1–1000, default 200). Panel scrolls to the newest line. Truncated containers are marked. Log bodies are never written to the Stella audit log |
+| Logs | Per service, from a container card. Docker stdout/stderr, timestamps on. 50 / 200 / 1000 lines (API 1–1000, default 200). Panel scrolls to the newest line. Truncated containers are marked. Log bodies are never written to the Stella audit log |
 | Restart service | Confirm dialog. Always queued (`async`); Atlas watches the job |
-| Restart stack | On the card and in the sidebar. Always queued. Type-the-name confirm unless the stack is sandbox. Stella restarts `db` first |
-| Edit | Shown only when `managed` is true. Opens the plan drawer prefilled from `spec`. Disabled when `drift` is true |
-| Reconcile | Shown when `drift` is true. Dialog: adopt live files, or re-render from the stored spec. Re-render on a non-sandbox stack needs a type-the-name confirm |
-| Delete | Shown only when `managed` is true. Type-the-name confirm. Confirm starts the job immediately (card Deleting overlay in the preview pane, no globe) while the confirm dialog and sidebar animate out. Stack goes to the trash for `retention_days` and can be restored. Queued job; toast on settle. On failure: toast with `detail`. Atlas always sends `final_dump: false` (no SQL copy; restore uses volumes) |
+| Restart stack | On the card and in the sidebar header. Always queued. Type-the-name confirm unless the stack is sandbox. Stella restarts `db` first |
+| Edit | On the Stack tab, not a second drawer. Form is prefilled from `spec`. Locked when `drift` is true |
+| Reconcile | Shown on the Stack tab when `drift` is true. Dialog: adopt live files, or re-render from the stored spec. Re-render on a non-sandbox stack needs a type-the-name confirm |
+| Delete | Shown only when `managed` is true (Stack tab danger zone). Type-the-name confirm. Confirm starts the job immediately (card Deleting overlay in the preview pane, no globe) while the confirm dialog and sidebar animate out. Stack goes to the trash for `retention_days` and can be restored. Queued job; toast on settle. On failure: toast with `detail`. Atlas always sends `final_dump: false` (no SQL copy; restore uses volumes) |
 
 `drift` is `true` / `false` / `null` (`null` = not managed). A **drift** badge is on the card and in the sidebar when it is true.
 
@@ -89,19 +97,19 @@ Busy stack (sync restart or any job already running) → `409` “Stack is busy 
 
 ---
 
-## Edit (Plan → Apply)
+## Edit (Apply)
 
-Managed stacks only. The drawer is the same form as create, prefilled from `GET /api/stacks/{name}` `spec`. **Name** and **type** are locked. **PHP** is locked with the hint “change via PHP version (coming)” — Stella rejects a PHP change on update (`php: is 8.5; the PHP version is changed with the PHP version job, not with update`). Apply is disabled until a **successful** plan matches the current form (SSH users or ini rows).
+Managed stacks only. The Stack tab embeds the same form as create, prefilled from `GET /api/stacks/{name}` `spec`. **Name** and **type** are locked. **PHP** is locked with the hint “change via PHP version (coming)” — Stella rejects a PHP change on update (`php: is 8.5; the PHP version is changed with the PHP version job, not with update`). There is no Plan step. **Apply** is enabled when the form is valid (at least one SSH user) and the stack is not drifted. Confirm, then `POST /api/stack-apply`.
 
-Plan for an existing managed stack returns `mode: "update"` plus `drift`, `changes: [{file, status: added|changed|removed, diff}]`, notes, and the usual artifacts. Atlas shows the notes and a collapsible unified diff per changed file (monospace, `+` / `-` colored). `ok: false` with `drift: live files differ from the last apply; reconcile first` means Edit is the wrong action — reconcile first.
+Stella still accepts `POST /api/stack-plan` for a dry-run (`mode: "update"` plus `drift`, `changes`, notes, artifacts). Atlas does not call it. `ok: false` with `drift: live files differ from the last apply; reconcile first` means Apply is the wrong action — reconcile first. The form is locked until then.
 
-Apply uses the same `POST /api/stack-apply`. Response `{ok:true, mode:"update", job, state, name}` (job action `stack-update`). Atlas records `stack_actions` as `update` / `queued`. Job result: `{name, changed, changes:[{file,status}], backup, ssh_port, ssh_users[], steps[]}`. `changed: false` is a **neutral info** (“No changes”), not an error. Failure: `{step, output, done[], rollback[], backup}` or the string `drift: …`.
+Apply response `{ok:true, mode:"update", job, state, name}` (job action `stack-update`). Atlas records `stack_actions` as `update` / `queued`. Job result: `{name, changed, changes:[{file,status}], backup, ssh_port, ssh_users[], steps[]}`. `changed: false` is a **neutral info** (“No changes”), not an error. Failure: `{step, output, done[], rollback[], backup}` or the string `drift: …`.
 
 ---
 
 ## Reconcile
 
-When `drift` is true, Edit is disabled and **Reconcile** opens a dialog with two one-line options:
+When `drift` is true, the edit form is locked and **Reconcile** opens a dialog with two one-line options:
 
 - Adopt live files (only works if they still match a blueprint)
 - Re-render from the stored spec (overwrites the live files; a backup is kept)
