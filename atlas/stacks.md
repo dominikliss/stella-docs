@@ -36,7 +36,7 @@ Token stays in `.env` (`STELLA_STACK_API_TOKEN`). Signing key: Settings → GitH
 | Trash purge now (queued job; frees the name) | yes |
 | Restore from an Atlas backup | **not built** (`create` + `restore` is the planned replacement for wp-staging-api) |
 | Create Laravel or .NET stacks | **not built** (list/get still show those types) |
-| PHP version change | **not built** |
+| PHP version change | yes |
 
 List polls every 30 s and always refetches when `/stacks` mounts (so a restore from Trash is visible without a full reload). The grid stays empty until the real cards arrive — no skeleton placeholders. Detail polls every 30 s; jobs every 10 s; a watched job every 2 s until `ok` / `error`.
 
@@ -58,7 +58,7 @@ The form submits **Create** (`POST /api/stack-apply`) with no dry-run step. Crea
 |-------|------|
 | Name | One DNS label; Atlas appends `.staging.foxcraft.digital`. Pattern `^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$`. Reserved: `atlas`, `api`, `stella`, `edison`, `york`, `www`, `mail`, `stella-*` |
 | Type | WordPress (locked) |
-| PHP | `8.4` or `8.5` (default `8.5`). Locked on edit — Stella changes PHP with the PHP version job, not with update |
+| PHP | `8.4` or `8.5` (default `8.5`). Read-only on edit — Change PHP runs the PHP version job |
 | SSH users | At least one name from `GET /api/stack-people`. Defaults to every returned person. uid + key come from Stella `people/`, not the form |
 | PHP settings | Always shown with blueprint defaults and a value dropdown per key. Overlay from `spec.php_ini` on edit. Keys: `memory_limit` `256M`, `upload_max_filesize` `64M`, `post_max_size` `64M`, `max_execution_time` `300`, `max_input_time` `60`, `max_input_vars` `1000`, `display_errors` `Off`, `date.timezone` `Europe/Vienna`, `session.gc_maxlifetime` `1440`, `opcache.enable` `1`, `opcache.memory_consumption` `128`, `opcache.max_accelerated_files` `10000`, `opcache.validate_timestamps` `0`, `opcache.revalidate_freq` `2` |
 
@@ -85,7 +85,8 @@ One 640px drawer with three tabs. Create still uses its own drawer.
 | Logs | Per service, from a container card. Docker stdout/stderr, timestamps on. 50 / 200 / 1000 lines (API 1–1000, default 200). Panel scrolls to the newest line. Truncated containers are marked. Log bodies are never written to the Stella audit log |
 | Restart service | Confirm dialog. Always queued (`async`); Atlas watches the job |
 | Restart stack | On the card and in the sidebar header. Always queued. Type-the-name confirm unless the stack is sandbox. Stella restarts `db` first |
-| Edit | On the Stack tab, not a second drawer. Form is prefilled from `spec`. Locked when `drift` is true |
+| Edit | On the Stack tab, not a second drawer. Form is prefilled from `spec`. Locked when `drift` is true. PHP is read-only; Change PHP is a separate dialog |
+| Change PHP | Managed WordPress only. Disabled when drifted (“Reconcile first”). Dialog + job polling |
 | Reconcile | Shown on the Stack tab when `drift` is true. Dialog: adopt live files, or re-render from the stored spec. Re-render on a non-sandbox stack needs a type-the-name confirm |
 | Delete | Shown only when `managed` is true (Stack tab danger zone). Type-the-name confirm. Confirm starts the job immediately (card Deleting overlay in the preview pane, no globe) while the confirm dialog and sidebar animate out. Stack goes to the trash for `retention_days` and can be restored. Queued job; toast on settle. On failure: toast with `detail`. Atlas always sends `final_dump: false` (no SQL copy; restore uses volumes) |
 
@@ -93,17 +94,29 @@ One 640px drawer with three tabs. Create still uses its own drawer.
 
 Busy stack (sync restart or any job already running) → `409` “Stack is busy — another action is running.” Delete also maps 409 `stack is not managed by stack-api` / `stack is already in the trash` / `stack busy` (message stays `stack busy`; detail is passed through). Adopt-live 409 `live files do not match a blueprint render; use re-render` is shown in the reconcile dialog (message still `stack busy`; detail is passed through).
 
-**Recent jobs** come from stack-api (`limit` 10 on the page). **History** is Atlas `stack_actions` (last 50): restart, apply, update, reconcile, people-sync, fix-permissions, delete, trash-restore, trash-purge. Queued rows store the job id in `detail` and settle to `ok` / `error` when the job is fetched (detail page, job list, or job get). `plan`, `people`, and trash list do not write `stack_actions`. Stella keeps its own append-only audit log.
+**Recent jobs** come from stack-api (`limit` 10 on the page). **History** is Atlas `stack_actions` (last 50): restart, apply, update, php-version, reconcile, people-sync, fix-permissions, delete, trash-restore, trash-purge. Queued rows store the job id in `detail` and settle to `ok` / `error` when the job is fetched (detail page, job list, or job get). `plan`, `people`, and trash list do not write `stack_actions`. Stella keeps its own append-only audit log.
 
 ---
 
 ## Edit (Apply)
 
-Managed stacks only. The Stack tab embeds the same form as create, prefilled from `GET /api/stacks/{name}` `spec`. **Name** and **type** are locked. **PHP** is locked with the hint “change via PHP version (coming)” — Stella rejects a PHP change on update (`php: is 8.5; the PHP version is changed with the PHP version job, not with update`). There is no Plan step. **Apply** is enabled when the form is valid (at least one SSH user) and the stack is not drifted. Confirm, then `POST /api/stack-apply`.
+Managed stacks only. The Stack tab embeds the same form as create, prefilled from `GET /api/stacks/{name}` `spec`. **Name** and **type** are locked. **PHP** is read-only with a **Change PHP** button (below). Stella rejects a PHP change on update (`php: is <v>; the PHP version is changed with /stacks/php-version, not with update`). There is no Plan step. **Apply** is enabled when the form is valid (at least one SSH user) and the stack is not drifted. Confirm, then `POST /api/stack-apply`. Progress for Apply and Change PHP is in the sticky sidebar header (current step only). Drift is hidden while those jobs run.
 
 Stella still accepts `POST /api/stack-plan` for a dry-run (`mode: "update"` plus `drift`, `changes`, notes, artifacts). Atlas does not call it. `ok: false` with `drift: live files differ from the last apply; reconcile first` means Apply is the wrong action — reconcile first. The form is locked until then.
 
 Apply response `{ok:true, mode:"update", job, state, name}` (job action `stack-update`). Atlas records `stack_actions` as `update` / `queued`. Job result: `{name, changed, changes:[{file,status}], backup, ssh_port, ssh_users[], steps[]}`. `changed: false` is a **neutral info** (“No changes”), not an error. Failure: `{step, output, done[], rollback[], backup}` or the string `drift: …`.
+
+---
+
+## Change PHP
+
+Edit shows the current PHP version read-only, with a **Change PHP** button. The button is only enabled for managed WordPress stacks without drift. With drift it shows “Reconcile first”.
+
+The dialog has a target-version select (config `stacks.php_versions`, kept in sync with `STACK_API_PHP_VERSIONS` by hand), a confirm, and job polling. Confirm is only active when another version is chosen. Atlas polls the job every 2 s. Progress is in the sticky sidebar header and on the list card overlay.
+
+The success view shows from → to and the dump path. The error view shows step, output and rollback.
+
+Route: `POST /api/stacks/{name}/php-version` `{php}` (`^8\.[0-9]+$`), which logs a `stack_actions` row `php-version` (`queued` with the job id, or `rejected` with the first error). Stella returns `{ok:false, errors}` on HTTP 200 (already that version, not allowed, not WordPress). `404` unmanaged / not found. `409` stack busy.
 
 ---
 
@@ -139,7 +152,7 @@ Card grid of trash entries, grouped by type: name, type, deleted at, purge after
 
 ## Atlas API
 
-Admin only. 404 when the flag is off. Client: `app/Domain/Stacks/StackApiClient.php`. Timeouts: restart 65 s (15 s when async), logs 30 s, plan 30 s, apply 30 s, delete 30 s, trash list / restore / purge 30 s, reconcile 30 s, people-sync 30 s, people / fix-permissions 15 s. Every Stella body includes a random `nonce`. Empty `php_ini` is `{}`, never `[]`. Delete always sends `final_dump` as JSON `false`.
+Admin only. 404 when the flag is off. Client: `app/Domain/Stacks/StackApiClient.php`. Timeouts: restart 65 s (15 s when async), logs 30 s, plan 30 s, apply 30 s, delete 30 s, trash list / restore / purge 30 s, reconcile 30 s, PHP version 30 s, people-sync 30 s, people / fix-permissions 15 s. Every Stella body includes a random `nonce`. Empty `php_ini` is `{}`, never `[]`. Delete always sends `final_dump` as JSON `false`.
 
 | Atlas | Stella action |
 |-------|---------------|
@@ -149,6 +162,7 @@ Admin only. 404 when the flag is off. Client: `app/Domain/Stacks/StackApiClient.
 | `POST /api/stacks/{name}/restart` | `stack-restart` |
 | `POST /api/stacks/{name}/fix-permissions` | `stack-fix-permissions` |
 | `POST /api/stacks/{name}/delete` | `stack-delete` (`{confirm, final_dump: false}`; confirm must equal name) |
+| `POST /api/stacks/{name}/php-version` | `stack-php-version` (`{php}`) |
 | `POST /api/stacks/{name}/reconcile` | `stack-reconcile` (`{mode: adopt-live\|re-render}`) |
 | `GET /api/stack-jobs` / `{id}` | `job-list` / `job-get` |
 | `GET /api/stack-people` | `people-list` |
@@ -171,4 +185,4 @@ Never log the token, signature, key contents, log lines, spec keys, or response 
 
 ## Not in this UI
 
-Stella still discovers Laravel and .NET stacks for list/get/restart/logs. Create has no blueprint for them yet. PHP version change, labels, basic auth, staging guard, and cron are still open. Roadmap: [`../stella-server/stack-api.md#roadmap`](../stella-server/stack-api.md#roadmap).
+Stella still discovers Laravel and .NET stacks for list/get/restart/logs. Create has no blueprint for them yet. Labels, basic auth, staging guard, and cron are still open. Roadmap: [`../stella-server/stack-api.md#roadmap`](../stella-server/stack-api.md#roadmap).

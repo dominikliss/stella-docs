@@ -1,6 +1,6 @@
 # stack-api (container management for Atlas)
 
-**Status:** live since 2026-11-04. As of 2026-11-14 (`main.py`): signed `list` / `get` / `restart` (sync + async) / `logs` / `plan` / `apply` (create + update of `php_ini` / `ssh_users`) / `reconcile` / `fix-permissions` / `delete` / trash list / trash restore / trash purge-now / people list / people sync, `stack_state` + drift detection + job table with per-stack locks, append-only audit log, hourly trash purge. WordPress auto-install on create (2026-11-14). Atlas UI on atlas.dev: [`../atlas/stacks.md`](../atlas/stacks.md) (list/search, logs, restart, WordPress create / edit, drift reconcile, people sync, fix-permissions, delete + trash/restore/purge, jobs, history). First stack created end to end from Atlas on 2026-11-08: `sandbox.staging.foxcraft.digital` (adopted into `stack_state` 2026-11-14, owner `atlas-dev`). Not yet: PHP version change, restore from an Atlas backup, Laravel/.NET blueprints.
+**Status:** live since 2026-11-04. As of 2026-11-14 (`main.py`): signed `list` / `get` / `restart` (sync + async) / `logs` / `plan` / `apply` (create + update of `php_ini` / `ssh_users`) / `php-version` / `reconcile` / `fix-permissions` / `delete` / trash list / trash restore / trash purge-now / people list / people sync, `stack_state` + drift detection + job table with per-stack locks, append-only audit log, hourly trash purge. WordPress auto-install on create (2026-11-14). Atlas UI on atlas.dev: [`../atlas/stacks.md`](../atlas/stacks.md) (list/search, logs, restart, WordPress create / edit, PHP version change, drift reconcile, people sync, fix-permissions, delete + trash/restore/purge, jobs, history). First stack created end to end from Atlas on 2026-11-08: `sandbox.staging.foxcraft.digital` (adopted into `stack_state` 2026-11-14, owner `atlas-dev`). Not yet: restore from an Atlas backup, Laravel/.NET blueprints.
 
 **URL:** `https://stella-stack-api.foxcraft.digital`
 
@@ -23,17 +23,17 @@ Infra: [`infrastructure.md`](infrastructure.md). System map: [`../integration/sy
   ├── allowed_signers     ← mounted read-only, not baked into the image; atlas-prod + atlas-dev, both namespaces="stack"
   ├── data/               ← host dir; SQLite at /data/stack-api.sqlite in the container (code default; STACK_API_DB is not in .env)
   ├── people/
-  │     ├── users.conf    ← central SSH people list (public keys only); bind-mounted read-only
+  │     ├── users.conf    ← central SSH people list (public keys only); bind-mounted read-only (read-write is planned — see [People management](#people-management-planned-2026-11-14))
   │     └── keys/<name>.pub
-  ├── app/main.py         ← API, auth, jobs, apply, update, reconcile, delete/trash, people sync, rollback, permissions
-  ├── app/stackspec.py    ← spec validation, people loader, WordPress blueprint, Caddy block, policy, YAML dump
+  ├── app/main.py         ← API, auth, jobs, apply, update, php-version, reconcile, delete/trash, people sync, rollback, permissions
+  ├── app/stackspec.py    ← spec validation, people loader, WordPress blueprint (incl. `ssh` WORDPRESS_* env), Caddy block, policy, YAML dump
   └── images/ssh-php/     ← shared SSH image (not in the API container)
         ├── Dockerfile
         ├── atlas-sync-users
         └── entrypoint.sh
 ```
 
-Never write the token value into docs. Backups on Stella: `app/main.py.bak-20261108`, `-20261108b`, `-20261108c`, `-20261108d`; `app/main.py.bak-20261114` (before delete/trash), `app/main.py.bak-20261114b` (before update), `app/main.py.bak-20261114c` (before purge-now). The live `app/main.py` is the version with WordPress install (`install_wordpress` / `wp_cli`, random table prefix) plus purge-now. `app/stackspec.py.bak-20261108`, `-20261108b`, `-20261108c`; stack-api `Dockerfile.bak-20261108`. stack-api `Dockerfile` and `requirements.txt` are unchanged since 2026-11-08. Shared SSH image: `images/ssh-php/Dockerfile.bak-20261114` (before mysqli).
+Never write the token value into docs. Backups on Stella: `app/main.py.bak-20261108`, `-20261108b`, `-20261108c`, `-20261108d`; `app/main.py.bak-20261114` (before delete/trash), `app/main.py.bak-20261114b` (before update), `app/main.py.bak-20261114c` (before purge-now), `app/main.py.bak-20261114d` (before php-version). The live `app/main.py` includes the php-version job. `app/stackspec.py.bak-20261108`, `-20261108b`, `-20261108c`; `app/stackspec.py.bak-20261114` (before the `ssh` env change). The live `app/stackspec.py` includes the `ssh` `WORDPRESS_*` env. stack-api `Dockerfile.bak-20261108`. stack-api `Dockerfile` and `requirements.txt` are unchanged since 2026-11-08. Shared SSH image: `images/ssh-php/Dockerfile.bak-20261114` (before mysqli); `images/ssh-php/entrypoint.sh.bak-20261114` (before `/etc/environment`).
 
 `.env` keys (no values): `STACK_API_TOKEN`, `STACK_API_ALLOWED_IPS`, `STACK_API_SANDBOX_STACKS`, `STACK_API_SITE_ALLOW_IPS`, `STACK_API_DOMAINS`, `STACK_API_TRASH_DAYS`, `STACK_API_PHP_VERSIONS`. `STACK_API_DB` is **not** in `.env` — the code default `/data/stack-api.sqlite` is used. Optional with defaults: `STACK_API_PHP_VERSIONS` (`8.5` if unset; live `.env` is `8.4,8.5`), `STACK_API_TRASH_DAYS` (`7`), `STACK_API_HEAVY_JOBS` (`1`), `STACK_API_CADDY_CONTAINER` (`services-caddy-1`), `STACK_API_CADDY_SITES` (`/caddy-sites`), `STACK_API_PEOPLE` (`/app/people`), `STACK_API_WP_ADMIN_USER` (`foxcraft.digital`), `STACK_API_WP_ADMIN_EMAIL` (`projects@foxcraft.digital`).
 
@@ -127,18 +127,18 @@ STELLA_STACK_API_ENABLED=false
 STELLA_STACK_API_KEY_PATH=
 ```
 
-Atlas client (2026-11-04, logs/jobs/nonce/plan/apply/people/fix-permissions 2026-11-08, delete/trash 2026-11-14, update/drift/reconcile/people-sync 2026-11-14): `app/Domain/Stacks/StackApiClient.php`. Flag default **false** — `/api/stacks` is 404 and the nav item is hidden. Setting `stack_api_ssh_key_path` (Settings → GitHub, next to the deploy key path) overrides `STELLA_STACK_API_KEY_PATH`.
+Atlas client (2026-11-04, logs/jobs/nonce/plan/apply/people/fix-permissions 2026-11-08, delete/trash 2026-11-14, update/drift/reconcile/people-sync 2026-11-14, php-version 2026-11-14): `app/Domain/Stacks/StackApiClient.php`. Flag default **false** — `/api/stacks` is 404 and the nav item is hidden. Setting `stack_api_ssh_key_path` (Settings → GitHub, next to the deploy key path) overrides `STELLA_STACK_API_KEY_PATH`.
 
 | Instance | Enable | Key path |
 |---|---|---|
 | atlas.dev | **on** 2026-11-04 (`STELLA_STACK_API_ENABLED=true` in `src/.env`) | `/var/www/.ssh/id_ed25519` |
 | Atlas prod | **off** (flag stays false) | `/home/atlas/.ssh/atlas-stack-api` when enabled |
 
-Admin role only. Atlas records restarts, apply, update, reconcile, people-sync, fix-permissions, delete, trash-restore, and trash-purge in `stack_actions` (`user_id`, stack, service, result, detail, created_at`). Queued rows store the job id in `detail` and settle to `ok` / `error` when the job is fetched. stack-api keeps its own audit log.
+Admin role only. Atlas records restarts, apply, update, php-version, reconcile, people-sync, fix-permissions, delete, trash-restore, and trash-purge in `stack_actions` (`user_id`, stack, service, result, detail, created_at`). Queued rows store the job id in `detail` and settle to `ok` / `error` when the job is fetched. stack-api keeps its own audit log.
 
 ### Atlas client
 
-`StellaSshSigner::sign($payload, 'stack', $keyPath)` — namespace **`stack`**, not `deploy`. Payload `<action>:<unix_ts>:<sha256(request_json)>`. POST `{payload, signature, request}` where `request` is the exact JSON string that was hashed (encoded once; integers stay integers, booleans stay booleans). Header `X-Stack-Token`. Restart timeout 65 s (15 s when `async`). Logs timeout 30 s. Plan timeout 30 s. Apply timeout 30 s. Delete timeout 30 s. Trash list / restore / purge timeout 30 s. Reconcile timeout 30 s. People-sync timeout 30 s. People list and fix-permissions 15 s. A random `nonce` is sent on every request. Empty `spec` / `php_ini` are JSON objects (`{}`), never `[]`. Delete always sends `final_dump` as JSON `false`.
+`StellaSshSigner::sign($payload, 'stack', $keyPath)` — namespace **`stack`**, not `deploy`. Payload `<action>:<unix_ts>:<sha256(request_json)>`. POST `{payload, signature, request}` where `request` is the exact JSON string that was hashed (encoded once; integers stay integers, booleans stay booleans). Header `X-Stack-Token`. Restart timeout 65 s (15 s when `async`). Logs timeout 30 s. Plan timeout 30 s. Apply timeout 30 s. Delete timeout 30 s. Trash list / restore / purge timeout 30 s. Reconcile timeout 30 s. PHP version timeout 30 s. People-sync timeout 30 s. People list and fix-permissions 15 s. A random `nonce` is sent on every request. Empty `spec` / `php_ini` are JSON objects (`{}`), never `[]`. Delete always sends `final_dump` as JSON `false`.
 
 | Atlas | stack-api |
 |---|---|
@@ -148,6 +148,7 @@ Admin role only. Atlas records restarts, apply, update, reconcile, people-sync, 
 | `POST /api/stacks/{name}/restart` | `POST /stacks/restart` action `stack-restart` request `{"name", "service"?, "async"?, nonce}` — `async` only when true |
 | `POST /api/stacks/{name}/fix-permissions` | `POST /stacks/fix-permissions` action `stack-fix-permissions` request `{"name", nonce}` |
 | `POST /api/stacks/{name}/delete` | `POST /stacks/delete` action `stack-delete` request `{"name","confirm","final_dump", nonce}` (`confirm` must equal `name`; Atlas always sends `final_dump` as JSON `false`) |
+| `POST /api/stacks/{name}/php-version` | `POST /stacks/php-version` action `stack-php-version` request `{"name","php", nonce}` (`php` `^8\.[0-9]+$`) |
 | `POST /api/stacks/{name}/reconcile` | `POST /stacks/reconcile` action `stack-reconcile` request `{"name","mode", nonce}` (`mode` is `adopt-live` or `re-render`) |
 | `GET /api/stack-jobs` | `POST /jobs/list` action `job-list` request `{"name"?, "limit"?, nonce}` (`limit` 1–100, default 20) |
 | `GET /api/stack-jobs/{id}` | `POST /jobs/get` action `job-get` request `{"id", nonce}` |
@@ -159,7 +160,7 @@ Admin role only. Atlas records restarts, apply, update, reconcile, people-sync, 
 | `POST /api/stack-trash/{name}/restore` | `POST /stacks/trash/restore` action `stack-trash-restore` request `{"name", nonce}` |
 | `POST /api/stack-trash/{name}/purge` | `POST /stacks/trash/purge` action `stack-trash-purge` request `{"name","confirm", nonce}` (`confirm` must equal `name`) |
 
-Use `/api/stack-jobs`, not `/api/stacks/jobs` — `jobs` would match `{name}`. Use `/api/stack-plan` / `/api/stack-people` / `/api/stack-people-sync` / `/api/stack-apply` / `/api/stack-trash`, not `/api/stacks/plan` and so on (`jobs` / `people` / `trash` would match `{name}`). Name `^[a-z0-9][a-z0-9.-]{0,252}$`, service `^[a-z0-9][a-z0-9_-]{0,62}$`, job id `^[0-9a-f]{32}$`, lines 1–1000, limit 1–100 — validated in Atlas before the call. Plan names are not pre-validated so stack-api can return sandbox / reserved-name errors. Mapped errors: 401/403 → `stack-api rejected the request`; 404 detail passed through; 400 detail passed through (`invalid input` when there is no detail); 409 → `stack busy`; 502 → `docker error` (results passed through); connection → `stack-api unreachable`. A handled plan or apply rejection is always HTTP 200 (`ok` + `errors`; `ok` can be false with a rendered compose). Never log the token, signature, key contents, log lines, spec keys, or response files. Async restart, apply, update, re-render reconcile, people-sync, fix-permissions, delete, trash-restore, and trash-purge record `stack_actions` with result `queued` and the job id in `detail` (`service` is the action for apply / update / reconcile / people-sync / fix-permissions / delete / trash-restore / trash-purge). `adopt-live` records `reconcile` / `ok`. `plan`, `people`, and trash list do not write `stack_actions`. Atlas `ssh_users` is a required list of person names (min 1).
+Use `/api/stack-jobs`, not `/api/stacks/jobs` — `jobs` would match `{name}`. Use `/api/stack-plan` / `/api/stack-people` / `/api/stack-people-sync` / `/api/stack-apply` / `/api/stack-trash`, not `/api/stacks/plan` and so on (`jobs` / `people` / `trash` would match `{name}`). Name `^[a-z0-9][a-z0-9.-]{0,252}$`, service `^[a-z0-9][a-z0-9_-]{0,62}$`, job id `^[0-9a-f]{32}$`, lines 1–1000, limit 1–100 — validated in Atlas before the call. Plan names are not pre-validated so stack-api can return sandbox / reserved-name errors. Mapped errors: 401/403 → `stack-api rejected the request`; 404 detail passed through; 400 detail passed through (`invalid input` when there is no detail); 409 → `stack busy`; 502 → `docker error` (results passed through); connection → `stack-api unreachable`. A handled plan or apply rejection is always HTTP 200 (`ok` + `errors`; `ok` can be false with a rendered compose). Never log the token, signature, key contents, log lines, spec keys, or response files. Async restart, apply, update, php-version, re-render reconcile, people-sync, fix-permissions, delete, trash-restore, and trash-purge record `stack_actions` with result `queued` and the job id in `detail` (`service` is the action for apply / update / php-version / reconcile / people-sync / fix-permissions / delete / trash-restore / trash-purge). `adopt-live` records `reconcile` / `ok`. `plan`, `people`, and trash list do not write `stack_actions`. Atlas `ssh_users` is a required list of person names (min 1).
 
 ---
 
@@ -183,8 +184,9 @@ Signed endpoints: action = payload prefix. Auth is IP + token + signature unless
 | `POST /jobs/list` | `job-list` | `{name?, limit?, nonce}` (`limit` 1–100, default 20; omit `name` when null) | `{jobs:[job, …]}` newest first, filtered by principal scope |
 | `POST /people/list` | `people-list` | `{nonce}` | `{people:[{name, uid}], stacks:[{name, out_of_sync (bool\|null), dropped[], errors[]}]}` — no keys |
 | `POST /people/sync` | `stack-people-sync` | `{name?, nonce}` (omit `name` for every out-of-sync stack) | `{"jobs":[{name, job, state} \| {name, error}]}`. Heavy job per stack. Job result like update plus `dropped` |
-| `POST /stacks/plan` | `stack-plan` | `{spec, nonce}` | Always 200 for a handled plan. Writes nothing. Rejected: `{ok:false, errors:[string]}`. Create: `{ok, errors, mode:"create", name, type, path, ssh_port (null without users), ssh_users, compose (YAML, multi-line strings as `\|` blocks), files, caddy, notes}`. Create notes: DB passwords and a random table prefix are generated on apply; WordPress is installed on apply with title = first label of the name, admin `foxcraft.digital` `<projects@foxcraft.digital>`; the admin password is returned once in the job result. Update (existing **managed** stack): same plus `drift` and `changes:[{file, status: added\|changed\|removed, diff}]`. Update errors include `php: is 8.5; the PHP version is changed with the PHP version job, not with update` and `drift: live files differ from the last apply; reconcile first`. `ok` can be false with a rendered result when policy fails |
+| `POST /stacks/plan` | `stack-plan` | `{spec, nonce}` | Always 200 for a handled plan. Writes nothing. Rejected: `{ok:false, errors:[string]}`. Create: `{ok, errors, mode:"create", name, type, path, ssh_port (null without users), ssh_users, compose (YAML, multi-line strings as `\|` blocks), files, caddy, notes}`. Create notes: DB passwords and a random table prefix are generated on apply; WordPress is installed on apply with title = first label of the name, admin `foxcraft.digital` `<projects@foxcraft.digital>`; the admin password is returned once in the job result. Update (existing **managed** stack): same plus `drift` and `changes:[{file, status: added\|changed\|removed, diff}]`. Update errors include `php: is <v>; the PHP version is changed with /stacks/php-version, not with update` and `drift: live files differ from the last apply; reconcile first`. `ok` can be false with a rendered result when policy fails |
 | `POST /stacks/apply` | `stack-apply` | `{spec, nonce}` | Rejected: `{ok:false, errors:[string]}` (HTTP 200). Create: `{ok:true, mode:"create", job, state:"queued", name}`. Update of an existing managed stack: `{ok:true, mode:"update", job, state:"queued", name}` (job action `stack-update`). Heavy job |
+| `POST /stacks/php-version` | `stack-php-version` | `{name, php, nonce}` | Rejected: `{ok:false, errors}` (HTTP 200) — `php: allowed 8.4, 8.5`, `php: already <v>`, `type: only wordpress stacks`. Queued: `{ok:true, job, state:"queued", name, php}`. `404` `stack not found` (also for unmanaged stacks). `409` `stack busy`. Heavy job, per-stack lock |
 | `POST /stacks/reconcile` | `stack-reconcile` | `{name, mode, nonce}` (`mode` is `adopt-live` or `re-render`) | `adopt-live` is sync: `{name, mode, spec, ssh_port}`. `re-render` is a job: `{ok, job, state, name, mode}` (job result like update plus `mode` and `dropped`). `404` `stack not found`. `409` `live files do not match a blueprint render; use re-render` (adopt-live) or `stack busy` |
 | `POST /stacks/fix-permissions` | `stack-fix-permissions` | `{name, nonce}` | `{job, state}`. WordPress stacks under `/opt/apps/wordpress` only; `400` `"only wordpress stacks"` / `"stack folder not available"`. Heavy job |
 | `POST /stacks/delete` | `stack-delete` | `{name, confirm, final_dump, nonce}` — `confirm` must equal `name`; `final_dump` boolean | `{ok:true, job, state:"queued", name}`. WordPress, **managed** stacks only. Heavy job. `400` `confirm must equal name` / `invalid final_dump` / `only wordpress stacks`; `409` `stack is not managed by stack-api` / `stack is already in the trash` / `stack busy` |
@@ -224,7 +226,7 @@ Like hypershape:
 |---|---|---|---|
 | `wp` | `wordpress:php<v>-apache` | `edge` + `internal` | `WORDPRESS_CONFIG_EXTRA` with `$$`-escaped HTTPS fix + `WP_HOME` / `WP_SITEURL`. `WORDPRESS_TABLE_PREFIX: ${WP_TABLE_PREFIX:-wp_}` (from the stack `.env`; stacks without the variable keep `wp_`) |
 | `db` | `mariadb:11` | `internal` | named volume `db-data` |
-| `ssh` | `stella/ssh-php:<v>` | `internal` | `pull_policy: never`, port `221xx:22`, `./atlas:/etc/atlas:ro`, `home` + `ssh-keys` volumes, `./html:/home/<user>/app` per user |
+| `ssh` | `stella/ssh-php:<v>` | `internal` | `pull_policy: never`, port `221xx:22`, `./atlas:/etc/atlas:ro`, `home` + `ssh-keys` volumes, `./html:/home/<user>/app` per user. `environment`: `WORDPRESS_DB_HOST=db`, `WORDPRESS_DB_NAME=wp`, `WORDPRESS_DB_USER=wp`, `WORDPRESS_DB_PASSWORD=${DB_PASSWORD}`, `WORDPRESS_TABLE_PREFIX=${WP_TABLE_PREFIX:-wp_}` (same values as `wp`) |
 
 `./php/zz-atlas.ini` is mounted read-only into `/usr/local/etc/php/conf.d/` in `wp` and `ssh`. No ssh users → no ssh service, no port, no `atlas/` files. Caddy site block has **no `tls` section** (wildcard cert); only `@blocked not remote_ip` from `STACK_API_SITE_ALLOW_IPS` and `reverse_proxy <name>:80`.
 
@@ -232,11 +234,11 @@ Like hypershape:
 
 SSH ports for stack-api managed stacks: **22100–22199**, lowest free; a port freed by a deleted stack can be reused. One `DOCKER-USER` range rule — see [`infrastructure.md`](infrastructure.md) / [`dev-ssh-access.md`](dev-ssh-access.md). Manual ports stay 2201–2207 (next free manual: 2208).
 
-`reconstruct` / `adopt-live` only matches stacks whose compose contains the `WORDPRESS_TABLE_PREFIX` line. Older stacks (sandbox) get a compose diff (that env line added) on their next update — harmless; the prefix stays `wp_`.
+`reconstruct` / `adopt-live` only matches stacks whose compose contains the `WORDPRESS_TABLE_PREFIX` line. Older stacks (sandbox) get a compose diff (that env line added) on their next update — harmless; the prefix stays `wp_`. Existing managed stacks get the `ssh` `WORDPRESS_*` env as a compose diff on their next update or `re-render`. It does **not** show as drift, because drift compares live files to the stored hash, not to a fresh render. Sandbox was re-rendered on 2026-11-14.
 
 ## Jobs
 
-SQLite table `jobs` (`id`, `created_at`, `started_at`, `finished_at`, `principal`, `action`, `stack`, `service`, `state` `queued`/`running`/`ok`/`error`, `result` JSON, `detail`). One in-memory asyncio lock per stack: a second action on a busy stack (sync restart or any job) gets `409` `stack busy`. Heavy-job semaphore `STACK_API_HEAVY_JOBS` (default 1) — `apply`, `update`, `reconcile` (re-render), `people-sync`, `fix-permissions`, `delete`, `trash-restore`, `trash-purge`. On startup, queued/running jobs are set to `error` `interrupted by stack-api restart`. Job completion writes a second audit row `job=<id> done …`. Locks and the replay cache require a single uvicorn worker.
+SQLite table `jobs` (`id`, `created_at`, `started_at`, `finished_at`, `principal`, `action`, `stack`, `service`, `state` `queued`/`running`/`ok`/`error`, `result` JSON, `detail`). One in-memory asyncio lock per stack: a second action on a busy stack (sync restart or any job) gets `409` `stack busy`. Heavy-job semaphore `STACK_API_HEAVY_JOBS` (default 1) — `apply`, `update`, `php-version`, `reconcile` (re-render), `people-sync`, `fix-permissions`, `delete`, `trash-restore`, `trash-purge`. On startup, queued/running jobs are set to `error` `interrupted by stack-api restart`. Job completion writes a second audit row `job=<id> done …`. Locks and the replay cache require a single uvicorn worker.
 
 ## `stack_state` (managed stacks)
 
@@ -244,7 +246,7 @@ SQLite table `stack_state` (`name` PK, `type`, `spec_json`, `rendered_hash`, `ss
 
 **Startup backfill (2026-11-14):** existing WordPress stacks are adopted only when (1) a successful `stack-apply` job exists for that name and (2) a re-render of that spec matches the live files byte for byte. Adopted: `sandbox.staging.foxcraft.digital`, owner `atlas-dev`. `hypershape` (hand-edited compose) and `dominikliss` (no apply job) were not adopted.
 
-A successful **apply**, **update**, or **reconcile** writes `stack_state` (`created_by` = the signing principal on create, `rendered_hash` of the files just written, `ssh_port`, `volumes_json`). `rendered_hash` is sha256 over `docker-compose.yml`, `php/zz-atlas.ini`, everything under `atlas/`, and the Caddy site file. **Drift** is `true` when the live hash ≠ `rendered_hash`, `false` when they match, `null` when the stack is not managed. Shown on `list` / `get`. Drift blocks plan/apply update until reconcile (`adopt-live` or `re-render`).
+A successful **apply**, **update**, **php-version**, or **reconcile** writes `stack_state` (`created_by` = the signing principal on create, `rendered_hash` of the files just written, `ssh_port`, `volumes_json`). `rendered_hash` is sha256 over `docker-compose.yml`, `php/zz-atlas.ini`, everything under `atlas/`, and the Caddy site file. **Drift** is `true` when the live hash ≠ `rendered_hash`, `false` when they match, `null` when the stack is not managed. Shown on `list` / `get`. Drift blocks plan/apply update until reconcile (`adopt-live` or `re-render`).
 
 ## Apply job
 
@@ -275,7 +277,7 @@ Same `POST /stacks/plan` / `POST /stacks/apply` as create. When `spec.name` is a
 
 Order:
 
-1. Validate spec. Refuse a PHP change (`php: is 8.5; the PHP version is changed with the PHP version job, not with update`) and a type change (`type: cannot be changed`).
+1. Validate spec. Refuse a PHP change (`php: is <v>; the PHP version is changed with /stacks/php-version, not with update`) and a type change (`type: cannot be changed`).
 2. Drift check — live hash ≠ `rendered_hash` → `drift: live files differ from the last apply; reconcile first`.
 3. Render + policy. Diff against live files (`changes:[{file, status: added|changed|removed, diff}]` on plan).
 4. Backup current files to `<stack>/.atlas-bak/<UTC ts>/` (Caddy site file stored as `caddy.site`; last 10 backups kept; folder mode `0700`). Relative path in the job result (e.g. `.atlas-bak/20261114T…Z`).
@@ -290,6 +292,27 @@ SSH port is kept. The first SSH user on a stack that had no `ssh` service gets t
 
 Success: `{name, changed, changes:[{file, status}], backup, ssh_port, ssh_users[], steps[]}`. `changed: false` means no file changes (neutral, not an error). Failure: restore the backed-up files, `compose up`, restart, reload Caddy; result `{step, output, done[], rollback[], backup}` or the string `drift: …`.
 
+## PHP version job
+
+Managed WordPress stacks only. `POST /stacks/php-version`, action `stack-php-version`, `{name, php, nonce}`. The target must be in `STACK_API_PHP_VERSIONS` and different from the current version.
+
+Order:
+
+1. Refuse on drift (`drift: live files differ from the last apply; reconcile first`).
+2. Re-validate the stored spec with the new `php`. If that fails, the error is step `spec` (e.g. a person who is no longer in `people/` → reconcile first).
+3. If the stack has an `ssh` service, `stella/ssh-php:<v>` must exist locally (step `image`). It is never pulled.
+4. `docker pull -q wordpress:php<v>-apache` (step `pull`).
+5. DB dump to `<stack>/dumps/<ts>-before-php<v>.sql.gz` (step `dump`, same `mariadb-dump` as the final dump on delete). Always taken, always kept.
+6. File backup to `.atlas-bak/<ts>` (same as update).
+7. Write the re-rendered files, then `docker compose up -d --remove-orphans`.
+8. HTTP probe (up to 180 s).
+9. Verify `PHP_MAJOR.MINOR` in `<name>` and `<name>-ssh` (step `verify`).
+10. Write `stack_state` (spec, `rendered_hash`, `ssh_port`).
+
+Rollback on any failure after step 7 starts: old files back, `compose up -d --remove-orphans` (old images are still local). The dump and backup stay. Error result: `{step, output|errors, done, rollback, backup, dump}`. Success result: `{name, from, to, dump, backup, steps}`, with steps `pull`, `dump-<bytes>`, `backup`, `files`, `compose-up`, `http-<code>`, `verify`.
+
+Dumps under `<stack>/dumps/` are not rotated. **TODO (Dominik):** decide on cleanup.
+
 ## Reconcile
 
 `POST /stacks/reconcile`, action `stack-reconcile`, `{name, mode, nonce}`.
@@ -302,6 +325,29 @@ Success: `{name, changed, changes:[{file, status}], backup, ssh_port, ssh_users[
 ## People sync
 
 `out_of_sync` (on `people/list` per managed stack) compares the rendered `atlas/` files with the live `atlas/` files. `POST /people/sync`, action `stack-people-sync`, `{name?, nonce}`: no `name` means every out-of-sync stack. Sync is an update with the stored spec and the current `people/` list (removed people are dropped). Response `{"jobs":[{name, job, state} | {name, error}]}`. Job result like update plus `dropped`.
+
+## People management (planned 2026-11-14)
+
+**UNVERIFIED / not deployed.** Atlas will store and send **public keys only**. No keys are generated in Atlas or stack-api, and no private key ever touches either. Each person runs `ssh-keygen` on their own machine and pastes the `.pub`. Edison's key is still generated on Edison; only its `.pub` goes in.
+
+People stay global in stack-api (`people/users.conf` + `keys/<name>.pub`). Access to a stack is still controlled by `ssh_users` in the stack spec. Adding a key never grants access to new stacks.
+
+Atlas: each user manages their own keys under user settings → SSH keys. Admins manage all people, including service accounts without a login (`edison`), on `/stacks/people`. The Atlas user → SSH username link is set by an admin only. Safeguards in Atlas: confirm the password before adding a key, and send an email to the user and the admin when a key is added or removed. Sync to stacks stays a manual click (`/stacks/people` Sync / Sync all) for now.
+
+stack-api side:
+
+- `POST /people/upsert` (action `people-upsert`), body `{name, keys:[…], actor, nonce}`.
+  - 1–10 keys. Each is checked against `KEY_RE` plus base64. Anything containing `PRIVATE KEY` is rejected, as are duplicates.
+  - Creates the person or replaces their keys.
+  - Returns `{ok, name, uid, created, keys:[{type, fingerprint, comment}], stacks}`. Validation errors come back as `{ok:false, errors}`.
+- `POST /people/remove` (action `people-remove`), body `{name, confirm, actor, nonce}`. `confirm` must equal `name`.
+  - Returns `{ok, name, uid, stacks}`. `stacks` lists the managed stacks that drop the person on the next sync.
+- `POST /people/list` would also return, per person, `keys` (type, fingerprint, comment) and `stacks` (the managed stacks where they are in `ssh_users`), plus top-level `can_edit`.
+- UIDs: new table `people_uids` (`name` PK, `uid` UNIQUE, `created_at`), backfilled from `users.conf` on startup. A new person gets max(known UIDs, 1002) + 1. A removed name keeps its UID if re-added, and UIDs are never given to another name. Existing UIDs: `dominik` 1000, `pawel` 1001, `edison` 1002.
+- Writes are atomic (temp file + rename) under a global people lock. `users.conf` is rewritten sorted, with the header `# managed by stack-api (Atlas people); name uid`. Hand comments in `users.conf` are lost on the first write.
+- `actor` (the acting Atlas user, `^[A-Za-z0-9@._+-]{1,100}$`) is written into the audit detail next to the principal.
+- Who may write: `STACK_API_PEOPLE_WRITERS` (default `atlas-prod`). For building and testing, `.env` sets `atlas-prod,atlas-dev`. **TODO (Dominik):** remove `atlas-dev` before the Atlas client goes live on prod.
+- Compose: the `people/` bind mount changes from `:ro` to read-write.
 
 ## Delete job
 
@@ -490,7 +536,7 @@ atlas.dev, principal `atlas-dev`. First created stack: `sandbox.staging.foxcraft
 
 `main.py` only. `stack_state` + delete / trash / restore / hourly purge. Startup backfill adopted `sandbox.staging.foxcraft.digital` (owner `atlas-dev`). Compose: `/opt/apps:/opt/apps` and `./stack-api/people:/app/people:ro`. `.env`: `STACK_API_TRASH_DAYS=7`, `STACK_API_PHP_VERSIONS=8.4,8.5`. Images on Stella: `stella/ssh-php:8.4`, `wordpress:php8.4-apache` (8.5 tags unchanged).
 
-Update / drift / people sync: `list` / `get` return `drift`; `get` also returns `spec` and `ssh_port`. `plan` / `apply` on an existing managed stack use `mode: "update"` (job action `stack-update`). `POST /stacks/reconcile` (`adopt-live` / `re-render`). `people/list` adds per-stack `out_of_sync` / `dropped` / `errors`. `POST /people/sync`. WordPress auto-install on create: random `WP_TABLE_PREFIX` in the stack `.env`, WP-CLI install via a one-off `stella/ssh-php` container, job result `table_prefix` + `admin` (password once in `jobs.result`, not in audit/detail). Trash purge-now: `POST /stacks/trash/purge` (`stack-trash-purge`); hourly purge uses the same function (`stack-purge`, principal `system`). PHP version change, labels, basic auth, staging guard, cron still open.
+Update / drift / people sync: `list` / `get` return `drift`; `get` also returns `spec` and `ssh_port`. `plan` / `apply` on an existing managed stack use `mode: "update"` (job action `stack-update`). `POST /stacks/php-version` (`stack-php-version`) changes PHP on a managed WordPress stack. `POST /stacks/reconcile` (`adopt-live` / `re-render`). `people/list` adds per-stack `out_of_sync` / `dropped` / `errors`. `POST /people/sync`. WordPress auto-install on create: random `WP_TABLE_PREFIX` in the stack `.env`, WP-CLI install via a one-off `stella/ssh-php` container, job result `table_prefix` + `admin` (password once in `jobs.result`, not in audit/detail). Trash purge-now: `POST /stacks/trash/purge` (`stack-trash-purge`); hourly purge uses the same function (`stack-purge`, principal `system`). Blueprint `ssh` has `WORDPRESS_*` env; `entrypoint.sh` writes those into `/etc/environment` for SSH sessions. Labels, basic auth, staging guard, cron still open.
 
 ## Verification (2026-11-14)
 
@@ -498,14 +544,17 @@ Update / drift / people sync: `list` / `get` return `drift`; `get` also returns 
 |---|---|---|
 | `atlas-sync-users` path in `stella/ssh-php` | Stella | `/usr/local/bin/atlas-sync-users` |
 | stack-api startup | Stella | log `managed stacks: sandbox.staging.foxcraft.digital (atlas-dev)` — update code is in the running container |
-| Edit `sandbox.staging.foxcraft.digital` `memory_limit` 512M Plan → Apply | atlas.dev | **no request** — Atlas did not send `stack-plan` / `stack-apply` (see [open-gaps](../open-gaps.md#stack-api-atlas-container-management--2026-11-04)) |
-| update end to end | — | **UNVERIFIED** |
-| reconcile (`adopt-live` / `re-render`) | — | **UNVERIFIED** |
+| Edit `sandbox.staging.foxcraft.digital` `memory_limit` → Plan → Apply | atlas.dev | verified 2026-11-14. Atlas sends `stack-plan` / `stack-apply` |
+| update end to end | atlas.dev | verified 2026-11-14 |
+| reconcile `re-render` | atlas.dev | verified 2026-11-14 (sandbox, to roll out the `ssh` env change) |
+| reconcile `adopt-live` | — | **UNVERIFIED** |
 | people sync | — | **UNVERIFIED** |
 | trash purge after `STACK_API_TRASH_DAYS` | — | **UNVERIFIED** |
 | `php -m` lists `mysqli` and `pdo_mysql` in `stella/ssh-php:8.4` and `:8.5` | Stella | verified 2026-11-14 (images rebuilt after Dockerfile `docker-php-ext-install mysqli pdo_mysql`) |
-| trash purge-now (`POST /stacks/trash/purge`) | atlas.dev | **UNVERIFIED** |
-| create with WordPress auto-install after the mysqli fix | atlas.dev | **UNVERIFIED** |
+| trash purge-now (`POST /stacks/trash/purge`) | atlas.dev | verified 2026-11-14 |
+| create with WordPress auto-install after the mysqli fix | atlas.dev | verified 2026-11-14 |
+| PHP version change 8.5 → 8.4 → 8.5 on sandbox | atlas.dev | verified 2026-11-14 |
+| `wp` over SSH in a blueprint stack | Mac via york | verified 2026-11-14: `ssh -p 22100 dominik@95.217.144.93 'cd app && wp option get siteurl'` returns `https://sandbox.staging.foxcraft.digital` |
 
 ---
 
@@ -524,9 +573,17 @@ docker build --build-arg PHP_VERSION=8.4 -t stella/ssh-php:8.4 /opt/services/sta
 
 On Stella: `stella/ssh-php:8.4` and `stella/ssh-php:8.5`; WordPress images `wordpress:php8.4-apache` and `wordpress:php8.5-apache`.
 
-**Contents:** `openssh-server`, `git`, `curl`, `wget`, `unzip`, `less`, `procps`, `mariadb-client`, WP-CLI phar at `/usr/local/bin/wp`, group `atlasusers`. Dockerfile has `RUN docker-php-ext-install mysqli pdo_mysql` after the apt layer (backup `images/ssh-php/Dockerfile.bak-20261114`). Verified on 8.5: PHP 8.5.12, WP-CLI 2.12.0, MariaDB client 11.8.6. Rebuilt `stella/ssh-php:8.5` and `:8.4` on 2026-11-14; verified `php -m` lists `mysqli` and `pdo_mysql` in both. Running ssh containers (`hypershape`, `sandbox.staging.foxcraft.digital`, …) still use the old image until recreated; only needed if SSH users run `wp db` commands there. Throwaway install containers pick up the rebuilt image immediately.
+**Contents:** `openssh-server`, `git`, `curl`, `wget`, `unzip`, `less`, `procps`, `mariadb-client`, WP-CLI phar at `/usr/local/bin/wp`, group `atlasusers`. Dockerfile has `RUN docker-php-ext-install mysqli pdo_mysql` after the apt layer (backup `images/ssh-php/Dockerfile.bak-20261114`). Verified on 8.5: PHP 8.5.12, WP-CLI 2.12.0, MariaDB client 11.8.6. Rebuilt `stella/ssh-php:8.5` and `:8.4` on 2026-11-14 (mysqli, then again after the `entrypoint.sh` `/etc/environment` change); verified `php -m` lists `mysqli` and `pdo_mysql` in both. Sandbox ssh was recreated (re-render 2026-11-14). hypershape is still on the image from before that recreate.
 
 **Known noise:** every `wp` command on PHP 8.5 prints a `Deprecated: Case statements followed by a semicolon` notice from WP-CLI's bundled `react/promise`. Harmless, not suppressed.
+
+### Known issues
+
+- SSH host keys are baked into the image. The sandbox host key comment is `root@buildkitsandbox`. The `openssh-server` apt install generates host keys during `docker build`. When a stack's `ssh-keys` volume (`/etc/ssh`) is first created, Docker copies them in, so `ssh-keygen -A` in the entrypoint finds them and does nothing.
+- Consequence: every stack created from the same image build shares the same host keys. A rebuild changes them for new stacks.
+- Also: SSH ports 22100–22199 are reused after a purge. A new stack on a reused port presents a different host key, and the Mac shows `REMOTE HOST IDENTIFICATION HAS CHANGED`.
+- Procedure: check the fingerprint on Stella (`docker exec <stack>-ssh ssh-keygen -lf /etc/ssh/ssh_host_ed25519_key.pub`), then `ssh-keygen -R '[95.217.144.93]:<port>'` on the Mac.
+- Planned fix: `RUN rm -f /etc/ssh/ssh_host_*` after the apt layer in `images/ssh-php/Dockerfile`, then rebuild both tags. Existing stacks keep the shared keys until their keys are removed and the ssh container is restarted.
 
 ### User sync
 
@@ -536,7 +593,7 @@ Live run without restart: `docker exec <stack>-ssh atlas-sync-users`. Keep UIDs 
 
 ### `entrypoint.sh`
 
-Creates `/run/sshd` and `/etc/ssh/sshd_config.d`, `ssh-keygen -A` (missing host keys only; `ssh-keys` volume keeps existing ones), writes `/etc/ssh/sshd_config.d/atlas.conf` (`PermitRootLogin no`, `PasswordAuthentication no`, `KbdInteractiveAuthentication no`, `AllowGroups atlasusers`), runs `atlas-sync-users`, then `exec /usr/sbin/sshd -D -e`. Port forwarding stays enabled (Cursor Remote-SSH).
+Creates `/run/sshd` and `/etc/ssh/sshd_config.d`, `ssh-keygen -A` (missing host keys only; `ssh-keys` volume keeps existing ones), writes `/etc/ssh/sshd_config.d/atlas.conf` (`PermitRootLogin no`, `PasswordAuthentication no`, `KbdInteractiveAuthentication no`, `AllowGroups atlasusers`). sshd does not pass the container env into SSH sessions. Before `atlas-sync-users`, `entrypoint.sh` writes the container's `WORDPRESS_*` variables to `/etc/environment` (mode `600`, values without whitespace only). PAM (`pam_env`) loads that file into every SSH session, including non-interactive ones (Cursor Remote-SSH). Stacks without that env (hypershape, dominikliss) get an empty file. Backup: `images/ssh-php/entrypoint.sh.bak-20261114`. Both `stella/ssh-php:8.4` and `:8.5` were rebuilt 2026-11-14. Then `atlas-sync-users`, then `exec /usr/sbin/sshd -D -e`. Port forwarding stays enabled (Cursor Remote-SSH).
 
 ### Verification (2026-11-04, hypershape)
 
@@ -574,7 +631,7 @@ Single list. Do not duplicate it in [`../open-gaps.md`](../open-gaps.md).
 - [x] SSH users via spec (now via `people/`; uid + key from the bind-mounted list, then `atlas-sync-users`) (2026-11-08)
 - [x] People sync to existing stacks (`POST /people/sync`; a key change in `people/` still needs a sync or reconcile re-render) (2026-11-14)
 - [ ] Outbound SSH key per user (`ssh-keys/generate`, returns only the `.pub`, for GitHub deploy keys)
-- [ ] PHP version change as a job (DB dump first, `wp` + `ssh` image together, verify `php -v` / HTTP / fatals / ACL, revert)
+- [x] PHP version change as a job (DB dump first, `wp` + `ssh` image together, verify `PHP_MAJOR.MINOR`, revert) (2026-11-14)
 - [ ] PHP settings: `PHP_INI_SCAN_DIR` with shared `php-defaults.ini` + per-site `zz-atlas.ini`, whitelisted keys (`memory_limit`, `upload_max_filesize`, `post_max_size`, `max_execution_time`, `max_input_time`, `max_input_vars`, `display_errors`, `date.timezone`, `session.gc_maxlifetime`, selected `opcache.*`); never `auto_prepend_file`, `disable_functions`, `open_basedir`, `extension`; return effective values via `php -i`
 - [x] wildcard DNS + wildcard cert for `*.staging.foxcraft.digital` (2026-11-08); apply writes `/caddy-sites/<name>.caddy` and reloads Caddy
 - [x] stack-api SSH ports 22100–22199, lowest free, one `DOCKER-USER` range rule (2026-11-08). A port freed by a deleted stack can be reused.
