@@ -38,13 +38,13 @@ Token stays in `.env` (`STELLA_STACK_API_TOKEN`). Signing key: Settings → GitH
 | Create Laravel or .NET stacks | **not built** (list/get still show those types) |
 | PHP version change | yes |
 
-List polls every 30 s and always refetches when `/stacks` mounts (so a restore from Trash is visible without a full reload). The grid stays empty until the real cards arrive — no skeleton placeholders. Detail polls every 30 s; jobs every 10 s; a watched job every 2 s until `ok` / `error`.
+List polls every 30 s and always refetches when `/stacks` mounts (so a restore from Trash is visible without a full reload). The grid stays empty until the real cards arrive — no skeleton placeholders. Detail polls every 30 s; jobs every 10 s (2 s while create, PHP change, or update is running); a watched job every 2 s until `ok` / `error`. Success toasts last 6 s; errors stay until dismissed.
 
 ---
 
 ## List (`/stacks`)
 
-Card grid grouped by WordPress → Laravel → .NET → anything else, then name. Each card has a scaled live preview when the stack name is a hostname (`https://{name}` in a sandboxed iframe), a status dot, the name, a **drift** badge when `drift` is true, and a restart control. While the iframe is loading, and during create or delete, the preview pane stays dark — no type globe. Create and delete overlays, including the scan line, are clipped to that pane (not the window chrome or the name row). Clicking a card opens the stack in a sidebar (URL `/stacks/$name`) instead of a separate page. Container chips and sandbox/managed pills stay off the card. Status is derived from container `state` (dot: all running / degraded / down). Open bind IPs (`0.0.0.0` / `::`) are highlighted in the sidebar, not the list.
+Card grid grouped by WordPress → Laravel → .NET → anything else, then name. Each card has a scaled live preview when the stack name is a hostname (`https://{name}` in a sandboxed iframe), a status dot, the name, a **drift** badge when `drift` is true, and a restart control. While the iframe is loading, and during create, delete, PHP change, or PHP-settings update, the preview pane stays dark — no type globe. Those overlays, including the scan line, are clipped to that pane (not the window chrome or the name row) and show only the current step. Drift is hidden on the card while PHP is changing or an update is running. Clicking a card opens the stack in a sidebar (URL `/stacks/$name`) instead of a separate page. Container chips and sandbox/managed pills stay off the card. Status is derived from container `state` (dot: all running / degraded / down). Open bind IPs (`0.0.0.0` / `::`) are highlighted in the sidebar, not the list.
 
 **Stacks / People / Trash** tabs. **New stack** opens the create drawer. Create is WordPress-only in the UI.
 
@@ -100,23 +100,23 @@ Busy stack (sync restart or any job already running) → `409` “Stack is busy 
 
 ## Edit (Apply)
 
-Managed stacks only. The Stack tab embeds the same form as create, prefilled from `GET /api/stacks/{name}` `spec`. **Name** and **type** are locked. **PHP** is read-only with a **Change PHP** button (below). Stella rejects a PHP change on update (`php: is <v>; the PHP version is changed with /stacks/php-version, not with update`). There is no Plan step. **Apply** is enabled when the form is valid (at least one SSH user) and the stack is not drifted. Confirm, then `POST /api/stack-apply`. Progress for Apply and Change PHP is in the sticky sidebar header (current step only). Drift is hidden while those jobs run.
+Managed stacks only. The Stack tab embeds the same form as create, prefilled from `GET /api/stacks/{name}` `spec`. **Name** and **type** are locked. **PHP** is read-only with a **Change PHP** button (below). Stella rejects a PHP change on update (`php: is <v>; the PHP version is changed with /stacks/php-version, not with update`). There is no Plan step. **Apply** is enabled when the form is valid (at least one SSH user) and the stack is not drifted. Confirm, then `POST /api/stack-apply`. The form does not dump SSH port, backup path, or step lists after Apply — progress is in the sticky sidebar header (current step only, same as Change PHP). Drift is hidden while those jobs run. The form is locked until the job settles. Errors (rejected apply, trash hold) stay on the form.
 
 Stella still accepts `POST /api/stack-plan` for a dry-run (`mode: "update"` plus `drift`, `changes`, notes, artifacts). Atlas does not call it. `ok: false` with `drift: live files differ from the last apply; reconcile first` means Apply is the wrong action — reconcile first. The form is locked until then.
 
-Apply response `{ok:true, mode:"update", job, state, name}` (job action `stack-update`). Atlas records `stack_actions` as `update` / `queued`. Job result: `{name, changed, changes:[{file,status}], backup, ssh_port, ssh_users[], steps[]}`. `changed: false` is a **neutral info** (“No changes”), not an error. Failure: `{step, output, done[], rollback[], backup}` or the string `drift: …`.
+Apply response `{ok:true, mode:"update", job, state, name}` (job action `stack-update`). Atlas records `stack_actions` as `update` / `queued`. Toast “Update queued.”, then “Stack updated.” / “No changes.” / error when the job settles. Job result: `{name, changed, changes:[{file,status}], backup, ssh_port, ssh_users[], steps[]}`. `changed: false` is a **neutral info** (“No changes”), not an error. Failure: `{step, output, done[], rollback[], backup}` or the string `drift: …`. Full result stays on the Jobs tab.
 
 ---
 
 ## Change PHP
 
-Edit shows the current PHP version read-only, with a **Change PHP** button. The button is only enabled for managed WordPress stacks without drift. With drift it shows “Reconcile first”.
+Edit shows the current PHP version read-only, with a **Change PHP** button. The button is only enabled for managed WordPress stacks without drift. With drift it shows “Reconcile first”. The form is locked while the job runs.
 
-The dialog has a target-version select (config `stacks.php_versions`, kept in sync with `STACK_API_PHP_VERSIONS` by hand), a confirm, and job polling. Confirm is only active when another version is chosen. Atlas polls the job every 2 s. Progress is in the sticky sidebar header and on the list card overlay.
+The dialog lists every version from config `stacks.php_versions` (kept in sync with `STACK_API_PHP_VERSIONS` by hand) as radio buttons. The current version is selected and labelled “current”; it is not disabled. **Change PHP** is only active when another version is chosen. Copy: DB dump first, wp + ssh images switch together, automatic rollback, short downtime. Immediate Stella rejections (`php: already …`, `php: allowed …`, not WordPress) stay in the dialog.
 
-The success view shows from → to and the dump path. The error view shows step, output and rollback.
+Atlas polls the job every 2 s. Progress is the current step in the sticky sidebar header (white spinner, not accent) and on the list card overlay (same scan as create). Toast “PHP change queued.”, then `PHP {from} → {to}` or the failed step / output / first error. Dump path, steps, and rollback stay on the Jobs tab.
 
-Route: `POST /api/stacks/{name}/php-version` `{php}` (`^8\.[0-9]+$`), which logs a `stack_actions` row `php-version` (`queued` with the job id, or `rejected` with the first error). Stella returns `{ok:false, errors}` on HTTP 200 (already that version, not allowed, not WordPress). `404` unmanaged / not found. `409` stack busy.
+Route: `POST /api/stacks/{name}/php-version` `{php}` (`^8\.[0-9]+$`), which logs a `stack_actions` row `php-version` (`queued` with the job id, or `rejected` with the first error). Stella returns `{ok:false, errors}` on HTTP 200 (already that version, not allowed, not WordPress). `404` unmanaged / not found. `409` stack busy. Never log the token, signature, or key.
 
 ---
 
