@@ -34,7 +34,7 @@ It is **not** the business dashboard. Clients, invoices, and mail live in **ddas
 | **Dashboard** | `/dashboard` | Home + Stella status summary |
 | **Deployments** | `/deployments` | SSH rsync deploys and Stella deploy-api deploys |
 | **WP Sites** | `/wp-sites` | Register sites, 5-min uptime, Atlas Connect login, start/list/explore backups; browser decrypt (`/backup-decrypt`); daily + manual infection scans with verdict, report, allowlist, trusted baseline; build a Stella staging site from a completed full backup (planned via stack-api `create` + `restore`; `wp-staging-api` will not be deployed); download a fresh installable Atlas Connect zip |
-| **Stacks** | `/stacks`, `/stacks/people`, `/stacks/trash` | Stella compose stacks: list/search, logs, restart (sync/async), WordPress create / edit (Plan → Create or Apply), drift reconcile, people sync, delete + trash/restore/purge of managed stacks, jobs, history. Flag-gated, admin only. Live on atlas.dev (`atlas-dev` visible = `STACK_API_SANDBOX_STACKS` ∪ owned); prod off. UI: [`stacks.md`](stacks.md). Contract: [`../stella-server/stack-api.md`](../stella-server/stack-api.md) |
+| **Stacks** | `/stacks`, `/stacks/people`, `/stacks/trash` | Stella compose stacks: list/search, logs, restart (sync/async), WordPress create (one-shot apply + in-grid current-step card) / edit (Plan → Apply), drift reconcile, people sync, delete + trash/restore/purge of managed stacks, jobs, history. Flag-gated, admin only. Live on atlas.dev (`atlas-dev` visible = `STACK_API_SANDBOX_STACKS` ∪ owned); prod off. UI: [`stacks.md`](stacks.md). Contract: [`../stella-server/stack-api.md`](../stella-server/stack-api.md) |
 | **Monitoring** | `/monitoring`, `/monitoring/stella`, `/monitoring/atlas`, `/monitoring/edison`, `/monitoring/york` | Stella / Atlas / Edison host health + york Cloud-only status |
 | **Tools → IMAP Migration** | `/tools/imap-migration` | Trigger / poll `imapsync` jobs on Stella |
 | **Tools → TrackingTime Import** | `/tools/tracking-time-import` | Full one-way import of selected TrackingTime projects into Atlas MySQL |
@@ -59,7 +59,7 @@ It is **not** the business dashboard. Clients, invoices, and mail live in **ddas
 | [monitoring.md](monitoring.md) | Stella health + WP uptime |
 | [tools.md](tools.md) | IMAP copy via Stella; TrackingTime import and open-task sync |
 | [projects.md](projects.md) | Projects UI; one-way Trello push (mapping, skip tasks, hours field, deadline field, reset ids) |
-| [stacks.md](stacks.md) | Stella compose stacks: list, logs, restart, WordPress Plan → Create / Edit, drift, people sync, delete + trash/restore/purge, jobs |
+| [stacks.md](stacks.md) | Stella compose stacks: list, logs, restart, WordPress create / edit, drift, people sync, delete + trash/restore/purge, jobs |
 | [notifications.md](notifications.md) | Inbox, Slack/email channels, weekly hour-budget rules |
 | [dotnet-azure.md](dotnet-azure.md) | .NET / Azure via `stella_deploy_api` |
 | [../design-language/](../design-language/) | Shared UI language Atlas implements (spec + tokens) |
@@ -306,7 +306,7 @@ Admin only. All of these return 404 when `STELLA_STACK_API_ENABLED` is off.
 
 | Method | Path | Purpose |
 |--------|------|---------|
-| `GET` | `/api/stacks` | List Stella app stacks (signed `stack-list`). Each stack has `drift`: `true` / `false` / `null` (null = not managed) |
+| `GET` | `/api/stacks` | List Stella app stacks (signed `stack-list`). Each stack has `drift`: `true` / `false` / `null` (null = not managed). Response `Cache-Control: no-store` |
 | `GET` | `/api/stacks/{name}` | One stack plus Atlas `stack_actions` history. Also `spec` (`{type, name, php, ssh_users[], php_ini{}}` or null), `ssh_port`, `drift` |
 | `GET` | `/api/stacks/{name}/logs` | Last N log lines for a service (`service`, `lines` 1–1000, default 200) |
 | `POST` | `/api/stacks/{name}/restart` | Restart a service or the whole stack (`{"service"?, "async"?}`). `async: true` queues a job and records `stack_actions` as `queued` with the job id |
@@ -472,6 +472,6 @@ TRELLO_TOKEN=
 - [`monitoring.md`](monitoring.md) — Stella health, Atlas host health, WP uptime
 - [`tools.md`](tools.md) — IMAP migration via Stella; TrackingTime import/sync
 - [`projects.md`](projects.md) — Projects UI and one-way Trello push
-- [`stacks.md`](stacks.md) — Stella compose stacks (list, logs, restart, WordPress Plan → Create / Edit, drift + reconcile, people sync, delete + trash/restore/purge)
+- [`stacks.md`](stacks.md) — Stella compose stacks (list, logs, restart, WordPress create / edit, drift + reconcile, people sync, delete + trash/restore/purge)
 - [`dotnet-azure.md`](dotnet-azure.md) — .NET / Azure via `stella_deploy_api`
 - [`../integration/system-overview.md`](../integration/system-overview.md) — full company map

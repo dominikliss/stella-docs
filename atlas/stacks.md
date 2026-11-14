@@ -24,8 +24,8 @@ Token stays in `.env` (`STELLA_STACK_API_TOKEN`). Signing key: Settings → GitH
 | Service logs (50 / 200 / 1000 lines, newest at bottom, truncated warning) | yes |
 | Restart one service or the whole stack (sync or async job) | yes |
 | Fix WordPress `html/` permissions | apply still runs this; Atlas UI does not expose the recovery action |
-| Plan a new WordPress stack (dry-run compose / files / Caddy; mode `create`) | yes |
-| Create from a matching plan (queued apply job; URL + SSH port on success) | yes |
+| Plan a new WordPress stack (dry-run compose / files / Caddy; mode `create`) | API only — the create drawer no longer plans first |
+| Create a WordPress stack (queued apply job; in-grid card with the current step only) | yes |
 | WordPress login after create (URL, user, email, password once from the job result, table prefix) | yes |
 | Edit a managed WordPress stack (plan diffs → apply; job action `stack-update`) | yes |
 | Reconcile drift (`adopt-live` sync or `re-render` job) | yes |
@@ -38,21 +38,21 @@ Token stays in `.env` (`STELLA_STACK_API_TOKEN`). Signing key: Settings → GitH
 | Create Laravel or .NET stacks | **not built** (list/get still show those types) |
 | PHP version change | **not built** |
 
-List polls every 30 s. Detail polls every 30 s; jobs every 10 s; a watched job every 2 s until `ok` / `error`.
+List polls every 30 s and always refetches when `/stacks` mounts (so a restore from Trash is visible without a full reload). Detail polls every 30 s; jobs every 10 s; a watched job every 2 s until `ok` / `error`.
 
 ---
 
 ## List (`/stacks`)
 
-Card grid grouped by WordPress → Laravel → .NET → anything else, then name. Each card has a scaled live preview when the stack name is a hostname (`https://{name}` in a sandboxed iframe), a status dot, the name, a **drift** badge when `drift` is true, and a restart control. Clicking a card opens the stack in a sidebar (URL `/stacks/$name`) instead of a separate page. Container chips and sandbox/managed pills stay off the card. Status is derived from container `state` (dot: all running / degraded / down). Open bind IPs (`0.0.0.0` / `::`) are highlighted in the sidebar, not the list.
+Card grid grouped by WordPress → Laravel → .NET → anything else, then name. Each card has a scaled live preview when the stack name is a hostname (`https://{name}` in a sandboxed iframe), a status dot, the name, a **drift** badge when `drift` is true, and a restart control. While the iframe is loading, and during create or delete, the preview pane stays dark — no type globe. Create and delete overlays, including the scan line, are clipped to that pane (not the window chrome or the name row). Clicking a card opens the stack in a sidebar (URL `/stacks/$name`) instead of a separate page. Container chips and sandbox/managed pills stay off the card. Status is derived from container `state` (dot: all running / degraded / down). Open bind IPs (`0.0.0.0` / `::`) are highlighted in the sidebar, not the list.
 
-**Stacks / People / Trash** tabs. **New stack** opens the plan drawer. Create is WordPress-only in the UI.
+**Stacks / People / Trash** tabs. **New stack** opens the create drawer. Create is WordPress-only in the UI.
 
 ---
 
-## Create (Plan → Create)
+## Create
 
-The form is a dry-run plus an apply job. Plan writes nothing. Create is disabled until a **successful** plan matches the current form (changing name, PHP, SSH users, or ini rows requires Plan again).
+The form submits **Create** (`POST /api/stack-apply`) with no dry-run step. Create is enabled when the name is valid and at least one SSH user is selected. The drawer closes as soon as Stella queues the job; the WordPress grid shows a placeholder card in the sorted slot the new stack will occupy (by name, among existing WordPress cards). That card shows only the current apply step (files → compose-up → Caddy → HTTP wait → WordPress install → permissions → state), not the full checklist, with no live iframe under the overlay. The scan animation runs only inside the preview pane. Stella still accepts `POST /api/stack-plan` for edits. Changing name, PHP, SSH users, or ini rows just changes what Create sends.
 
 | Field | Rule |
 |-------|------|
@@ -64,7 +64,7 @@ The form is a dry-run plus an apply job. Plan writes nothing. Create is disabled
 
 Plan response (always HTTP 200 when handled) includes `mode: "create"`: path, SSH port (or “no SSH”), SSH users, notes, and artifacts (`docker-compose.yml`, extra files, Caddy site block). `ok: false` with a rendered compose means policy failed (e.g. a disallowed `php_ini` key). An existing **managed** stack is an update (below), not a create. Unmanaged existing stacks / folders / Caddy files are still refused. A name in the trash is rejected (`name: <name> is in the trash until <ts>; restore it, purge it, or wait for the purge`). Atlas shows a link to `/stacks/trash` so the name can be restored or purged immediately. A sandbox principal may plan/apply any valid `<label>.staging.foxcraft.digital` name; after apply it owns that stack and it shows up in its list.
 
-Create confirms, then `POST /api/stack-apply`. Response includes `mode: "create"`. Atlas records `stack_actions` as `apply` / `queued` with the job id. Success result: public URL (`https://<name>`), SSH port in **22100–22199**, SSH users, Open stack, and a **WordPress login** block when `result.admin` is present: login URL `{result.url}/wp-admin/`, user, email, table prefix, and the admin password (masked, reveal + copy). If `admin.password` is `null`, the password row is hidden and the block says “already installed”. The password is shown only from the stack-api job result; Atlas does not write it to `stack_actions`, history, or any Atlas table, and does not log it. If the create job is `ok` but `result.admin` is missing, Atlas warns that WordPress was not installed (the public site is still the installer). The same block is on the stack sidebar from the latest `stack-apply` job, not only on the create drawer. Failure result: `detail`, failed `step`, output, done / rollback lists. Apply is a heavy job (one at a time on Stella).
+Create sends `POST /api/stack-apply` (no confirm dialog). The drawer closes immediately and a placeholder card appears in the list; Atlas records `stack_actions` as `apply` / `queued` once Stella returns a job id (`mode: "create"`). The card polls the job every 2 s and shows only the current apply step; when the job reports `done` / `step` those win over the time estimate. URL, SSH, and WordPress login stay off the placeholder. The placeholder stays in that slot until the job is `ok` (even if Stella already lists the stack after compose-up). Then it is replaced by the normal card and the live preview iframe is remounted so it does not keep the installer / database-error page from mid-install. A toast reports success or failure. Immediate apply rejections (trash hold, policy) are also toasts. The stack sidebar still shows a **WordPress login** block from the latest `stack-apply` job when `result.admin` is present: login URL `{result.url}/wp-admin/`, user, email, table prefix, and the admin password (masked, reveal + copy). If `admin.password` is `null`, the password row is hidden and the block says “already installed”. The password is shown only from the stack-api job result; Atlas does not write it to `stack_actions`, history, or any Atlas table, and does not log it. If the create job is `ok` but `result.admin` is missing, Atlas warns that WordPress was not installed (the public site is still the installer). Apply is a heavy job (one at a time on Stella).
 
 New sites are IP-restricted in Caddy (`STACK_API_SITE_ALLOW_IPS`: Proton, york, Atlas prod). Wildcard cert for `*.staging.foxcraft.digital` — the site block has no `tls` section.
 
@@ -79,7 +79,7 @@ New sites are IP-restricted in Caddy (`STACK_API_SITE_ALLOW_IPS`: Proton, york, 
 | Restart stack | On the card and in the sidebar. Always queued. Type-the-name confirm unless the stack is sandbox. Stella restarts `db` first |
 | Edit | Shown only when `managed` is true. Opens the plan drawer prefilled from `spec`. Disabled when `drift` is true |
 | Reconcile | Shown when `drift` is true. Dialog: adopt live files, or re-render from the stored spec. Re-render on a non-sandbox stack needs a type-the-name confirm |
-| Delete | Shown only when `managed` is true. Type-the-name confirm. Stack goes to the trash for `retention_days` and can be restored. Queued job; on success toast + close the sidebar. On failure: failed `step` + output. Atlas always sends `final_dump: false` (no SQL copy; restore uses volumes) |
+| Delete | Shown only when `managed` is true. Type-the-name confirm. Confirm starts the job immediately (card Deleting overlay in the preview pane, no globe) while the confirm dialog and sidebar animate out. Stack goes to the trash for `retention_days` and can be restored. Queued job; toast on settle. On failure: toast with `detail`. Atlas always sends `final_dump: false` (no SQL copy; restore uses volumes) |
 
 `drift` is `true` / `false` / `null` (`null` = not managed). A **drift** badge is on the card and in the sidebar when it is true.
 
@@ -123,7 +123,7 @@ Central SSH people (`[{name, uid}]`, no keys) and the stacks that are out of syn
 
 ## Trash (`/stacks/trash`)
 
-Card grid of trash entries, grouped by type: name, type, deleted at, purge after (days left), volumes, dump path only if present. **Restore** confirms, then `POST /api/stack-trash/{name}/restore`. Atlas records `stack_actions` as `trash-restore` / `queued` with the job id. On success: toast + link to the restored stack. On failure: failed `step` + output. `404` `not in trash`; `409` stack busy (detail may be `trash folder missing`, `<path> already exists`, `volume <v> missing`, `ssh port <n> is in use`).
+Card grid of trash entries, grouped by type: name, type, deleted at, purge after (days left), volumes, dump path only if present. **Restore** confirms, then `POST /api/stack-trash/{name}/restore`. Atlas records `stack_actions` as `trash-restore` / `queued` with the job id. On success: toast, and the stacks list is refetched until the restored name appears (so switching back to Stacks does not wait for a reload). On failure: failed `step` + output. `404` `not in trash`; `409` stack busy (detail may be `trash folder missing`, `<path> already exists`, `volume <v> missing`, `ssh port <n> is in use`).
 
 **Purge now** type-the-name confirms, then `POST /api/stack-trash/{name}/purge` (`{confirm}` must equal name). Backed by stack-api `stack-trash-purge` (live 2026-11-14). Atlas records `stack_actions` as `trash-purge` / `queued`. Destroys volumes and the trash folder immediately so the name can be created again. On success: toast + “the name is free”. `400` `confirm must equal name`; `404` `not in trash`; `409` stack busy.
 
@@ -135,7 +135,7 @@ Admin only. 404 when the flag is off. Client: `app/Domain/Stacks/StackApiClient.
 
 | Atlas | Stella action |
 |-------|---------------|
-| `GET /api/stacks` | `stack-list` |
+| `GET /api/stacks` | `stack-list` (`Cache-Control: no-store`) |
 | `GET /api/stacks/{name}` | `stack-get` (+ local history) |
 | `GET /api/stacks/{name}/logs` | `stack-logs` |
 | `POST /api/stacks/{name}/restart` | `stack-restart` |

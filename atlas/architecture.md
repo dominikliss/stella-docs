@@ -58,7 +58,7 @@ Entry: `resources/views/app.blade.php` → Vite → `resources/js/routes/index.t
 | `/dashboard` | `domains/dashboard/DashboardPage` (+ `StellaServerStatus`, `AtlasServerStatus`, `EdisonServerStatus`) |
 | `/deployments` | `domains/deployments/DeploymentsPage` (+ `ConfirmDeployModal` before each run) |
 | `/wp-sites` | `domains/wp-sites/WpSitesPage` |
-| `/stacks` | `domains/stacks/StacksPage` (nav hidden unless `STELLA_STACK_API_ENABLED`; card grid grouped by type with live preview + restart + drift badge; search; New stack: Plan → Create; Stacks / People / Trash tabs) |
+| `/stacks` | `domains/stacks/StacksPage` (nav hidden unless `STELLA_STACK_API_ENABLED`; card grid grouped by type with live preview + restart + drift badge; search; New stack: Create (in-grid current-step card); Stacks / People / Trash tabs) |
 | `/stacks/people` | `domains/stacks/StackPeoplePage` (people list, out-of-sync stacks, Sync / Sync all) |
 | `/stacks/trash` | `domains/stacks/StackTrashPage` (trash cards, purge after, restore, purge now) |
 | `/stacks/$name` | same `StacksPage` with `StackDetailPanel` sidebar (containers, logs 50/200/1000, restart, edit / reconcile when managed, delete when managed, recent jobs, history) |
